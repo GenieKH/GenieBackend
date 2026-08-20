@@ -1,0 +1,16 @@
+# Node modules (ignored in all subfolders)
+node_modules/
+
+# Environment variables (ignored in all subfolders)
+.env
+.env.*
+
+# Generated files / build output
+**/src/generated/
+**/dist/
+**/build/
+
+# OS and Editor files
+.DS_Store
+.vscode/
+Thumbs.db

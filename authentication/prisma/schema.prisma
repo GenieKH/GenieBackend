@@ -1,0 +1,43 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model RefreshToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash")
+  deviceId  String?  @map("device_id")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([expiresAt], map: "idx_refresh_tokens_expires_at")
+  @@index([userId], map: "idx_refresh_tokens_user_id")
+  @@map("refresh_tokens")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model User {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phone         String?        @unique
+  email         String?        @unique
+  passwordHash  String         @map("password_hash")
+  role          String         @default("user")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  firebaseUid   String?        @unique @map("firebase_uid")
+  refreshTokens RefreshToken[]
+
+  @@index([email], map: "idx_users_email", where: raw("(email IS NOT NULL)"))
+  @@index([phone], map: "idx_users_phone", where: raw("(phone IS NOT NULL)"))
+  @@index([firebaseUid], map: "idx_users_firebase_uid", where: raw("(firebase_uid IS NOT NULL)"))
+  @@map("users")
+}

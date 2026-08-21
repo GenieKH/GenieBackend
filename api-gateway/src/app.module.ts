@@ -20,11 +20,14 @@ import { AuthMiddleware } from './auth.middleware';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3000';
+    const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:3001';
+
     // 1. Proxies that DO NOT require JWT validation (Auth service)
     consumer
       .apply(
         createProxyMiddleware({
-          target: 'http://localhost:3000',
+          target: authServiceUrl,
           changeOrigin: true,
           on: {
             proxyReq: fixRequestBody,
@@ -40,7 +43,7 @@ export class AppModule implements NestModule {
     consumer
       .apply(
         createProxyMiddleware({
-          target: 'http://localhost:3001',
+          target: userServiceUrl,
           changeOrigin: true,
           on: {
             proxyReq: fixRequestBody,
@@ -58,7 +61,7 @@ export class AppModule implements NestModule {
       .apply(
         AuthMiddleware,
         createProxyMiddleware({
-          target: 'http://localhost:3001',
+          target: userServiceUrl,
           changeOrigin: true,
           on: {
             proxyReq: (proxyReq, req: any, res) => {

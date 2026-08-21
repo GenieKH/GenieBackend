@@ -9,7 +9,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npx prisma generate && npm run build --workspaces --if-present",
     "start:user": "npm run start:prod --workspace=user",
     "start:auth": "npm run start:prod --workspace=authentication",
     "start:gateway": "npm run start:prod --workspace=api-gateway",
@@ -31,6 +31,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "prisma": "^7.9.1"
   }
 }

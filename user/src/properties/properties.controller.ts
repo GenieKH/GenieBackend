@@ -14,8 +14,8 @@ import { ApiTags, ApiHeader } from '@nestjs/swagger';
 export class PropertiesController {
   constructor(private readonly propertiesService: PropertiesService) {}
 
-  private getUserId(headers: Record<string, string>): string {
-    const userId = headers['x-user-id'];
+  private getUserId(req: any): string {
+    const userId = req.headers['x-user-id'];
     if (!userId) {
       throw new UnauthorizedException('x-user-id header is missing');
     }

@@ -1,4 +1,5 @@
-import { Controller, Post, Body, Headers, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Body, Headers, Req, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PaymentsService } from './payments.service';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -7,17 +8,17 @@ import { ApiTags } from '@nestjs/swagger';
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
-  private getUserId(headers: Record<string, string>): string {
-    const userId = headers['x-user-id'];
-    if (!userId) {
-      throw new UnauthorizedException('x-user-id header is missing');
+  private getUserId(req: any): string {
+    if (!req.user || !req.user.userId) {
+      throw new UnauthorizedException('User not authenticated');
     }
-    return userId;
+    return req.user.userId;
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('checkout')
-  initiateCheckout(@Headers() headers: Record<string, string>, @Body('propertyId') propertyId: string) {
-    const userId = this.getUserId(headers);
+  initiateCheckout(@Req() req: any, @Body('propertyId') propertyId: string) {
+    const userId = this.getUserId(req);
     return this.paymentsService.initiateCheckout(userId, propertyId);
   }
 
@@ -26,3 +27,4 @@ export class PaymentsController {
     return this.paymentsService.handleWebhook(payload, signature || '');
   }
 }
+

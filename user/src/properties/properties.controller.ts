@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Headers, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PropertiesService } from './properties.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
@@ -22,111 +23,113 @@ export class PropertiesController {
   }
 
   @Post()
-  create(@Headers() headers: Record<string, string>, @Body() createPropertyDto: CreatePropertyDto) {
-    const userId = this.getUserId(headers);
+  create(@Req() req: any, @Body() createPropertyDto: CreatePropertyDto) {
+    const userId = this.getUserId(req);
     return this.propertiesService.create(userId, createPropertyDto);
   }
 
   @Get()
-  findAll(@Headers() headers: Record<string, string>) {
-    const userId = this.getUserId(headers);
+  findAll(@Req() req: any) {
+    const userId = this.getUserId(req);
     return this.propertiesService.findAll(userId);
   }
 
   @Get('my/favorites')
-  getFavorites(@Headers() headers: Record<string, string>) {
-    const userId = this.getUserId(headers);
+  getFavorites(@Req() req: any) {
+    const userId = this.getUserId(req);
     return this.propertiesService.getFavorites(userId);
   }
 
   @Get(':id')
-  findOne(@Headers() headers: Record<string, string>, @Param('id') id: string) {
-    const userId = this.getUserId(headers);
+  findOne(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
     return this.propertiesService.findOne(userId, id);
   }
 
   @Patch(':id')
   update(
-    @Headers() headers: Record<string, string>,
+    @Req() req: any,
     @Param('id') id: string,
     @Body() updatePropertyDto: UpdatePropertyDto,
   ) {
-    const userId = this.getUserId(headers);
+    const userId = this.getUserId(req);
     return this.propertiesService.update(userId, id, updatePropertyDto);
   }
 
   @Patch(':id/pin')
   updatePin(
-    @Headers() headers: Record<string, string>,
+    @Req() req: any,
     @Param('id') id: string,
     @Body() pinDto: PinDto,
   ) {
-    const userId = this.getUserId(headers);
+    const userId = this.getUserId(req);
     return this.propertiesService.updatePin(userId, id, pinDto);
   }
 
   @Patch(':id/boundary')
   updateBoundary(
-    @Headers() headers: Record<string, string>,
+    @Req() req: any,
     @Param('id') id: string,
     @Body() boundaryDto: BoundaryDto,
   ) {
-    const userId = this.getUserId(headers);
+    const userId = this.getUserId(req);
     return this.propertiesService.updateBoundary(userId, id, boundaryDto);
   }
 
   @Patch(':id/publish')
-  publish(@Headers() headers: Record<string, string>, @Param('id') id: string) {
-    const userId = this.getUserId(headers);
+  publish(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
     return this.propertiesService.publish(userId, id);
   }
 
   @Patch(':id/mark-sold')
-  markSold(@Headers() headers: Record<string, string>, @Param('id') id: string) {
-    const userId = this.getUserId(headers);
+  markSold(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
     return this.propertiesService.markSold(userId, id);
   }
 
   @Patch(':id/relist')
-  relist(@Headers() headers: Record<string, string>, @Param('id') id: string) {
-    const userId = this.getUserId(headers);
+  relist(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
     return this.propertiesService.relist(userId, id);
   }
 
   @Post(':id/like')
-  like(@Headers() headers: Record<string, string>, @Param('id') id: string) {
-    const userId = this.getUserId(headers);
+  like(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
     return this.propertiesService.like(userId, id);
   }
 
   @Delete(':id/like')
-  unlike(@Headers() headers: Record<string, string>, @Param('id') id: string) {
-    const userId = this.getUserId(headers);
+  unlike(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
     return this.propertiesService.unlike(userId, id);
   }
 
   @Post(':id/favorite')
-  favorite(@Headers() headers: Record<string, string>, @Param('id') id: string) {
-    const userId = this.getUserId(headers);
+  favorite(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
     return this.propertiesService.favorite(userId, id);
   }
 
   @Post(':id/contact')
-  contact(@Headers() headers: Record<string, string>, @Param('id') id: string, @Body() contactDto: CreateContactDto) {
-    const userId = headers['x-user-id'] || null;
+  contact(@Req() req: any, @Param('id') id: string, @Body() contactDto: CreateContactDto) {
+    const userId = req.user?.userId || null;
     return this.propertiesService.contact(id, userId, contactDto);
   }
 
   @Delete(':id/favorite')
-  unfavorite(@Headers() headers: Record<string, string>, @Param('id') id: string) {
-    const userId = this.getUserId(headers);
+  unfavorite(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
     return this.propertiesService.unfavorite(userId, id);
   }
 
   @Delete(':id')
-  remove(@Headers() headers: Record<string, string>, @Param('id') id: string) {
-    const userId = this.getUserId(headers);
+  remove(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
     return this.propertiesService.remove(userId, id);
   }
 }
+
+
 

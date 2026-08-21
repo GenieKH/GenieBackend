@@ -5,7 +5,7 @@ import * as jwt from 'jsonwebtoken';
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
   // In a real app, this secret would come from ConfigService
-  private readonly jwtSecret = process.env.JWT_SECRET || 'super-secret-fallback-key';
+  private readonly jwtPublicKey = process.env.JWT_PUBLIC_KEY?.replace(/\\n/g, '\n');
 
   use(req: Request, res: Response, next: NextFunction) {
     const authHeader = req.headers['authorization'];
@@ -15,7 +15,8 @@ export class AuthMiddleware implements NestMiddleware {
 
     const token = authHeader.split(' ')[1];
     try {
-      const decoded: any = jwt.verify(token, this.jwtSecret);
+      if (!this.jwtPublicKey) throw new Error('JWT_PUBLIC_KEY is not defined');
+      const decoded: any = jwt.verify(token, this.jwtPublicKey, { algorithms: ['RS256'] });
       // Inject the user ID into the headers for downstream services
       req.headers['x-user-id'] = decoded.sub;
       next();
@@ -24,3 +25,4 @@ export class AuthMiddleware implements NestMiddleware {
     }
   }
 }
+

@@ -4,12 +4,12 @@
   "packageManager": "npm@11.17.0",
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "build": "prisma generate && tsc",
+    "build": "npm run db:generate && tsc",
     "start": "node dist/main.js",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed"
+    "db:generate": "cd .. && npx prisma generate",
+    "db:push": "cd .. && npx prisma db push",
+    "db:migrate": "cd .. && npx prisma migrate dev",
+    "db:seed": "cd .. && npx prisma db seed"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.27",

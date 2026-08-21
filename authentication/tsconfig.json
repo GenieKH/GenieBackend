@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "Node",
+    "ignoreDeprecations": "5.0",
     "verbatimModuleSyntax": false,
     "strict": true,
     "esModuleInterop": true,
@@ -15,3 +16,4 @@
   },
   "include": ["src/**/*.ts"]
 }
+

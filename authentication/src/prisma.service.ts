@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaClient } from "./generated/prisma/client";
+import { PrismaClient } from '@genie/prisma-client';
 import { prismaClientOptions } from "./lib/prisma";
 
 @Injectable()

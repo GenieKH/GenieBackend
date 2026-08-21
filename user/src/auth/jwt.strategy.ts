@@ -1,6 +1,7 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
+import { requestContext } from './request-context';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -14,8 +15,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    // This payload is the decoded JWT. We return an object that Passport will
-    // attach to the Request object as `req.user`.
+    const store = requestContext.getStore();
+    if (store) {
+      store.set('userId', payload.sub);
+    }
     return { userId: payload.sub, role: payload.role };
   }
 }
+
+

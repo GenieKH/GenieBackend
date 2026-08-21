@@ -1,0 +1,32 @@
+{
+  "name": "genie-backend",
+  "version": "1.0.0",
+  "workspaces": [
+    "authentication",
+    "user",
+    "api-gateway"
+  ],
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "prisma generate"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GenieKH/GenieBackend.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/GenieKH/GenieBackend/issues"
+  },
+  "homepage": "https://github.com/GenieKH/GenieBackend#readme",
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "pg": "^8.23.0"
+  }
+}

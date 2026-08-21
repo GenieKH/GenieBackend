@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 
-export type PropertyStatus = 'Draft' | 'Pending' | 'Published' | 'Expired' | 'Sold' | 'Deleted';
+export type PropertyStatus = 'Draft' | 'Pending' | 'Active' | 'Expired' | 'Sold' | 'Deleted';
 
 @Injectable()
 export class PropertyStatusService {
@@ -12,8 +12,8 @@ export class PropertyStatusService {
   }
 
   canMarkSold(currentStatus: string): boolean {
-    if (currentStatus !== 'Published') {
-      throw new BadRequestException(`Only 'Published' properties can be marked as Sold. Current status: ${currentStatus}`);
+    if (currentStatus !== 'Active') {
+      throw new BadRequestException(`Only 'Active' properties can be marked as Sold. Current status: ${currentStatus}`);
     }
     return true;
   }

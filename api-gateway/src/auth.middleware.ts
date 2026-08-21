@@ -5,7 +5,7 @@ import * as jwt from 'jsonwebtoken';
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
   // In a real app, this secret would come from ConfigService
-  private readonly jwtSecret = process.env.JWT_SECRET || 'super-secret-key';
+  private readonly jwtSecret = process.env.JWT_SECRET || 'super-secret-fallback-key';
 
   use(req: Request, res: Response, next: NextFunction) {
     const authHeader = req.headers['authorization'];

@@ -78,7 +78,7 @@ export class PropertiesService {
   async searchMap(minLat: number, maxLat: number, minLng: number, maxLng: number) {
     return this.prisma.property.findMany({
       where: {
-        status: 'Published',
+        status: 'Active',
         lat: { gte: minLat, lte: maxLat },
         lng: { gte: minLng, lte: maxLng },
       },

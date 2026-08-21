@@ -18,13 +18,13 @@ describe('PropertyStatusService', () => {
     });
 
     it('should throw if publishing from Published', () => {
-      expect(() => service.canPublish('Published')).toThrow(BadRequestException);
+      expect(() => service.canPublish('Active')).toThrow(BadRequestException);
     });
   });
 
   describe('canMarkSold', () => {
     it('should allow marking sold from Published', () => {
-      expect(service.canMarkSold('Published')).toBe(true);
+      expect(service.canMarkSold('Active')).toBe(true);
     });
 
     it('should throw if marking sold from Draft', () => {
@@ -42,7 +42,7 @@ describe('PropertyStatusService', () => {
     });
 
     it('should throw if relisting from Published', () => {
-      expect(() => service.canRelist('Published')).toThrow(BadRequestException);
+      expect(() => service.canRelist('Active')).toThrow(BadRequestException);
     });
   });
 });

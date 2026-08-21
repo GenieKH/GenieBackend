@@ -1,5 +1,5 @@
 import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
-import { createProxyMiddleware } from 'http-proxy-middleware';
+import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
 import { AuthMiddleware } from './auth.middleware';
 
 @Module({})
@@ -11,9 +11,15 @@ export class AppModule implements NestModule {
         createProxyMiddleware({
           target: 'http://localhost:3000',
           changeOrigin: true,
+          on: {
+            proxyReq: fixRequestBody,
+          },
         }),
       )
-      .forRoutes({ path: '/auth/*', method: RequestMethod.ALL });
+      .forRoutes(
+        { path: '/auth', method: RequestMethod.ALL },
+        { path: '/auth/{*path}', method: RequestMethod.ALL }
+      );
 
     // 2. Proxies that DO NOT require JWT validation (Public properties)
     consumer
@@ -21,9 +27,15 @@ export class AppModule implements NestModule {
         createProxyMiddleware({
           target: 'http://localhost:3001',
           changeOrigin: true,
+          on: {
+            proxyReq: fixRequestBody,
+          },
         }),
       )
-      .forRoutes({ path: '/public/*', method: RequestMethod.ALL });
+      .forRoutes(
+        { path: '/public', method: RequestMethod.ALL },
+        { path: '/public/{*path}', method: RequestMethod.ALL }
+      );
 
     // 3. Proxies that REQUIRE JWT validation (User service)
     // First apply AuthMiddleware to extract x-user-id, then proxy to user service
@@ -39,14 +51,19 @@ export class AppModule implements NestModule {
               if (req.headers['x-user-id']) {
                 proxyReq.setHeader('x-user-id', req.headers['x-user-id']);
               }
+              // Fix body parser hanging issue
+              fixRequestBody(proxyReq, req);
             },
           },
         }),
       )
       .forRoutes(
-        { path: '/properties/*', method: RequestMethod.ALL },
-        { path: '/payments/*', method: RequestMethod.ALL },
-        { path: '/users/*', method: RequestMethod.ALL }
+        { path: '/properties', method: RequestMethod.ALL },
+        { path: '/properties/{*path}', method: RequestMethod.ALL },
+        { path: '/payments', method: RequestMethod.ALL },
+        { path: '/payments/{*path}', method: RequestMethod.ALL },
+        { path: '/users', method: RequestMethod.ALL },
+        { path: '/users/{*path}', method: RequestMethod.ALL }
       );
   }
 }

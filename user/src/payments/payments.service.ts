@@ -59,7 +59,7 @@ export class PaymentsService {
         // Finally, the stub gets payment-gated: Pending -> Published
         await tx.property.update({
           where: { id: transaction.propertyId },
-          data: { status: 'Published' },
+          data: { status: 'Active' },
         });
       });
       return { success: true };

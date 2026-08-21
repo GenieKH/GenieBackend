@@ -6,21 +6,25 @@ import { BoundaryDto } from './dto/boundary.dto';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { PrismaService } from '../prisma.service';
 import { PropertyStatusService } from './property-status.service';
+import { SupabaseService } from '../supabase/supabase.service';
 
 @Injectable()
 export class PropertiesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly statusService: PropertyStatusService,
+    private readonly supabaseService: SupabaseService,
   ) {}
 
   async create(userId: string, createPropertyDto: CreatePropertyDto) {
+    const { status, ...rest } = createPropertyDto;
     return this.prisma.property.create({
       data: {
-        ...createPropertyDto,
+        ...rest,
         userId,
-        status: 'Draft',
+        status: status || 'Draft',
       },
+      include: { images: { orderBy: { order: 'asc' } } },
     });
   }
 
@@ -30,17 +34,43 @@ export class PropertiesService {
         userId,
         status: { not: 'Deleted' },
       },
+      include: { images: { orderBy: { order: 'asc' } } },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
   async findOne(userId: string, id: string) {
     const property = await this.prisma.property.findFirst({
       where: { id, userId, status: { not: 'Deleted' } },
+      include: { images: { orderBy: { order: 'asc' } } },
     });
     if (!property) {
       throw new NotFoundException('Property not found');
     }
     return property;
+  }
+
+  async uploadImages(userId: string, id: string, files: Express.Multer.File[]) {
+    const property = await this.findOne(userId, id);
+
+    let maxOrder = 0;
+    if (property.images && property.images.length > 0) {
+      maxOrder = Math.max(...property.images.map((img) => img.order));
+    }
+
+    const uploadPromises = files.map(async (file, index) => {
+      const url = await this.supabaseService.uploadFile(file);
+      return this.prisma.propertyImage.create({
+        data: {
+          propertyId: id,
+          url,
+          order: maxOrder + index + 1,
+        },
+      });
+    });
+
+    await Promise.all(uploadPromises);
+    return this.findOne(userId, id);
   }
 
   async update(userId: string, id: string, updatePropertyDto: UpdatePropertyDto) {

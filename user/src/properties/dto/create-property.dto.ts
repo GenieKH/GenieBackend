@@ -40,4 +40,8 @@ export class CreatePropertyDto {
   @IsNumber()
   @IsOptional()
   totalProjectArea?: number;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
 }

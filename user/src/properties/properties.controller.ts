@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, UnauthorizedException, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PropertiesService } from './properties.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
@@ -26,6 +27,17 @@ export class PropertiesController {
   create(@Req() req: any, @Body() createPropertyDto: CreatePropertyDto) {
     const userId = this.getUserId(req);
     return this.propertiesService.create(userId, createPropertyDto);
+  }
+
+  @Post(':id/images')
+  @UseInterceptors(FilesInterceptor('images', 10))
+  uploadImages(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    const userId = this.getUserId(req);
+    return this.propertiesService.uploadImages(userId, id, files);
   }
 
   @Get()

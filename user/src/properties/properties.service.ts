@@ -91,9 +91,24 @@ export class PropertiesService {
 
   async updateBoundary(userId: string, id: string, boundaryDto: BoundaryDto) {
     await this.findOne(userId, id);
+    let lat: number | undefined;
+    let lng: number | undefined;
+    
+    const points = boundaryDto.boundaryPoints;
+    if (Array.isArray(points) && points.length > 0) {
+      const sumLat = points.reduce((sum: number, p: any) => sum + (p.lat || 0), 0);
+      const sumLng = points.reduce((sum: number, p: any) => sum + (p.lng || 0), 0);
+      lat = sumLat / points.length;
+      lng = sumLng / points.length;
+    }
+
     return this.prisma.property.update({
       where: { id },
-      data: { boundaryPoints: boundaryDto.boundaryPoints },
+      data: { 
+        boundaryPoints: boundaryDto.boundaryPoints,
+        ...(lat !== undefined && { lat }),
+        ...(lng !== undefined && { lng }),
+      },
     });
   }
 
@@ -205,5 +220,6 @@ export class PropertiesService {
     return favorites.map(f => f.property);
   }
 }
+
 
 

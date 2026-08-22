@@ -124,12 +124,20 @@ export class PropertiesService {
     });
   }
 
+  async unpublish(userId: string, id: string) {
+    const property = await this.findOne(userId, id);
+    return this.prisma.property.update({
+      where: { id },
+      data: { status: 'Draft' },
+    });
+  }
+
   async publish(userId: string, id: string) {
     const property = await this.findOne(userId, id);
     this.statusService.canPublish(property.status);
     return this.prisma.property.update({
       where: { id },
-      data: { status: 'Pending' },
+      data: { status: 'Active' },
     });
   }
 
@@ -147,7 +155,7 @@ export class PropertiesService {
     this.statusService.canRelist(property.status);
     return this.prisma.property.update({
       where: { id },
-      data: { status: 'Pending' },
+      data: { status: 'Active' },
     });
   }
 

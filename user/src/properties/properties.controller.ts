@@ -88,6 +88,12 @@ export class PropertiesController {
     return this.propertiesService.updateBoundary(userId, id, boundaryDto);
   }
 
+  @Patch(':id/unpublish')
+  unpublish(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
+    return this.propertiesService.unpublish(userId, id);
+  }
+
   @Patch(':id/publish')
   publish(@Req() req: any, @Param('id') id: string) {
     const userId = this.getUserId(req);

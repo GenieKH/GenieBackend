@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Post, Body } from '@nestjs/common';
 import { PropertiesService } from './properties.service';
 import { ApiTags, ApiQuery } from '@nestjs/swagger';
 
@@ -25,4 +25,10 @@ export class PublicPropertiesController {
       parseFloat(maxLng),
     );
   }
+
+  @Post('guest-session')
+  async registerGuestSession(@Body('deviceId') deviceId: string) {
+    return this.propertiesService.registerGuestSession(deviceId);
+  }
+
 }

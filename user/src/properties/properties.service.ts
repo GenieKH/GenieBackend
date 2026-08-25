@@ -134,6 +134,9 @@ export class PropertiesService {
         lat: true,
         lng: true,
         propertyType: true,
+        boundaryPoints: true,
+        createdAt: true,
+        status: true,
         images: true,
       }
     });

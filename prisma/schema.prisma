@@ -158,3 +158,12 @@ model PaymentTransaction {
 
 
 
+
+model GuestSession {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deviceId  String   @unique @map("device_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastSeen  DateTime @default(now()) @map("last_seen") @db.Timestamptz(6)
+
+  @@map("guest_sessions")
+}

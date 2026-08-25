@@ -219,7 +219,22 @@ export class PropertiesService {
     });
     return favorites.map(f => f.property);
   }
+
+  async registerGuestSession(deviceId: string) {
+    if (!deviceId) return { success: false };
+    
+    // Attempt to upsert
+    try {
+      const session = await this.prisma.guestSession.upsert({
+        where: { deviceId },
+        update: { lastSeen: new Date() },
+        create: { deviceId },
+      });
+      return { success: true, sessionId: session.id };
+    } catch (e) {
+      console.error('Error registering guest session', e);
+      return { success: false };
+    }
+  }
+
 }
-
-
-

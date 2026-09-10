@@ -130,6 +130,7 @@ export class PropertiesService {
       select: {
         id: true,
         title: true,
+        description: true,
         price: true,
         lat: true,
         lng: true,
@@ -137,7 +138,14 @@ export class PropertiesService {
         boundaryPoints: true,
         createdAt: true,
         status: true,
-        images: true,
+        bedrooms: true,
+        bathrooms: true,
+        landSize: true,
+        buildingSize: true,
+        unitSize: true,
+        images: { orderBy: { order: 'asc' } },
+        user: { select: { username: true } },
+        _count: { select: { favorites: true, contacts: true } },
       }
     });
   }
@@ -218,9 +226,17 @@ export class PropertiesService {
   async getFavorites(userId: string) {
     const favorites = await this.prisma.propertyFavorite.findMany({
       where: { userId },
-      include: { property: true },
+      include: {
+        property: {
+          include: {
+            images: { orderBy: { order: 'asc' } },
+            user: { select: { username: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
     });
-    return favorites.map(f => f.property);
+    return favorites.map((f) => f.property);
   }
 
   async registerGuestSession(deviceId: string) {

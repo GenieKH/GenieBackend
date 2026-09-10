@@ -1,4 +1,5 @@
-import { Controller, Get, Query, Post, Body } from '@nestjs/common';
+import { Controller, Get, Query, Post, Body, UseInterceptors } from '@nestjs/common';
+import { CacheInterceptor } from '@nestjs/cache-manager';
 import { PropertiesService } from './properties.service';
 import { ApiTags, ApiQuery } from '@nestjs/swagger';
 
@@ -8,6 +9,7 @@ export class PublicPropertiesController {
   constructor(private readonly propertiesService: PropertiesService) {}
 
   @Get('map')
+  @UseInterceptors(CacheInterceptor)
   @ApiQuery({ name: 'minLat', type: Number })
   @ApiQuery({ name: 'maxLat', type: Number })
   @ApiQuery({ name: 'minLng', type: Number })

@@ -8,7 +8,7 @@ import { AuthMiddleware } from './auth.middleware';
   imports: [
     ThrottlerModule.forRoot([{
       ttl: 60000,
-      limit: 10,
+      limit: 300,
     }]),
   ],
   providers: [
@@ -30,7 +30,10 @@ export class AppModule implements NestModule {
           target: authServiceUrl,
           changeOrigin: true,
           on: {
-            proxyReq: fixRequestBody,
+            proxyReq: (proxyReq, req: any) => {
+              proxyReq.removeHeader('x-user-id');
+              fixRequestBody(proxyReq, req);
+            },
           },
         }),
       )
@@ -46,7 +49,10 @@ export class AppModule implements NestModule {
           target: userServiceUrl,
           changeOrigin: true,
           on: {
-            proxyReq: fixRequestBody,
+            proxyReq: (proxyReq, req: any) => {
+              proxyReq.removeHeader('x-user-id');
+              fixRequestBody(proxyReq, req);
+            },
           },
         }),
       )

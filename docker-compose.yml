@@ -1,0 +1,9 @@
+services:
+  genie:
+    build: .
+    container_name: Genie
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    restart: unless-stopped

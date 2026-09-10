@@ -35,9 +35,6 @@ COPY user/package.json ./user/
 # RUN npm ci --omit=dev  // For monorepos, sometimes it's easier to just copy the whole node_modules from builder if prisma is involved
 # To ensure prisma client and all workspace links work perfectly, we'll copy the builder's node_modules
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/api-gateway/node_modules ./api-gateway/node_modules
-COPY --from=builder /app/authentication/node_modules ./authentication/node_modules
-COPY --from=builder /app/user/node_modules ./user/node_modules
 
 # Copy built dist folders
 COPY --from=builder /app/api-gateway/dist ./api-gateway/dist

@@ -193,7 +193,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token not found');
     }
 
-    // Token Reuse Detection
+    // Token Reuse Detection (if already revoked when we first read it)
     if (record.revoked) {
       // Revoke all tokens for this user because a compromised token was used
       await this.supabase
@@ -208,11 +208,22 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token signature');
     }
 
-    // Mark current token as revoked
-    await this.supabase
+    // Atomically mark current token as revoked to prevent concurrent refresh races
+    const { data: updatedRecords, error: updateError } = await this.supabase
       .from('refresh_tokens')
       .update({ revoked: true })
-      .eq('id', jti);
+      .eq('id', jti)
+      .eq('revoked', false)
+      .select();
+      
+    if (updateError || !updatedRecords || updatedRecords.length === 0) {
+      // If we couldn't update it because it was already revoked by a concurrent request
+      await this.supabase
+        .from('refresh_tokens')
+        .update({ revoked: true })
+        .eq('user_id', sub);
+      throw new UnauthorizedException('Token theft detected (Concurrent). All sessions revoked.');
+    }
 
     // Get user role for new access token
     const { data: user, error: userError } = await this.supabase

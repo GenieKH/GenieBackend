@@ -20,8 +20,8 @@ import { AuthMiddleware } from './auth.middleware';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3000';
-    const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:3001';
+    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:4001';
+    const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:4002';
 
     // 1. Proxies that DO NOT require JWT validation (Auth service)
     consumer

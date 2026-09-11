@@ -50,6 +50,26 @@ export class PropertiesService {
     return property;
   }
 
+  async findOnePublic(id: string) {
+    const property = await this.prisma.property.findFirst({
+      where: { id, status: 'Active' },
+      include: {
+        images: { orderBy: { order: 'asc' } },
+        user: {
+          select: {
+            username: true,
+            phone: true,
+            email: true,
+          },
+        },
+      },
+    });
+    if (!property) {
+      throw new NotFoundException('Property not found or not active');
+    }
+    return property;
+  }
+
   async uploadImages(userId: string, id: string, files: Express.Multer.File[]) {
     const property = await this.findOne(userId, id);
 

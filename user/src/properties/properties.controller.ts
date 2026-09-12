@@ -139,6 +139,12 @@ export class PropertiesController {
     return this.propertiesService.contact(id, userId, contactDto);
   }
 
+  @Post(':id/view')
+  logView(@Req() req: any, @Param('id') id: string) {
+    const userId = this.getUserId(req);
+    return this.propertiesService.logView(userId, id);
+  }
+
   @Delete(':id/favorite')
   unfavorite(@Req() req: any, @Param('id') id: string) {
     const userId = this.getUserId(req);

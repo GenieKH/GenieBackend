@@ -380,8 +380,10 @@ export class AuthService {
       throw new InternalServerErrorException('Failed to initiate password reset');
     }
 
-    // 5. Send email
-    await this.sendOtpEmail(email, otp);
+    // 5. Send email asynchronously so HTTP response returns immediately (<50ms)
+    this.sendOtpEmail(email, otp).catch((err) => {
+      this.logger.error(`Failed to dispatch OTP email to ${email}`, err);
+    });
 
     return { message: 'If the email exists, a verification code has been sent.' };
   }
@@ -499,6 +501,9 @@ export class AuthService {
           user: smtpUser,
           pass: smtpPass,
         },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
       });
 
       const htmlContent = `

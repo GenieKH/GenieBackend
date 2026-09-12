@@ -610,16 +610,39 @@ export class AuthService {
 </html>
       `;
 
-      await transporter.sendMail({
+      const mailOptions = {
         from: `"Genie Support" <${smtpFrom}>`,
         to: email,
         subject: `${otp} is your Genie verification code`,
         html: htmlContent,
-      });
+      };
 
-      this.logger.log(`OTP email successfully dispatched to ${email}`);
-    } catch (error) {
-      this.logger.error(`Failed to send OTP email to ${email}`, error);
+      try {
+        await transporter.sendMail(mailOptions);
+        this.logger.log(`OTP email successfully dispatched to ${email} (via port ${smtpPort})`);
+      } catch (firstErr: any) {
+        this.logger.warn(`Primary SMTP dispatch on port ${smtpPort} failed: ${firstErr?.message}. Retrying via fallback port 465 SSL...`);
+        if (smtpPort !== 465) {
+          const fallbackTransporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: 465,
+            secure: true,
+            auth: {
+              user: smtpUser,
+              pass: smtpPass,
+            },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
+          });
+          await fallbackTransporter.sendMail(mailOptions);
+          this.logger.log(`OTP email successfully dispatched to ${email} via fallback port 465 SSL`);
+        } else {
+          throw firstErr;
+        }
+      }
+    } catch (error: any) {
+      this.logger.error(`Failed to send OTP email to ${email}: ${error?.message}`, error?.stack);
       // Don't throw — the OTP is stored, user can request resend
     }
   }

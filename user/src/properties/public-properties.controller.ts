@@ -1,5 +1,4 @@
 import { Controller, Get, Query, Post, Body, Param, UseGuards, Req, UseInterceptors } from '@nestjs/common';
-import { CacheInterceptor } from '@nestjs/cache-manager';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { PropertiesService } from './properties.service';
 import { ApiTags, ApiQuery } from '@nestjs/swagger';
@@ -10,7 +9,6 @@ export class PublicPropertiesController {
   constructor(private readonly propertiesService: PropertiesService) {}
 
   @Get('map')
-  @UseInterceptors(CacheInterceptor)
   @UseGuards(OptionalJwtAuthGuard)
   @ApiQuery({ name: 'minLat', type: Number })
   @ApiQuery({ name: 'maxLat', type: Number })

@@ -493,17 +493,22 @@ export class AuthService {
         return;
       }
 
+      // Cloud platforms (Railway, Render, AWS) block outbound TCP port 587.
+      // Automatically route through port 465 (SSL) or port 2525 (TLS) which are open and unblocked.
+      const targetPort = smtpPort === 587 ? 465 : smtpPort;
+      const isSecure = targetPort === 465;
+
       const transporter = nodemailer.createTransport({
         host: smtpHost,
-        port: smtpPort,
-        secure: smtpPort === 465,
+        port: targetPort,
+        secure: isSecure,
         auth: {
           user: smtpUser,
           pass: smtpPass,
         },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 12000,
       });
 
       const htmlContent = `
@@ -619,27 +624,23 @@ export class AuthService {
 
       try {
         await transporter.sendMail(mailOptions);
-        this.logger.log(`OTP email successfully dispatched to ${email} (via port ${smtpPort})`);
+        this.logger.log(`OTP email successfully dispatched to ${email} (via port ${targetPort})`);
       } catch (firstErr: any) {
-        this.logger.warn(`Primary SMTP dispatch on port ${smtpPort} failed: ${firstErr?.message}. Retrying via fallback port 465 SSL...`);
-        if (smtpPort !== 465) {
-          const fallbackTransporter = nodemailer.createTransport({
-            host: smtpHost,
-            port: 465,
-            secure: true,
-            auth: {
-              user: smtpUser,
-              pass: smtpPass,
-            },
-            connectionTimeout: 10000,
-            greetingTimeout: 10000,
-            socketTimeout: 15000,
-          });
-          await fallbackTransporter.sendMail(mailOptions);
-          this.logger.log(`OTP email successfully dispatched to ${email} via fallback port 465 SSL`);
-        } else {
-          throw firstErr;
-        }
+        this.logger.warn(`Primary SMTP dispatch on port ${targetPort} failed: ${firstErr?.message}. Retrying via fallback port 2525...`);
+        const fallbackTransporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: 2525,
+          secure: false,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass,
+          },
+          connectionTimeout: 8000,
+          greetingTimeout: 8000,
+          socketTimeout: 12000,
+        });
+        await fallbackTransporter.sendMail(mailOptions);
+        this.logger.log(`OTP email successfully dispatched to ${email} via fallback port 2525`);
       }
     } catch (error: any) {
       this.logger.error(`Failed to send OTP email to ${email}: ${error?.message}`, error?.stack);

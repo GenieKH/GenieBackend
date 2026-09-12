@@ -487,30 +487,6 @@ export class AuthService {
       const smtpPass = process.env.SMTP_PASS;
       const smtpFrom = process.env.SMTP_FROM || smtpUser;
 
-      if (!smtpUser || !smtpPass) {
-        this.logger.warn('SMTP credentials not configured, OTP will only be logged');
-        this.logger.log(`[DEV] OTP for ${email}: ${otp}`);
-        return;
-      }
-
-      // Cloud platforms (Railway, Render, AWS) block outbound TCP port 587.
-      // Automatically route through port 465 (SSL) or port 2525 (TLS) which are open and unblocked.
-      const targetPort = smtpPort === 587 ? 465 : smtpPort;
-      const isSecure = targetPort === 465;
-
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: targetPort,
-        secure: isSecure,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-        connectionTimeout: 8000,
-        greetingTimeout: 8000,
-        socketTimeout: 12000,
-      });
-
       const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
@@ -614,6 +590,87 @@ export class AuthService {
 </body>
 </html>
       `;
+
+      // ── Method 1: Brevo HTTPS REST API (Port 443 - Never blocked on Railway) ─
+      const brevoApiKey = process.env.BREVO_API_KEY;
+      if (brevoApiKey) {
+        try {
+          const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+              'accept': 'application/json',
+              'api-key': brevoApiKey,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              sender: { name: 'Genie Support', email: smtpFrom },
+              to: [{ email }],
+              subject: `${otp} is your Genie verification code`,
+              htmlContent,
+            }),
+          });
+
+          if (resp.ok) {
+            this.logger.log(`OTP email successfully dispatched to ${email} via Brevo HTTPS REST API`);
+            return;
+          } else {
+            const errText = await resp.text();
+            this.logger.warn(`Brevo HTTPS API returned status ${resp.status}: ${errText}`);
+          }
+        } catch (apiErr: any) {
+          this.logger.warn(`Brevo HTTPS API request failed: ${apiErr?.message}`);
+        }
+      }
+
+      // ── Method 2: Resend HTTPS REST API (Port 443) ──────────────────────────
+      const resendApiKey = process.env.RESEND_API_KEY;
+      if (resendApiKey) {
+        try {
+          const resp = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${resendApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              from: `Genie Support <${smtpFrom}>`,
+              to: [email],
+              subject: `${otp} is your Genie verification code`,
+              html: htmlContent,
+            }),
+          });
+
+          if (resp.ok) {
+            this.logger.log(`OTP email successfully dispatched to ${email} via Resend HTTPS REST API`);
+            return;
+          }
+        } catch (resendErr: any) {
+          this.logger.warn(`Resend HTTPS API request failed: ${resendErr?.message}`);
+        }
+      }
+
+      // ── Method 3: Raw SMTP via Nodemailer ───────────────────────────────────
+      if (!smtpUser || !smtpPass) {
+        this.logger.warn('No email API keys or SMTP credentials configured, OTP logged only');
+        this.logger.log(`[DEV] OTP for ${email}: ${otp}`);
+        return;
+      }
+
+      const targetPort = smtpPort === 587 ? 465 : smtpPort;
+      const isSecure = targetPort === 465;
+
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: targetPort,
+        secure: isSecure,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 12000,
+      });
 
       const mailOptions = {
         from: `"Genie Support" <${smtpFrom}>`,

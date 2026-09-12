@@ -1,4 +1,5 @@
-import { Controller, Get, Query, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Query, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { PropertiesService } from './properties.service';
 import { ApiTags, ApiQuery } from '@nestjs/swagger';
 
@@ -8,21 +9,25 @@ export class PublicPropertiesController {
   constructor(private readonly propertiesService: PropertiesService) {}
 
   @Get('map')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiQuery({ name: 'minLat', type: Number })
   @ApiQuery({ name: 'maxLat', type: Number })
   @ApiQuery({ name: 'minLng', type: Number })
   @ApiQuery({ name: 'maxLng', type: Number })
   searchMap(
+    @Req() req: any,
     @Query('minLat') minLat: string,
     @Query('maxLat') maxLat: string,
     @Query('minLng') minLng: string,
     @Query('maxLng') maxLng: string,
   ) {
+    const userId = req.user?.userId;
     return this.propertiesService.searchMap(
       parseFloat(minLat),
       parseFloat(maxLat),
       parseFloat(minLng),
       parseFloat(maxLng),
+      userId
     );
   }
 

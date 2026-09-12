@@ -12,8 +12,9 @@ import { UsersModule } from './users/users.module';
   imports: [
     CacheModule.register({
       isGlobal: true,
+      store: require('cache-manager-redis-yet').redisStore,
+      url: process.env.REDIS_URL || 'redis://localhost:6379',
       ttl: 300000, // 5 minutes TTL
-      max: 500, // Maximum 500 items in memory
     }),
     PropertiesModule,
     PaymentsModule,

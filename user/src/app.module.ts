@@ -10,7 +10,7 @@ import { JwtStrategy } from './auth/jwt.strategy';
 @Module({
   imports: [PropertiesModule, PaymentsModule, UsersModule],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, JwtStrategy],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

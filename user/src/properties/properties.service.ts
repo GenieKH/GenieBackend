@@ -70,7 +70,12 @@ export class PropertiesService {
     return property;
   }
 
-  async uploadImages(userId: string, id: string, files: Express.Multer.File[]) {
+  async getPresignedUrls(userId: string, id: string, fileNames: string[]) {
+    await this.findOne(userId, id);
+    return this.supabaseService.createPresignedUrls(fileNames);
+  }
+
+  async confirmUploadedImages(userId: string, id: string, fileNames: string[]) {
     const property = await this.findOne(userId, id);
 
     let maxOrder = 0;
@@ -78,8 +83,8 @@ export class PropertiesService {
       maxOrder = Math.max(...property.images.map((img) => img.order));
     }
 
-    const uploadPromises = files.map(async (file, index) => {
-      const url = await this.supabaseService.uploadFile(file);
+    const createPromises = fileNames.map(async (fileName, index) => {
+      const url = this.supabaseService.getPublicUrl(fileName);
       return this.prisma.propertyImage.create({
         data: {
           propertyId: id,
@@ -89,7 +94,7 @@ export class PropertiesService {
       });
     });
 
-    await Promise.all(uploadPromises);
+    await Promise.all(createPromises);
     return this.findOne(userId, id);
   }
 

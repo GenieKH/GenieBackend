@@ -8,6 +8,10 @@ export class AuthMiddleware implements NestMiddleware {
   private readonly jwtPublicKey = process.env.JWT_PUBLIC_KEY?.replace(/\\n/g, '\n');
 
   use(req: Request, res: Response, next: NextFunction) {
+    if (req.method === 'OPTIONS') {
+      return next();
+    }
+
     const authHeader = req.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       throw new UnauthorizedException('Missing or invalid Authorization header');

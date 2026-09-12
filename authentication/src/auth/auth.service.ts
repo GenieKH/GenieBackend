@@ -1,4 +1,4 @@
-import { Injectable, Inject, ConflictException, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Inject, ConflictException, InternalServerErrorException, UnauthorizedException, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { SUPABASE_CLIENT } from '../supabase/supabase.module';
@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { FirebaseService } from '../firebase/firebase.service';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
+import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class AuthService {
@@ -327,6 +328,295 @@ export class AuthService {
     }
 
     return { message: 'All sessions revoked successfully' };
+  }
+
+  // ─── Forgot Password Flow ────────────────────────────────────────────
+
+  private readonly logger = new Logger(AuthService.name);
+
+  async forgotPassword(email: string) {
+    // 1. Check if user exists
+    const { data: users, error: userError } = await this.supabase
+      .from('users')
+      .select('id, email')
+      .eq('email', email)
+      .limit(1);
+
+    if (userError) {
+      throw new InternalServerErrorException(userError.message);
+    }
+
+    if (!users || users.length === 0) {
+      // Don't reveal whether the email exists — return success anyway
+      return { message: 'If the email exists, a verification code has been sent.' };
+    }
+
+    // 2. Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = await bcrypt.hash(otp, 10);
+
+    // 3. Invalidate any existing OTPs for this email
+    await this.supabase
+      .from('password_reset_otps')
+      .update({ used: true })
+      .eq('email', email)
+      .eq('used', false);
+
+    // 4. Store new OTP
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+
+    const { error: insertError } = await this.supabase
+      .from('password_reset_otps')
+      .insert([{
+        email,
+        otp_hash: otpHash,
+        expires_at: expiresAt.toISOString(),
+        used: false,
+      }]);
+
+    if (insertError) {
+      this.logger.error('Failed to store OTP', insertError);
+      throw new InternalServerErrorException('Failed to initiate password reset');
+    }
+
+    // 5. Send email
+    await this.sendOtpEmail(email, otp);
+
+    return { message: 'If the email exists, a verification code has been sent.' };
+  }
+
+  async verifyOtp(email: string, otp: string) {
+    const { data: records, error } = await this.supabase
+      .from('password_reset_otps')
+      .select('*')
+      .eq('email', email)
+      .eq('used', false)
+      .gte('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+
+    if (!records || records.length === 0) {
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    const record = records[0];
+    const isMatch = await bcrypt.compare(otp, record.otp_hash);
+
+    if (!isMatch) {
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    return { message: 'OTP verified successfully', verified: true };
+  }
+
+  async resetPassword(email: string, otp: string, newPassword: string) {
+    // 1. Re-verify OTP
+    const { data: records, error } = await this.supabase
+      .from('password_reset_otps')
+      .select('*')
+      .eq('email', email)
+      .eq('used', false)
+      .gte('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+
+    if (!records || records.length === 0) {
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    const record = records[0];
+    const isMatch = await bcrypt.compare(otp, record.otp_hash);
+
+    if (!isMatch) {
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    // 2. Hash new password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    // 3. Update user password
+    const { error: updateError } = await this.supabase
+      .from('users')
+      .update({ password_hash: passwordHash })
+      .eq('email', email);
+
+    if (updateError) {
+      throw new InternalServerErrorException('Failed to update password');
+    }
+
+    // 4. Mark OTP as used
+    await this.supabase
+      .from('password_reset_otps')
+      .update({ used: true })
+      .eq('id', record.id);
+
+    // 5. Revoke all refresh tokens for this user (force re-login)
+    const { data: user } = await this.supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    if (user) {
+      await this.supabase
+        .from('refresh_tokens')
+        .update({ revoked: true })
+        .eq('user_id', user.id)
+        .eq('revoked', false);
+    }
+
+    return { message: 'Password reset successfully' };
+  }
+
+  private async sendOtpEmail(email: string, otp: string) {
+    try {
+      const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+      const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+      const smtpUser = process.env.SMTP_USER;
+      const smtpPass = process.env.SMTP_PASS;
+      const smtpFrom = process.env.SMTP_FROM || smtpUser;
+
+      if (!smtpUser || !smtpPass) {
+        this.logger.warn('SMTP credentials not configured, OTP will only be logged');
+        this.logger.log(`[DEV] OTP for ${email}: ${otp}`);
+        return;
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Password Reset Verification Code</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F1F5F9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #F1F5F9; padding: 40px 16px;">
+    <tr>
+      <td align="center">
+        <!-- Main Card -->
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 520px; background-color: #FFFFFF; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03); border: 1px solid #E2E8F0;">
+          
+          <!-- Top Accent Gradient Bar -->
+          <tr>
+            <td style="height: 6px; background: linear-gradient(90deg, #4F46E5 0%, #7C3AED 50%, #EC4899 100%);"></td>
+          </tr>
+
+          <!-- Header / Brand -->
+          <tr>
+            <td style="padding: 36px 40px 24px; text-align: center;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+                <tr>
+                  <td style="background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%); width: 48px; height: 48px; border-radius: 14px; text-align: center; vertical-align: middle; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);">
+                    <span style="color: #FFFFFF; font-size: 24px; font-weight: 800; line-height: 48px;">G</span>
+                  </td>
+                  <td style="padding-left: 12px;">
+                    <span style="font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: #0F172A;">GENIE</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body Content -->
+          <tr>
+            <td style="padding: 0 40px 32px;">
+              <h1 style="margin: 0 0 12px; font-size: 22px; font-weight: 700; color: #0F172A; text-align: center;">
+                Password Reset Code
+              </h1>
+              <p style="margin: 0 0 24px; font-size: 15px; line-height: 24px; color: #475569; text-align: center;">
+                We received a request to reset the password for your Genie account. Use the 6-digit verification code below to complete your reset:
+              </p>
+
+              <!-- OTP Code Display Card -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin: 0 0 24px; background: linear-gradient(180deg, #F8FAFC 0%, #EEF2F6 100%); border: 1.5px dashed #CBD5E1; border-radius: 16px; text-align: center;">
+                <tr>
+                  <td style="padding: 24px 16px;">
+                    <div style="font-family: 'SF Mono', 'Courier New', Courier, monospace; font-size: 38px; font-weight: 800; letter-spacing: 12px; color: #4F46E5; padding-left: 12px;">
+                      ${otp}
+                    </div>
+                    <div style="margin-top: 10px; display: inline-block; background-color: #EEF2FF; color: #4338CA; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px;">
+                      ⏱️ Valid for 10 minutes
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Security Notice -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #FFFBEB; border-left: 4px solid #F59E0B; border-radius: 8px; margin-bottom: 24px;">
+                <tr>
+                  <td style="padding: 14px 16px;">
+                    <p style="margin: 0; font-size: 13px; line-height: 20px; color: #92400E;">
+                      <strong>Security Tip:</strong> Never share this code with anyone. Genie team members will never ask for your verification code or password.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0; font-size: 14px; line-height: 22px; color: #64748B; text-align: center;">
+                If you did not request this password reset, please ignore this email or contact support if you have security concerns.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding: 0 40px;">
+              <div style="height: 1px; background-color: #E2E8F0;"></div>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 40px 32px; text-align: center;">
+              <p style="margin: 0 0 6px; font-size: 12px; color: #94A3B8; font-weight: 500;">
+                © 2026 Genie Real Estate & Property Marketplace. All rights reserved.
+              </p>
+              <p style="margin: 0; font-size: 11px; color: #CBD5E1;">
+                This is an automated security message. Please do not reply directly to this email.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+      `;
+
+      await transporter.sendMail({
+        from: `"Genie Support" <${smtpFrom}>`,
+        to: email,
+        subject: `${otp} is your Genie verification code`,
+        html: htmlContent,
+      });
+
+      this.logger.log(`OTP email successfully dispatched to ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send OTP email to ${email}`, error);
+      // Don't throw — the OTP is stored, user can request resend
+    }
   }
 }
 

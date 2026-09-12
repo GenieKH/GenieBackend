@@ -40,26 +40,36 @@ export class SupabaseService implements OnModuleInit {
     }
   }
 
-  async uploadFile(file: Express.Multer.File): Promise<string> {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const filename = `${uniqueSuffix}-${file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+  async createPresignedUrls(fileNames: string[]): Promise<{ fileName: string; signedUrl: string }[]> {
+    const results: { fileName: string; signedUrl: string }[] = [];
+    for (const originalName of fileNames) {
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      const filename = `${uniqueSuffix}-${originalName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
-    const { data, error } = await this.supabase.storage
-      .from(this.bucketName)
-      .upload(filename, file.buffer, {
-        contentType: file.mimetype,
-        upsert: false,
-      });
+      const { data, error } = await this.supabase.storage
+        .from(this.bucketName)
+        .createSignedUploadUrl(filename);
 
-    if (error) {
-      this.logger.error(`Failed to upload file ${filename}`, error);
-      throw error;
+      if (error) {
+        this.logger.error(`Failed to create presigned URL for ${filename}`, error);
+        throw error;
+      }
+
+      if (data && data.signedUrl) {
+        results.push({
+          fileName: filename,
+          signedUrl: data.signedUrl,
+        });
+      }
     }
+    return results;
+  }
 
-    const { data: publicUrlData } = this.supabase.storage
+  getPublicUrl(fileName: string): string {
+    const { data } = this.supabase.storage
       .from(this.bucketName)
-      .getPublicUrl(filename);
-
-    return publicUrlData.publicUrl;
+      .getPublicUrl(fileName);
+    
+    return data.publicUrl;
   }
 }

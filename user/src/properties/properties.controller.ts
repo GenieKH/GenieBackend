@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, UnauthorizedException, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { CacheInterceptor } from '@nestjs/cache-manager';
-import { FilesInterceptor } from '@nestjs/platform-express';
+
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PropertiesService } from './properties.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
@@ -30,15 +30,24 @@ export class PropertiesController {
     return this.propertiesService.create(userId, createPropertyDto);
   }
 
-  @Post(':id/images')
-  @UseInterceptors(FilesInterceptor('images', 10))
-  uploadImages(
+  @Post(':id/images/presigned-url')
+  getPresignedUrls(
     @Req() req: any,
     @Param('id') id: string,
-    @UploadedFiles() files: Express.Multer.File[],
+    @Body('fileNames') fileNames: string[],
   ) {
     const userId = this.getUserId(req);
-    return this.propertiesService.uploadImages(userId, id, files);
+    return this.propertiesService.getPresignedUrls(userId, id, fileNames);
+  }
+
+  @Post(':id/images/confirm')
+  confirmUploadedImages(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body('fileNames') fileNames: string[],
+  ) {
+    const userId = this.getUserId(req);
+    return this.propertiesService.confirmUploadedImages(userId, id, fileNames);
   }
 
   @Get()

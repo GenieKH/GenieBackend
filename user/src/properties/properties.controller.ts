@@ -1,5 +1,4 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, UnauthorizedException, UseInterceptors, UploadedFiles } from '@nestjs/common';
-import { CacheInterceptor } from '@nestjs/cache-manager';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PropertiesService } from './properties.service';
@@ -51,7 +50,6 @@ export class PropertiesController {
   }
 
   @Get()
-  @UseInterceptors(CacheInterceptor)
   findAll(@Req() req: any) {
     const userId = this.getUserId(req);
     return this.propertiesService.findAll(userId);
@@ -64,7 +62,6 @@ export class PropertiesController {
   }
 
   @Get(':id')
-  @UseInterceptors(CacheInterceptor)
   findOne(@Req() req: any, @Param('id') id: string) {
     const userId = this.getUserId(req);
     return this.propertiesService.findOne(userId, id);

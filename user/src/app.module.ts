@@ -1,6 +1,7 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { RequestContextMiddleware } from './auth/request-context.middleware';
+import { JwtStrategy } from './auth/jwt.strategy';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PropertiesModule } from './properties/properties.module';

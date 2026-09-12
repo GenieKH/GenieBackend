@@ -40,6 +40,7 @@ model User {
   properties    Property[]
   likes         PropertyLike[]
   favorites     PropertyFavorite[]
+  views         PropertyView[]
   contacts      PropertyContact[]
   payments      PaymentTransaction[]
 
@@ -73,6 +74,7 @@ model Property {
   images           PropertyImage[]
   likes            PropertyLike[]
   favorites        PropertyFavorite[]
+  views            PropertyView[]
   contacts         PropertyContact[]
   payments         PaymentTransaction[]
 
@@ -119,6 +121,17 @@ model PropertyFavorite {
   @@map("property_favorites")
 }
 
+model PropertyView {
+  userId     String   @map("user_id") @db.Uuid
+  propertyId String   @map("property_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, propertyId])
+  @@map("property_views")
+}
 
 model PropertyContact {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

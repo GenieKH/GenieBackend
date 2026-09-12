@@ -50,6 +50,26 @@ export class PropertiesService {
     return property;
   }
 
+  async findOnePublic(id: string) {
+    const property = await this.prisma.property.findFirst({
+      where: { id, status: 'Active' },
+      include: {
+        images: { orderBy: { order: 'asc' } },
+        user: {
+          select: {
+            username: true,
+            phone: true,
+            email: true,
+          },
+        },
+      },
+    });
+    if (!property) {
+      throw new NotFoundException('Property not found or not active');
+    }
+    return property;
+  }
+
   async uploadImages(userId: string, id: string, files: Express.Multer.File[]) {
     const property = await this.findOne(userId, id);
 
@@ -120,8 +140,8 @@ export class PropertiesService {
     });
   }
 
-  async searchMap(minLat: number, maxLat: number, minLng: number, maxLng: number) {
-    return this.prisma.property.findMany({
+  async searchMap(minLat: number, maxLat: number, minLng: number, maxLng: number, userId?: string) {
+    const properties = await this.prisma.property.findMany({
       where: {
         status: 'Active',
         lat: { gte: minLat, lte: maxLat },
@@ -146,8 +166,34 @@ export class PropertiesService {
         images: { orderBy: { order: 'asc' } },
         user: { select: { username: true } },
         _count: { select: { favorites: true, contacts: true } },
+        views: userId ? {
+          where: { userId }
+        } : false,
+      },
+    });
+
+    return properties.map(p => {
+      const isVisited = p.views ? p.views.length > 0 : false;
+      const { views, ...rest } = p;
+      return { ...rest, isVisited };
+    });
+  }
+
+  async logView(userId: string, propertyId: string) {
+    await this.prisma.propertyView.upsert({
+      where: {
+        userId_propertyId: {
+          userId,
+          propertyId,
+        }
+      },
+      update: {},
+      create: {
+        userId,
+        propertyId,
       }
     });
+    return { success: true };
   }
 
   async unpublish(userId: string, id: string) {

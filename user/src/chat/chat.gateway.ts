@@ -93,14 +93,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         },
       });
 
-      // 2. Check if recipient is online
+      // 2. Fetch sender details
+      const sender = await this.prisma.user.findUnique({
+        where: { id: senderId },
+        select: { username: true, email: true, phone: true, avatarUrl: true },
+      });
+      const senderName = sender?.username || sender?.email || sender?.phone || 'Property Owner';
+
+      const payloadToEmit = {
+        ...savedMessage,
+        senderName,
+        senderAvatar: sender?.avatarUrl || null,
+      };
+
+      // 3. Check if recipient is online
       const recipientSocketId = this.activeUsers.get(payload.recipientId);
       if (recipientSocketId) {
-        // 3. Emit newMessage to recipient
-        this.server.to(recipientSocketId).emit('newMessage', savedMessage);
+        // 4. Emit newMessage to recipient
+        this.server.to(recipientSocketId).emit('newMessage', payloadToEmit);
       }
 
-      return { status: 'ok', messageId: savedMessage.id };
+      return { status: 'ok', messageId: savedMessage.id, message: payloadToEmit };
     } catch (error) {
       this.logger.error(`Failed to send message: ${error.message}`);
       return { status: 'error', message: 'Failed to process message' };

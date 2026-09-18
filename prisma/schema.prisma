@@ -193,16 +193,18 @@ model password_reset_otps {
 }
 
 model Message {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  senderId    String   @map("sender_id") @db.Uuid
-  recipientId String   @map("recipient_id") @db.Uuid
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  senderId    String    @map("sender_id") @db.Uuid
+  recipientId String    @map("recipient_id") @db.Uuid
   ciphertext  String
   nonce       String
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  readAt      DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   sender    User @relation("MessagesSent", fields: [senderId], references: [id])
   recipient User @relation("MessagesReceived", fields: [recipientId], references: [id])
 
   @@index([recipientId, createdAt])
+  @@index([recipientId, readAt])
   @@map("messages")
 }

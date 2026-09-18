@@ -64,4 +64,34 @@ export class ChatController {
 
     return this.chatService.getMessagesAfter(userId, time);
   }
+
+  @Get('conversations')
+  async getConversations(@Req() req: any) {
+    const userId = req.headers['x-user-id'];
+    if (!userId) throw new UnauthorizedException('User not authenticated');
+
+    return this.chatService.getConversations(userId);
+  }
+
+  @Get('messages/:participantId')
+  async getMessagesWith(
+    @Req() req: any,
+    @Param('participantId') participantId: string,
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+  ) {
+    const userId = req.headers['x-user-id'];
+    if (!userId) throw new UnauthorizedException('User not authenticated');
+
+    const take = limit ? parseInt(limit, 10) : 50;
+    return this.chatService.getMessagesWith(userId, participantId, take, before);
+  }
+
+  @Post('messages/:participantId/read')
+  async markAsRead(@Req() req: any, @Param('participantId') participantId: string) {
+    const userId = req.headers['x-user-id'];
+    if (!userId) throw new UnauthorizedException('User not authenticated');
+
+    return this.chatService.markAsRead(userId, participantId);
+  }
 }

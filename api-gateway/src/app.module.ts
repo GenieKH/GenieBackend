@@ -73,6 +73,7 @@ export class AppModule implements NestModule {
         createProxyMiddleware({
           target: userServiceUrl,
           changeOrigin: true,
+          ws: true,
           on: {
             proxyReq: (proxyReq, req: any, res) => {
               // Ensure the x-user-id header is forwarded securely

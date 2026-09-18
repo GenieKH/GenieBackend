@@ -74,6 +74,9 @@ export class AuthService {
   async firebaseLogin(idToken: string) {
     const decodedToken = await this.firebaseService.verifyIdToken(idToken);
     const { uid, email, phone_number } = decodedToken;
+    // Firebase tokens include name and picture from Google OAuth
+    const displayName = (decodedToken as any).name || (decodedToken as any).displayName || null;
+    const photoUrl = (decodedToken as any).picture || null;
 
     // 1. Try to find user by firebase_uid
     let { data: user, error } = await this.supabase
@@ -98,11 +101,18 @@ export class AuthService {
       
       if (linkedUsers && linkedUsers.length > 0) {
         user = linkedUsers[0];
-        // Link the existing user with the Firebase UID
+        // Link the existing user with the Firebase UID and backfill name/avatar if missing
+        const updateData: any = { firebase_uid: uid };
+        if (!user.username && displayName) updateData.username = displayName;
+        if (!user.avatar_url && photoUrl) updateData.avatar_url = photoUrl;
         await this.supabase
           .from('users')
-          .update({ firebase_uid: uid })
+          .update(updateData)
           .eq('id', user.id);
+        // Refresh user data after update
+        if (updateData.username || updateData.avatar_url) {
+          user = { ...user, ...updateData };
+        }
       }
     }
 
@@ -115,6 +125,8 @@ export class AuthService {
           {
             email: email || null,
             phone: phone_number || null,
+            username: displayName,
+            avatar_url: photoUrl,
             password_hash: dummyPasswordHash,
             role: 'user',
             firebase_uid: uid,
@@ -127,6 +139,18 @@ export class AuthService {
         throw new InternalServerErrorException('Failed to create user from Firebase token');
       }
       user = newUser;
+    }
+
+    // 4. Backfill: if existing user has no username/avatar but Firebase provides them
+    if (user && ((!user.username && displayName) || (!user.avatar_url && photoUrl))) {
+      const backfill: any = {};
+      if (!user.username && displayName) backfill.username = displayName;
+      if (!user.avatar_url && photoUrl) backfill.avatar_url = photoUrl;
+      await this.supabase
+        .from('users')
+        .update(backfill)
+        .eq('id', user.id);
+      user = { ...user, ...backfill };
     }
 
     return this.generateTokens(user);

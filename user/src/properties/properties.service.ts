@@ -193,7 +193,7 @@ export class PropertiesService {
         buildingSize: true,
         unitSize: true,
         images: { orderBy: { order: 'asc' } },
-        user: { select: { id: true, username: true, avatarUrl: true } },
+        user: { select: { id: true, username: true, email: true, phone: true, avatarUrl: true } },
         _count: { select: { favorites: true, contacts: true } },
         views: userId ? {
           where: { userId }

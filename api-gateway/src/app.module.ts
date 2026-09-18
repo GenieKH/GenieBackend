@@ -91,7 +91,9 @@ export class AppModule implements NestModule {
         { path: '/payments', method: RequestMethod.ALL },
         { path: '/payments/{*path}', method: RequestMethod.ALL },
         { path: '/users', method: RequestMethod.ALL },
-        { path: '/users/{*path}', method: RequestMethod.ALL }
+        { path: '/users/{*path}', method: RequestMethod.ALL },
+        { path: '/chat', method: RequestMethod.ALL },
+        { path: '/chat/{*path}', method: RequestMethod.ALL }
       );
   }
 }

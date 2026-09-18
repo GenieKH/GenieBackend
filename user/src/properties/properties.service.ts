@@ -34,7 +34,18 @@ export class PropertiesService {
         userId,
         status: { not: 'Deleted' },
       },
-      include: { images: { orderBy: { order: 'asc' } } },
+      include: { 
+        images: { orderBy: { order: 'asc' } },
+        user: {
+          select: {
+            id: true,
+            username: true,
+            phone: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -42,7 +53,18 @@ export class PropertiesService {
   async findOne(userId: string, id: string) {
     const property = await this.prisma.property.findFirst({
       where: { id, userId, status: { not: 'Deleted' } },
-      include: { images: { orderBy: { order: 'asc' } } },
+      include: { 
+        images: { orderBy: { order: 'asc' } },
+        user: {
+          select: {
+            id: true,
+            username: true,
+            phone: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
+      },
     });
     if (!property) {
       throw new NotFoundException('Property not found');
@@ -57,9 +79,11 @@ export class PropertiesService {
         images: { orderBy: { order: 'asc' } },
         user: {
           select: {
+            id: true,
             username: true,
             phone: true,
             email: true,
+            avatarUrl: true,
           },
         },
       },
@@ -169,7 +193,7 @@ export class PropertiesService {
         buildingSize: true,
         unitSize: true,
         images: { orderBy: { order: 'asc' } },
-        user: { select: { username: true } },
+        user: { select: { id: true, username: true, avatarUrl: true } },
         _count: { select: { favorites: true, contacts: true } },
         views: userId ? {
           where: { userId }
@@ -281,7 +305,15 @@ export class PropertiesService {
         property: {
           include: {
             images: { orderBy: { order: 'asc' } },
-            user: { select: { username: true } },
+            user: { 
+              select: { 
+                id: true,
+                username: true,
+                phone: true,
+                email: true,
+                avatarUrl: true,
+              } 
+            },
           },
         },
       },

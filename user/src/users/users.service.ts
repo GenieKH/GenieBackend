@@ -16,6 +16,7 @@ export class UsersService {
         role: true,
         createdAt: true,
         firebaseUid: true,
+        avatarUrl: true,
       }
     });
     
@@ -23,7 +24,7 @@ export class UsersService {
     return user;
   }
 
-  async updateProfile(userId: string, data: { username?: string; phone?: string }) {
+  async updateProfile(userId: string, data: { username?: string; phone?: string; avatarUrl?: string }) {
     try {
       const user = await this.prisma.user.update({
         where: { id: userId },
@@ -36,6 +37,7 @@ export class UsersService {
           role: true,
           createdAt: true,
           firebaseUid: true,
+          avatarUrl: true,
         },
       });
       return user;

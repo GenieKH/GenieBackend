@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { PropertiesModule } from './properties/properties.module';
 import { PaymentsModule } from './payments/payments.module';
 import { UsersModule } from './users/users.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { UsersModule } from './users/users.module';
     PropertiesModule,
     PaymentsModule,
     UsersModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService, JwtStrategy],

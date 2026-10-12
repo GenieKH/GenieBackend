@@ -1,7 +1,11 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
-import { requestContext } from './request-context';
+
+interface AccessTokenPayload {
+  sub: string;
+  role: string;
+}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -14,13 +18,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: any) {
-    const store = requestContext.getStore();
-    if (store) {
-      store.set('userId', payload.sub);
-    }
+  validate(payload: AccessTokenPayload) {
     return { userId: payload.sub, role: payload.role };
   }
 }
-
-

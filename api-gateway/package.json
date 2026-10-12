@@ -28,6 +28,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/websockets": "^11.2.5",
     "dotenv": "^17.4.2",
+    "helmet": "^8.3.0",
     "http-proxy-middleware": "^4.2.0",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
@@ -72,7 +73,12 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+.(t|j)s$": [
+        "ts-jest",
+        {
+          "diagnostics": false
+        }
+      ]
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

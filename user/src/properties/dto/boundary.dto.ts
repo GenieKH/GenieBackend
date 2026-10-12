@@ -1,7 +1,7 @@
-import { IsObject, IsNotEmpty } from 'class-validator';
+import { IsArray } from 'class-validator';
 
+/** The drawn land boundary: a list of `{ lat, lng }` points. */
 export class BoundaryDto {
-  @IsObject()
-  @IsNotEmpty()
-  boundaryPoints: any;
+  @IsArray()
+  boundaryPoints: Array<{ lat: number; lng: number }>;
 }

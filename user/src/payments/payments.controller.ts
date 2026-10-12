@@ -1,30 +1,29 @@
-import { Controller, Post, Body, Headers, Req, UseGuards, UnauthorizedException } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { PaymentsService } from './payments.service';
+import { Body, Controller, Headers, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { CurrentUserId } from '../auth/current-user-id.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CheckoutDto, PaymentWebhookDto } from './dto/payment.dto';
+import { PaymentCheckoutService } from './payment-checkout.service';
+import { PaymentWebhookService } from './payment-webhook.service';
 
 @ApiTags('payments')
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly paymentsService: PaymentsService) {}
-
-  private getUserId(req: any): string {
-    if (!req.user || !req.user.userId) {
-      throw new UnauthorizedException('User not authenticated');
-    }
-    return req.user.userId;
-  }
+  constructor(
+    private readonly checkout: PaymentCheckoutService,
+    private readonly webhook: PaymentWebhookService,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Post('checkout')
-  initiateCheckout(@Req() req: any, @Body('propertyId') propertyId: string) {
-    const userId = this.getUserId(req);
-    return this.paymentsService.initiateCheckout(userId, propertyId);
+  initiateCheckout(@CurrentUserId() userId: string, @Body() dto: CheckoutDto) {
+    return this.checkout.initiate(userId, dto.propertyId);
   }
 
+  /** Called by the payment provider, not by users. Authenticated by signature. */
   @Post('webhook')
-  handleWebhook(@Headers('x-signature') signature: string, @Body() payload: any) {
-    return this.paymentsService.handleWebhook(payload, signature || '');
+  @HttpCode(HttpStatus.OK)
+  handleWebhook(@Headers('x-signature') signature: string | undefined, @Body() dto: PaymentWebhookDto) {
+    return this.webhook.handle(dto, signature ?? '');
   }
 }
-

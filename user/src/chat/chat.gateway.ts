@@ -1,131 +1,163 @@
+import { HttpException, Logger, UseGuards } from '@nestjs/common';
 import {
-  WebSocketGateway,
-  WebSocketServer,
-  SubscribeMessage,
-  MessageBody,
   ConnectedSocket,
+  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { Namespace, Socket } from 'socket.io';
+import { ChatService } from './chat.service';
+import { PresenceTargetDto, SendMessageDto } from './dto/chat.dto';
+import { PresenceService } from './presence.service';
+import { extractSocketToken, verifyAccessToken } from './ws-auth';
 import { WsJwtGuard } from './ws-jwt.guard';
 
-@WebSocketGateway({
-  cors: {
-    origin: '*',
-  },
-  namespace: '/chat',
-})
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+/** Every device a user is signed in on joins this room. */
+function userRoom(userId: string): string {
+  return `user:${userId}`;
+}
+
+/** Sockets that want to know when this user comes online or goes offline. */
+function presenceRoom(userId: string): string {
+  return `presence:${userId}`;
+}
+
+/** Reads a socket payload into a DTO, or returns null if it is not valid. */
+function parsePayload<T extends object>(dto: new () => T, payload: unknown): T | null {
+  const isObject = typeof payload === 'object' && payload !== null && !Array.isArray(payload);
+  const parsed = plainToInstance(dto, isObject ? payload : {});
+  return validateSync(parsed, { whitelist: true }).length > 0 ? null : parsed;
+}
+
+/**
+ * Real-time delivery of end-to-end encrypted messages, and who is online.
+ * The server only stores and forwards ciphertext; it cannot read messages.
+ */
+// Mobile clients do not use CORS, so no browser origin is allowed.
+@WebSocketGateway({ cors: { origin: false }, namespace: '/chat' })
+export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server;
+  private server: Namespace;
 
   private readonly logger = new Logger(ChatGateway.name);
-  
-  // Track userId -> socketId
-  private activeUsers = new Map<string, string>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  /** Stops one account from flooding others: 30 messages per 10 seconds. */
+  private readonly sendRateLimiter = new RateLimiterMemory({ points: 30, duration: 10 });
 
-  // Using the WsJwtGuard manually on connection since standard guards don't block the connection event itself
-  // but we already have WsJwtGuard designed to be used on messages. 
-  // For connection, we'll extract logic from the guard or use it in the events.
-  
-  // However, the prompt says: "handleConnection: run WsJwtGuard logic, track userId -> socketId in an in-memory map"
-  // Let's implement the token extraction directly in handleConnection to drop invalid connections immediately.
-  async handleConnection(client: Socket) {
-    try {
-      const guard = new WsJwtGuard();
-      // The guard needs ExecutionContext. For handleConnection, it's easier to just call the verification directly,
-      // but to reuse the guard we can simulate it or just do the verify here since it's simple.
-      const token = this.extractToken(client);
-      
-      if (!token) {
-        throw new Error('No token provided');
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly presenceService: PresenceService,
+  ) {}
+
+  /** Rejects the handshake itself, so an unauthenticated socket never connects. */
+  afterInit(server: Namespace) {
+    server.use((client, next) => {
+      try {
+        const token = extractSocketToken(client);
+        if (!token) throw new Error('No token provided');
+
+        client.data.userId = verifyAccessToken(token);
+        next();
+      } catch (error) {
+        this.logger.warn(`Connection rejected: ${(error as Error).message}`);
+        next(new Error('unauthorized'));
       }
+    });
+  }
 
-      const jwt = require('jsonwebtoken');
-      const publicKey = process.env.JWT_PUBLIC_KEY?.replace(/\\n/g, '\n') || '';
-      const payload = jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as any;
-      
-      const userId = payload.sub;
-      client.data.userId = userId;
-      
-      this.activeUsers.set(userId, client.id);
-      this.logger.log(`Client connected: ${client.id} (User: ${userId})`);
-    } catch (error) {
-      this.logger.warn(`Connection rejected: ${error.message}`);
-      client.disconnect();
+  async handleConnection(client: Socket) {
+    const userId: string = client.data.userId;
+    const cameOnline = !this.isOnline(userId);
+
+    await client.join(userRoom(userId));
+    if (cameOnline) {
+      this.server.to(presenceRoom(userId)).emit('presence', { userId, online: true, lastSeenAt: null });
     }
   }
 
-  handleDisconnect(client: Socket) {
-    const userId = client.data.userId;
-    if (userId) {
-      this.activeUsers.delete(userId);
-      this.logger.log(`Client disconnected: ${client.id} (User: ${userId})`);
+  /** The user is offline once their last device has disconnected. */
+  async handleDisconnect(client: Socket) {
+    const userId: string | undefined = client.data.userId;
+    if (!userId || this.isOnline(userId)) return;
+
+    try {
+      const lastSeenAt = await this.presenceService.markLastSeen(userId);
+      this.server.to(presenceRoom(userId)).emit('presence', { userId, online: false, lastSeenAt });
+    } catch (error) {
+      this.logger.error(`Failed to record last seen: ${(error as Error).message}`);
     }
   }
 
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('sendMessage')
-  async handleSendMessage(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { recipientId: string; ciphertext: string; nonce: string },
-  ) {
-    const senderId = client.data.userId;
-    
-    if (!payload.recipientId || !payload.ciphertext || !payload.nonce) {
-      this.logger.warn(`Invalid sendMessage payload from ${senderId}`);
-      return { status: 'error', message: 'Missing required fields' };
+  async handleSendMessage(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    const senderId: string = client.data.userId;
+
+    const dto = parsePayload(SendMessageDto, payload);
+    if (!dto) {
+      return { status: 'error', message: 'Invalid message' };
     }
 
     try {
-      // 1. Persist the message in Postgres
-      const savedMessage = await this.prisma.message.create({
-        data: {
-          senderId,
-          recipientId: payload.recipientId,
-          ciphertext: payload.ciphertext,
-          nonce: payload.nonce,
-        },
-      });
+      await this.sendRateLimiter.consume(senderId);
+    } catch {
+      return { status: 'error', message: 'You are sending messages too quickly. Wait a moment.' };
+    }
 
-      // 2. Fetch sender details
-      const sender = await this.prisma.user.findUnique({
-        where: { id: senderId },
-        select: { username: true, email: true, phone: true, avatarUrl: true },
-      });
-      const senderName = sender?.username || sender?.email || sender?.phone || 'Property Owner';
+    try {
+      const message = await this.chatService.sendMessage(senderId, dto);
 
-      const payloadToEmit = {
-        ...savedMessage,
-        senderName,
-        senderAvatar: sender?.avatarUrl || null,
-      };
+      // The recipient's devices, plus the sender's other devices.
+      client.to(userRoom(message.recipientId)).to(userRoom(senderId)).emit('newMessage', message);
 
-      // 3. Check if recipient is online
-      const recipientSocketId = this.activeUsers.get(payload.recipientId);
-      if (recipientSocketId) {
-        // 4. Emit newMessage to recipient
-        this.server.to(recipientSocketId).emit('newMessage', payloadToEmit);
-      }
-
-      return { status: 'ok', messageId: savedMessage.id, message: payloadToEmit };
+      return { status: 'ok', messageId: message.id, message };
     } catch (error) {
-      this.logger.error(`Failed to send message: ${error.message}`);
+      if (error instanceof HttpException) {
+        return { status: 'error', message: error.message };
+      }
+      this.logger.error(`Failed to send message: ${(error as Error).message}`);
       return { status: 'error', message: 'Failed to process message' };
     }
   }
 
-  private extractToken(client: Socket): string | undefined {
-    const authHeader = client.handshake.headers.authorization;
-    if (authHeader && authHeader.split(' ')[0] === 'Bearer') {
-      return authHeader.split(' ')[1];
+  /** Replies with the user's current presence and keeps this socket updated. */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('watchPresence')
+  async handleWatchPresence(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    const dto = parsePayload(PresenceTargetDto, payload);
+    if (!dto) {
+      return { status: 'error', message: 'Invalid user' };
     }
-    const token = client.handshake.query.token;
-    return typeof token === 'string' ? token : undefined;
+
+    try {
+      await client.join(presenceRoom(dto.userId));
+      const online = this.isOnline(dto.userId);
+      const lastSeenAt = online ? null : await this.presenceService.getLastSeen(dto.userId);
+      return { status: 'ok', presence: { userId: dto.userId, online, lastSeenAt } };
+    } catch (error) {
+      this.logger.error(`Failed to read presence: ${(error as Error).message}`);
+      return { status: 'error', message: 'Failed to read presence' };
+    }
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('unwatchPresence')
+  async handleUnwatchPresence(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    const dto = parsePayload(PresenceTargetDto, payload);
+    if (dto) {
+      await client.leave(presenceRoom(dto.userId));
+    }
+    return { status: 'ok' };
+  }
+
+  private isOnline(userId: string): boolean {
+    return (this.server.adapter.rooms.get(userRoom(userId))?.size ?? 0) > 0;
   }
 }

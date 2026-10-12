@@ -1,97 +1,67 @@
-import { Controller, Get, Post, Body, Req, Param, Query, UnauthorizedException, HttpException, HttpStatus } from '@nestjs/common';
-import { ChatService } from './chat.service';
+import { Body, Controller, Get, HttpException, HttpStatus, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { CurrentUserId } from '../auth/current-user-id.decorator';
+import { ChatService } from './chat.service';
+import { MessagePageQuery, SetBackupDto, SetPublicKeyDto } from './dto/chat.dto';
+
+const DEFAULT_PAGE_SIZE = 50;
 
 @Controller('chat')
 export class ChatController {
-  private backupRateLimiter = new RateLimiterMemory({
-    points: 5, // 5 requests
-    duration: 15 * 60, // per 15 minutes by IP or User
-  });
+  /** Backups are sensitive: at most 5 downloads per user every 15 minutes. */
+  private readonly backupRateLimiter = new RateLimiterMemory({ points: 5, duration: 15 * 60 });
 
   constructor(private readonly chatService: ChatService) {}
 
   @Post('keys')
-  async setPublicKey(@Req() req: any, @Body() body: { identityPublicKey: string }) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) throw new UnauthorizedException('User not authenticated');
-    
-    if (!body.identityPublicKey) {
-      throw new HttpException('identityPublicKey is required', HttpStatus.BAD_REQUEST);
-    }
-    
-    return this.chatService.setPublicKey(userId, body.identityPublicKey);
+  setPublicKey(@CurrentUserId() userId: string, @Body() dto: SetPublicKeyDto) {
+    return this.chatService.setPublicKey(userId, dto.identityPublicKey);
   }
 
   @Get('keys/:userId')
-  async getPublicKey(@Param('userId') userId: string) {
+  getPublicKey(@Param('userId', ParseUUIDPipe) userId: string) {
     return this.chatService.getPublicKey(userId);
   }
 
   @Post('backup')
-  async setBackup(@Req() req: any, @Body() body: { backupBlob: string; backupSalt: string; backupNonce: string }) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) throw new UnauthorizedException('User not authenticated');
-
-    if (!body.backupBlob || !body.backupSalt || !body.backupNonce) {
-      throw new HttpException('Missing backup fields', HttpStatus.BAD_REQUEST);
-    }
-
-    return this.chatService.setBackup(userId, body.backupBlob, body.backupSalt, body.backupNonce);
+  setBackup(@CurrentUserId() userId: string, @Body() dto: SetBackupDto) {
+    return this.chatService.setBackup(userId, dto.backupBlob, dto.backupSalt, dto.backupNonce);
   }
 
   @Get('backup')
-  async getBackup(@Req() req: any) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) throw new UnauthorizedException('User not authenticated');
-
+  async getBackup(@CurrentUserId() userId: string) {
     try {
       await this.backupRateLimiter.consume(userId);
-    } catch (rejRes) {
+    } catch {
       throw new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS);
     }
-
     return this.chatService.getBackup(userId);
   }
 
+  /** Every message received after `lastMessageTime` (or all, if omitted). */
   @Get('sync')
-  async syncMessages(@Req() req: any, @Query('lastMessageTime') lastMessageTime?: string) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) throw new UnauthorizedException('User not authenticated');
-
-    // Default to the Unix epoch if not provided to fetch all
-    const time = lastMessageTime ? new Date(lastMessageTime) : new Date(0);
-
-    return this.chatService.getMessagesAfter(userId, time);
+  syncMessages(@CurrentUserId() userId: string, @Query('lastMessageTime') lastMessageTime?: string) {
+    const since = lastMessageTime ? new Date(lastMessageTime) : new Date(0);
+    return this.chatService.getMessagesAfter(userId, since);
   }
 
   @Get('conversations')
-  async getConversations(@Req() req: any) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) throw new UnauthorizedException('User not authenticated');
-
+  getConversations(@CurrentUserId() userId: string) {
     return this.chatService.getConversations(userId);
   }
 
+  /** The newest page of a conversation, oldest message first. */
   @Get('messages/:participantId')
-  async getMessagesWith(
-    @Req() req: any,
-    @Param('participantId') participantId: string,
-    @Query('limit') limit?: string,
-    @Query('before') before?: string,
+  getMessagesWith(
+    @CurrentUserId() userId: string,
+    @Param('participantId', ParseUUIDPipe) participantId: string,
+    @Query() page: MessagePageQuery,
   ) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) throw new UnauthorizedException('User not authenticated');
-
-    const take = limit ? parseInt(limit, 10) : 50;
-    return this.chatService.getMessagesWith(userId, participantId, take, before);
+    return this.chatService.getMessagesWith(userId, participantId, page.limit ?? DEFAULT_PAGE_SIZE, page.before);
   }
 
   @Post('messages/:participantId/read')
-  async markAsRead(@Req() req: any, @Param('participantId') participantId: string) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) throw new UnauthorizedException('User not authenticated');
-
+  markAsRead(@CurrentUserId() userId: string, @Param('participantId', ParseUUIDPipe) participantId: string) {
     return this.chatService.markAsRead(userId, participantId);
   }
 }

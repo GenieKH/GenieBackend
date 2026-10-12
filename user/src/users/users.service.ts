@@ -1,5 +1,28 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+
+/** Profile fields that are safe to return to the client. */
+const PROFILE_SELECT = {
+  id: true,
+  email: true,
+  phone: true,
+  username: true,
+  role: true,
+  createdAt: true,
+  firebaseUid: true,
+  avatarUrl: true,
+} as const;
+
+/** What any signed-in user may see about another user. No contact details. */
+const PUBLIC_PROFILE_SELECT = {
+  id: true,
+  username: true,
+  avatarUrl: true,
+  createdAt: true,
+} as const;
+
+const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
 @Injectable()
 export class UsersService {
@@ -8,46 +31,35 @@ export class UsersService {
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        phone: true,
-        username: true,
-        role: true,
-        createdAt: true,
-        firebaseUid: true,
-        avatarUrl: true,
-      }
+      select: PROFILE_SELECT,
     });
-    
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
     return user;
   }
 
-  async updateProfile(userId: string, data: { username?: string; phone?: string; avatarUrl?: string }) {
+  async getPublicProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: PUBLIC_PROFILE_SELECT,
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
     try {
-      const user = await this.prisma.user.update({
+      return await this.prisma.user.update({
         where: { id: userId },
-        data,
-        select: {
-          id: true,
-          email: true,
-          phone: true,
-          username: true,
-          role: true,
-          createdAt: true,
-          firebaseUid: true,
-          avatarUrl: true,
-        },
+        data: dto,
+        select: PROFILE_SELECT,
       });
-      return user;
-    } catch (error: any) {
-      if (error.code === 'P2002') {
-        const target = error.meta?.target;
-        if (target && target.includes('phone')) {
-          throw new ConflictException('Phone number is already taken');
-        }
-        throw new ConflictException('Profile update conflict');
+    } catch (error) {
+      if ((error as { code?: string }).code === UNIQUE_CONSTRAINT_VIOLATION) {
+        throw new ConflictException('Phone number is already taken');
       }
       throw error;
     }

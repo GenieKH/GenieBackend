@@ -1,3 +1,10 @@
+# One container runs everything: Redis, authentication, user and api-gateway.
+#
+#   docker compose up -d --build     build and start
+#   docker compose logs -f           follow the logs
+#   docker compose down              stop and remove
+#
+# `restart: unless-stopped` brings it back automatically whenever Docker starts.
 services:
   genie:
     build: .

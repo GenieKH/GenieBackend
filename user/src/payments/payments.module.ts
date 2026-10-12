@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
-import { PaymentsService } from './payments.service';
-import { PaymentsController } from './payments.controller';
-import { AbaPaywayProvider } from './aba-payway.provider';
-import { PrismaService } from '../prisma.service';
 import { PropertiesModule } from '../properties/properties.module';
+import { AbaPaywayProvider } from './aba-payway.provider';
+import { PaymentCheckoutService } from './payment-checkout.service';
+import { PaymentWebhookService } from './payment-webhook.service';
+import { PaymentsController } from './payments.controller';
 
 @Module({
   imports: [PropertiesModule],
   controllers: [PaymentsController],
-  providers: [PaymentsService, AbaPaywayProvider, PrismaService],
+  providers: [AbaPaywayProvider, PaymentCheckoutService, PaymentWebhookService],
 })
 export class PaymentsModule {}

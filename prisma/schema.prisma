@@ -50,7 +50,10 @@ model User {
   backupSalt        String? @map("backup_salt")
   backupNonce       String? @map("backup_nonce")
 
-  messagesSent     Message[] @relation("MessagesSent")
+  /// When the user's last chat connection closed. Null if never connected.
+  lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(6)
+
+  messagesSent    Message[] @relation("MessagesSent")
   messagesReceived Message[] @relation("MessagesReceived")
 
   @@index([email], map: "idx_users_email", where: raw("(email IS NOT NULL)"))
@@ -206,5 +209,6 @@ model Message {
 
   @@index([recipientId, createdAt])
   @@index([recipientId, readAt])
+  @@index([senderId, recipientId, createdAt])
   @@map("messages")
 }

@@ -1,102 +1,55 @@
-import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
-import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import { APP_GUARD } from '@nestjs/core';
+import { AppController } from './app.controller';
 import { AuthMiddleware } from './auth.middleware';
+import { createServiceProxy } from './service-proxy';
+
+/** Routes forwarded to a service, each as `/x` and `/x/...`. */
+const AUTH_PREFIXES = ['/auth'];
+const PUBLIC_USER_PREFIXES = ['/public'];
+const PROTECTED_USER_PREFIXES = ['/properties', '/payments', '/users', '/chat'];
+
+/** Called by the payment provider, so it cannot carry a user JWT. */
+const PAYMENT_WEBHOOK = { path: '/payments/webhook', method: RequestMethod.POST };
+
+function routesFor(prefixes: string[]) {
+  return prefixes.flatMap((prefix) => [
+    { path: prefix, method: RequestMethod.ALL },
+    { path: `${prefix}/{*path}`, method: RequestMethod.ALL },
+  ]);
+}
 
 @Module({
   imports: [
     ThrottlerModule.forRoot({
-      throttlers: [{
-        ttl: 60000,
-        limit: 300,
-      }],
+      throttlers: [{ ttl: 60000, limit: 300 }],
       storage: new ThrottlerStorageRedisService(process.env.REDIS_URL || 'redis://localhost:6379'),
     }),
   ],
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
-  ],
+  controllers: [AppController],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:4001';
     const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:4002';
 
-    // 1. Proxies that DO NOT require JWT validation (Auth service)
+    // Login, register, refresh, password reset: no JWT yet.
     consumer
-      .apply(
-        createProxyMiddleware({
-          target: authServiceUrl,
-          changeOrigin: true,
-          on: {
-            proxyReq: (proxyReq, req: any) => {
-              proxyReq.removeHeader('x-user-id');
-              fixRequestBody(proxyReq, req);
-            },
-          },
-        }),
-      )
-      .forRoutes(
-        { path: '/auth', method: RequestMethod.ALL },
-        { path: '/auth/{*path}', method: RequestMethod.ALL }
-      );
+      .apply(createServiceProxy(authServiceUrl, { authenticated: false }))
+      .forRoutes(...routesFor(AUTH_PREFIXES));
 
-    // 2. Proxies that DO NOT require JWT validation (Public properties)
+    // Public browsing and the payment provider's webhook: no JWT.
     consumer
-      .apply(
-        createProxyMiddleware({
-          target: userServiceUrl,
-          changeOrigin: true,
-          on: {
-            proxyReq: (proxyReq, req: any) => {
-              proxyReq.removeHeader('x-user-id');
-              fixRequestBody(proxyReq, req);
-            },
-          },
-        }),
-      )
-      .forRoutes(
-        { path: '/public', method: RequestMethod.ALL },
-        { path: '/public/{*path}', method: RequestMethod.ALL }
-      );
+      .apply(createServiceProxy(userServiceUrl, { authenticated: false }))
+      .forRoutes(...routesFor(PUBLIC_USER_PREFIXES), PAYMENT_WEBHOOK);
 
-    // 3. Proxies that REQUIRE JWT validation (User service)
-    // First apply AuthMiddleware to extract x-user-id, then proxy to user service
+    // Everything else needs a valid JWT; AuthMiddleware sets `x-user-id` from it.
     consumer
-      .apply(
-        AuthMiddleware,
-        createProxyMiddleware({
-          target: userServiceUrl,
-          changeOrigin: true,
-          ws: true,
-          on: {
-            proxyReq: (proxyReq, req: any, res) => {
-              // Ensure the x-user-id header is forwarded securely
-              if (req.headers['x-user-id']) {
-                proxyReq.setHeader('x-user-id', req.headers['x-user-id']);
-              }
-              // Fix body parser hanging issue
-              fixRequestBody(proxyReq, req);
-            },
-          },
-        }),
-      )
-      .forRoutes(
-        { path: '/properties', method: RequestMethod.ALL },
-        { path: '/properties/{*path}', method: RequestMethod.ALL },
-        { path: '/payments', method: RequestMethod.ALL },
-        { path: '/payments/{*path}', method: RequestMethod.ALL },
-        { path: '/users', method: RequestMethod.ALL },
-        { path: '/users/{*path}', method: RequestMethod.ALL },
-        { path: '/chat', method: RequestMethod.ALL },
-        { path: '/chat/{*path}', method: RequestMethod.ALL }
-      );
+      .apply(AuthMiddleware, createServiceProxy(userServiceUrl, { authenticated: true }))
+      .exclude(PAYMENT_WEBHOOK)
+      .forRoutes(...routesFor(PROTECTED_USER_PREFIXES));
   }
 }
-
-

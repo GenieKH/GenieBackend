@@ -1,45 +1,33 @@
-import { Controller, Get, Query, Post, Body, Param, UseGuards, Req, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
-import { PropertiesService } from './properties.service';
-import { ApiTags, ApiQuery } from '@nestjs/swagger';
+import { GuestSessionDto } from './dto/guest-session.dto';
+import { MapBoundsQuery } from './dto/map-bounds.query';
+import { GuestSessionService } from './services/guest-session.service';
+import { PropertyQueryService } from './services/property-query.service';
 
+/** Endpoints anyone can call; a logged-in user just gets extra info (`isVisited`). */
 @ApiTags('public-properties')
 @Controller('public/properties')
 export class PublicPropertiesController {
-  constructor(private readonly propertiesService: PropertiesService) {}
+  constructor(
+    private readonly query: PropertyQueryService,
+    private readonly guestSessions: GuestSessionService,
+  ) {}
 
   @Get('map')
   @UseGuards(OptionalJwtAuthGuard)
-  @ApiQuery({ name: 'minLat', type: Number })
-  @ApiQuery({ name: 'maxLat', type: Number })
-  @ApiQuery({ name: 'minLng', type: Number })
-  @ApiQuery({ name: 'maxLng', type: Number })
-  searchMap(
-    @Req() req: any,
-    @Query('minLat') minLat: string,
-    @Query('maxLat') maxLat: string,
-    @Query('minLng') minLng: string,
-    @Query('maxLng') maxLng: string,
-  ) {
-    const userId = req.user?.userId;
-    return this.propertiesService.searchMap(
-      parseFloat(minLat),
-      parseFloat(maxLat),
-      parseFloat(minLng),
-      parseFloat(maxLng),
-      userId
-    );
+  searchMap(@Req() req: { user?: { userId: string } | null }, @Query() bounds: MapBoundsQuery) {
+    return this.query.searchMap(bounds, req.user?.userId);
   }
 
   @Post('guest-session')
-  async registerGuestSession(@Body('deviceId') deviceId: string) {
-    return this.propertiesService.registerGuestSession(deviceId);
+  registerGuestSession(@Body() dto: GuestSessionDto) {
+    return this.guestSessions.register(dto.deviceId);
   }
 
   @Get(':id')
-  findOne(@Query('id') queryId: string, @Param('id') paramId: string) {
-    // Some routers pass id in param, some might pass in query based on setup, but @Param is standard
-    const id = paramId || queryId;
-    return this.propertiesService.findOnePublic(id);
+  findOne(@Param('id') id: string) {
+    return this.query.findPublic(id);
   }
 }

@@ -1,7 +1,8 @@
 import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { Socket } from 'socket.io';
-import * as jwt from 'jsonwebtoken';
+import { extractSocketToken, verifyAccessToken } from './ws-auth';
 
+/** Re-checks the socket's token on every message, so expired sessions are cut off. */
 @Injectable()
 export class WsJwtGuard implements CanActivate {
   private readonly logger = new Logger(WsJwtGuard.name);
@@ -11,39 +12,21 @@ export class WsJwtGuard implements CanActivate {
       return true;
     }
 
-    const client: Socket = context.switchToWs().getClient<Socket>();
-    const token = this.extractTokenFromHeader(client) || this.extractTokenFromQuery(client);
-
+    const client = context.switchToWs().getClient<Socket>();
+    const token = extractSocketToken(client);
     if (!token) {
-      this.logger.warn('No token provided in WebSocket connection');
+      this.logger.warn('No token provided in WebSocket message');
       client.disconnect();
       return false;
     }
 
     try {
-      const publicKey = process.env.JWT_PUBLIC_KEY?.replace(/\\n/g, '\n') || '';
-      const payload = jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as any;
-      
-      // Attach the decoded user id to the socket data
-      client.data.userId = payload.sub;
+      client.data.userId = verifyAccessToken(token);
       return true;
     } catch (error) {
-      this.logger.error(`WebSocket authentication failed: ${error.message}`);
+      this.logger.warn(`WebSocket authentication failed: ${(error as Error).message}`);
       client.disconnect();
       return false;
     }
-  }
-
-  private extractTokenFromHeader(client: Socket): string | undefined {
-    const authHeader = client.handshake.headers.authorization;
-    if (authHeader && authHeader.split(' ')[0] === 'Bearer') {
-      return authHeader.split(' ')[1];
-    }
-    return undefined;
-  }
-
-  private extractTokenFromQuery(client: Socket): string | undefined {
-    const token = client.handshake.query.token;
-    return typeof token === 'string' ? token : undefined;
   }
 }

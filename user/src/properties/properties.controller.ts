@@ -1,165 +1,126 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, UnauthorizedException, UseInterceptors, UploadedFiles } from '@nestjs/common';
-
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { PropertiesService } from './properties.service';
-import { CreatePropertyDto } from './dto/create-property.dto';
-import { UpdatePropertyDto } from './dto/update-property.dto';
-import { PinDto } from './dto/pin.dto';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { BoundaryDto } from './dto/boundary.dto';
 import { CreateContactDto } from './dto/create-contact.dto';
-import { ApiTags, ApiHeader } from '@nestjs/swagger';
+import { CreatePropertyDto } from './dto/create-property.dto';
+import { ImageFileNamesDto } from './dto/image-file-names.dto';
+import { PinDto } from './dto/pin.dto';
+import { UpdatePropertyDto } from './dto/update-property.dto';
+import { PropertyEngagementService } from './services/property-engagement.service';
+import { PropertyImageService } from './services/property-image.service';
+import { PropertyLifecycleService } from './services/property-lifecycle.service';
+import { PropertyQueryService } from './services/property-query.service';
 
+/** Authenticated property endpoints (the gateway has already verified the JWT). */
 @ApiTags('properties')
 @ApiHeader({ name: 'x-user-id', description: 'User ID from API Gateway' })
 @Controller('properties')
 export class PropertiesController {
-  constructor(private readonly propertiesService: PropertiesService) {}
-
-  private getUserId(req: any): string {
-    const userId = req.headers['x-user-id'];
-    if (!userId) {
-      throw new UnauthorizedException('x-user-id header is missing');
-    }
-    return userId;
-  }
+  constructor(
+    private readonly query: PropertyQueryService,
+    private readonly lifecycle: PropertyLifecycleService,
+    private readonly images: PropertyImageService,
+    private readonly engagement: PropertyEngagementService,
+  ) {}
 
   @Post()
-  create(@Req() req: any, @Body() createPropertyDto: CreatePropertyDto) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.create(userId, createPropertyDto);
-  }
-
-  @Post(':id/images/presigned-url')
-  getPresignedUrls(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body('fileNames') fileNames: string[],
-  ) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.getPresignedUrls(userId, id, fileNames);
-  }
-
-  @Post(':id/images/confirm')
-  confirmUploadedImages(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body('fileNames') fileNames: string[],
-  ) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.confirmUploadedImages(userId, id, fileNames);
+  create(@CurrentUserId() userId: string, @Body() dto: CreatePropertyDto) {
+    return this.lifecycle.create(userId, dto);
   }
 
   @Get()
-  findAll(@Req() req: any) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.findAll(userId);
+  findAll(@CurrentUserId() userId: string) {
+    return this.query.findAllForOwner(userId);
   }
 
   @Get('my/favorites')
-  getFavorites(@Req() req: any) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.getFavorites(userId);
+  getFavorites(@CurrentUserId() userId: string) {
+    return this.query.listFavorites(userId);
   }
 
   @Get(':id')
-  findOne(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.findOne(userId, id);
+  findOne(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.query.findOwned(userId, id);
   }
 
   @Patch(':id')
-  update(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body() updatePropertyDto: UpdatePropertyDto,
-  ) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.update(userId, id, updatePropertyDto);
+  update(@CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: UpdatePropertyDto) {
+    return this.lifecycle.update(userId, id, dto);
   }
 
   @Patch(':id/pin')
-  updatePin(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body() pinDto: PinDto,
-  ) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.updatePin(userId, id, pinDto);
+  updatePin(@CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: PinDto) {
+    return this.lifecycle.updatePin(userId, id, dto);
   }
 
   @Patch(':id/boundary')
-  updateBoundary(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body() boundaryDto: BoundaryDto,
-  ) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.updateBoundary(userId, id, boundaryDto);
-  }
-
-  @Patch(':id/unpublish')
-  unpublish(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.unpublish(userId, id);
+  updateBoundary(@CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: BoundaryDto) {
+    return this.lifecycle.updateBoundary(userId, id, dto);
   }
 
   @Patch(':id/publish')
-  publish(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.publish(userId, id);
+  publish(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.lifecycle.publish(userId, id);
+  }
+
+  @Patch(':id/unpublish')
+  unpublish(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.lifecycle.unpublish(userId, id);
   }
 
   @Patch(':id/mark-sold')
-  markSold(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.markSold(userId, id);
+  markSold(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.lifecycle.markSold(userId, id);
   }
 
   @Patch(':id/relist')
-  relist(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.relist(userId, id);
-  }
-
-  @Post(':id/like')
-  like(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.like(userId, id);
-  }
-
-  @Delete(':id/like')
-  unlike(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.unlike(userId, id);
-  }
-
-  @Post(':id/favorite')
-  favorite(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.favorite(userId, id);
-  }
-
-  @Post(':id/contact')
-  contact(@Req() req: any, @Param('id') id: string, @Body() contactDto: CreateContactDto) {
-    const userId = req.user?.userId || null;
-    return this.propertiesService.contact(id, userId, contactDto);
-  }
-
-  @Post(':id/view')
-  logView(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.logView(userId, id);
-  }
-
-  @Delete(':id/favorite')
-  unfavorite(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.unfavorite(userId, id);
+  relist(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.lifecycle.relist(userId, id);
   }
 
   @Delete(':id')
-  remove(@Req() req: any, @Param('id') id: string) {
-    const userId = this.getUserId(req);
-    return this.propertiesService.remove(userId, id);
+  remove(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.lifecycle.remove(userId, id);
+  }
+
+  @Post(':id/images/presigned-url')
+  getPresignedUrls(@CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: ImageFileNamesDto) {
+    return this.images.createUploadUrls(userId, id, dto.fileNames);
+  }
+
+  @Post(':id/images/confirm')
+  confirmUploadedImages(@CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: ImageFileNamesDto) {
+    return this.images.confirmUploads(userId, id, dto.fileNames);
+  }
+
+  @Post(':id/like')
+  like(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.engagement.like(userId, id);
+  }
+
+  @Delete(':id/like')
+  unlike(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.engagement.unlike(userId, id);
+  }
+
+  @Post(':id/favorite')
+  favorite(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.engagement.favorite(userId, id);
+  }
+
+  @Delete(':id/favorite')
+  unfavorite(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.engagement.unfavorite(userId, id);
+  }
+
+  @Post(':id/view')
+  logView(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.engagement.logView(userId, id);
+  }
+
+  @Post(':id/contact')
+  contact(@CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: CreateContactDto) {
+    return this.engagement.contact(userId, id, dto);
   }
 }

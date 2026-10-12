@@ -1,8 +1,16 @@
 import { Module } from '@nestjs/common';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
 import { JwtModule } from '@nestjs/jwt';
+import { AuthController } from './auth.controller';
+import { CredentialsAuthService } from './credentials/credentials-auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { OtpEmailService } from './mail/otp-email.service';
+import { PasswordResetOtpRepository } from './password-reset/password-reset-otp.repository';
+import { PasswordResetService } from './password-reset/password-reset.service';
+import { RefreshTokenRepository } from './sessions/refresh-token.repository';
+import { SessionService } from './sessions/session.service';
+import { TokenIssuerService } from './sessions/token-issuer.service';
+import { FirebaseLoginService } from './social/firebase-login.service';
+import { UserRepository } from './users/user.repository';
 
 @Module({
   imports: [
@@ -14,6 +22,17 @@ import { JwtStrategy } from './jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    JwtStrategy,
+    UserRepository,
+    RefreshTokenRepository,
+    PasswordResetOtpRepository,
+    TokenIssuerService,
+    SessionService,
+    CredentialsAuthService,
+    FirebaseLoginService,
+    PasswordResetService,
+    OtpEmailService,
+  ],
 })
 export class AuthModule {}

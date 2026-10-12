@@ -1,5 +1,5 @@
 {
-  "name": "my-app",
+  "name": "authentication",
   "private": true,
   "packageManager": "npm@11.17.0",
   "scripts": {
@@ -10,7 +10,8 @@
     "db:generate": "cd .. && npx prisma generate",
     "db:push": "cd .. && npx prisma db push",
     "db:migrate": "cd .. && npx prisma migrate dev",
-    "db:seed": "cd .. && npx prisma db seed"
+    "db:seed": "cd .. && npx prisma db seed",
+    "test": "jest"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.27",
@@ -37,11 +38,27 @@
   "devDependencies": {
     "@prisma/compute-sdk": "latest",
     "@types/bcrypt": "^6.0.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^26.0.0",
     "@types/nodemailer": "^8.0.1",
     "@types/passport-jwt": "^4.0.1",
+    "jest": "^30.5.2",
     "prisma": "^7.8.0",
+    "ts-jest": "^29.4.14",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.ts$": "ts-jest"
+    },
+    "testEnvironment": "node"
   }
 }

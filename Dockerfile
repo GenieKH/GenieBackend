@@ -1,52 +1,49 @@
-# --- Build Stage ---
+# --- Build stage: full install + compile every service ---
 FROM node:22-alpine AS builder
-
 WORKDIR /app
 
-# Copy the entire workspace
+# Dependency manifests first, so `npm ci` is cached until a package.json changes.
 COPY package.json package-lock.json ./
-COPY api-gateway/package.json ./api-gateway/
-COPY authentication/package.json ./authentication/
-COPY user/package.json ./user/
+COPY api-gateway/package.json api-gateway/
+COPY authentication/package.json authentication/
+COPY user/package.json user/
+RUN npm ci
 
-# Copy prisma schema if it exists in the root or a shared folder to generate client
-# Assuming prisma is in the root or one of the packages. Let's copy everything since it's a monorepo
 COPY . .
-
-# Install dependencies (will install for all workspaces)
-RUN npm install
-
-# Generate Prisma Client (Assumes schema is in prisma/ or shared folder)
-# We run the build script which triggers prisma generate and nest build for all workspaces
+# Generates the Prisma client, then builds api-gateway, authentication and user.
 RUN npm run build
 
-# --- Production Stage ---
+# --- Runtime stage: production dependencies and compiled output only ---
 FROM node:22-alpine
-
+ENV NODE_ENV=production
 WORKDIR /app
 
-# Copy package files
+# Redis runs inside this same container (see start.sh).
+RUN apk add --no-cache redis
+
 COPY package.json package-lock.json ./
-COPY api-gateway/package.json ./api-gateway/
-COPY authentication/package.json ./authentication/
-COPY user/package.json ./user/
+COPY api-gateway/package.json api-gateway/
+COPY authentication/package.json authentication/
+COPY user/package.json user/
+RUN npm ci --omit=dev
 
-# Install only production dependencies
-# RUN npm ci --omit=dev  // For monorepos, sometimes it's easier to just copy the whole node_modules from builder if prisma is involved
-# To ensure prisma client and all workspace links work perfectly, we'll copy the builder's node_modules
-COPY --from=builder /app/node_modules ./node_modules
+# The generated client lives in node_modules, so it is regenerated here.
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+RUN npx prisma generate
 
-# Copy built dist folders
 COPY --from=builder /app/api-gateway/dist ./api-gateway/dist
 COPY --from=builder /app/authentication/dist ./authentication/dist
 COPY --from=builder /app/user/dist ./user/dist
-
-# Copy the start script
 COPY start.sh ./
-RUN chmod +x start.sh
+RUN chmod +x start.sh && chown -R node:node /app
 
-# Expose API Gateway port
+# Never run as root.
+USER node
+
 EXPOSE 4000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:4000/health || exit 1
 
-# Start all 3 services using the shell script
+# Starts Redis + the 3 services in this one container; exits if any of them dies.
 CMD ["./start.sh"]

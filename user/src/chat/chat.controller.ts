@@ -10,14 +10,16 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
+import { requirePasswordProof } from '../auth/password-proof';
+import { RateLimit, RateLimits } from '../redis/rate-limits.service';
 import { ChatAttachmentService } from './chat-attachment.service';
-import { ChatBackupService } from './chat-backup.service';
+import { ChatBackupService, NewKeyBackup, SaveBackupOptions } from './chat-backup.service';
 import { ChatService } from './chat.service';
 import {
   CreateAttachmentDto,
   MessagePageQuery,
+  ResetKeysDto,
   SetBackupDto,
   SetPublicKeyDto,
   UnlockBackupDto,
@@ -28,20 +30,38 @@ const DEFAULT_PAGE_SIZE = 50;
 @Controller('chat')
 export class ChatController {
   /** At most 5 backup lookups per user every 15 minutes. PIN tries are counted by ChatBackupService. */
-  private readonly backupRateLimiter = new RateLimiterMemory({ points: 5, duration: 15 * 60 });
+  private readonly backupRateLimiter: RateLimit;
 
   /** Uploads are cheap to request but cost storage: 20 per user every minute. */
-  private readonly uploadRateLimiter = new RateLimiterMemory({ points: 20, duration: 60 });
+  private readonly uploadRateLimiter: RateLimit;
 
   constructor(
     private readonly chatService: ChatService,
     private readonly backupService: ChatBackupService,
     private readonly attachmentService: ChatAttachmentService,
-  ) {}
+    rateLimits: RateLimits,
+  ) {
+    this.backupRateLimiter = rateLimits.create('chat-backup-lookup', 5, 15 * 60);
+    this.uploadRateLimiter = rateLimits.create('chat-upload', 20, 60);
+  }
 
   @Post('keys')
   setPublicKey(@CurrentUserId() userId: string, @Body() dto: SetPublicKeyDto) {
     return this.chatService.setPublicKey(userId, dto.identityPublicKey);
+  }
+
+  /**
+   * Replaces the caller's key pair and its backup in one step. With an existing
+   * backup, `currentBackupVerifier` must prove its PIN (`403` wrong PIN, `429`
+   * locked), or `passwordProofToken` the account password (`403` if not valid).
+   */
+  @Post('keys/reset')
+  @HttpCode(HttpStatus.OK)
+  resetKeys(@CurrentUserId() userId: string, @Body() dto: ResetKeysDto) {
+    return this.backupService.save(userId, backupOf(dto), {
+      ...ownerProofOf(userId, dto),
+      identityPublicKey: dto.identityPublicKey,
+    });
   }
 
   @Get('keys/:userId')
@@ -49,14 +69,10 @@ export class ChatController {
     return this.chatService.getPublicKey(userId);
   }
 
+  /** A new PIN replaces the backup, which needs the same proof as `resetKeys`. */
   @Post('backup')
   setBackup(@CurrentUserId() userId: string, @Body() dto: SetBackupDto) {
-    return this.backupService.save(userId, {
-      blob: dto.backupBlob,
-      salt: dto.backupSalt,
-      nonce: dto.backupNonce,
-      verifier: dto.backupVerifier,
-    });
+    return this.backupService.save(userId, backupOf(dto), ownerProofOf(userId, dto));
   }
 
   @Get('backup')
@@ -117,4 +133,17 @@ export class ChatController {
   ) {
     return this.attachmentService.createDownloadUrl(userId, { senderId, recipientId, fileId });
   }
+}
+
+/** How the caller shows the backup is theirs to replace: the account password, else the current PIN. */
+function ownerProofOf(userId: string, dto: SetBackupDto): SaveBackupOptions {
+  if (dto.passwordProofToken) {
+    requirePasswordProof(userId, dto.passwordProofToken);
+    return { provenByPassword: true };
+  }
+  return { currentVerifier: dto.currentBackupVerifier };
+}
+
+function backupOf(dto: SetBackupDto): NewKeyBackup {
+  return { blob: dto.backupBlob, salt: dto.backupSalt, nonce: dto.backupNonce, verifier: dto.backupVerifier };
 }

@@ -1,0 +1,97 @@
+import { Inject, Injectable } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
+import { FirebaseService } from '../../firebase/firebase.service';
+import { BCRYPT_ROUNDS } from '../auth.constants';
+import { PasswordResetOtpRepository } from '../password-reset/password-reset-otp.repository';
+import { SessionRevocationService } from '../sessions/session-revocation.service';
+import { UserPatch, UserRecord, UserRepository } from '../users/user.repository';
+import { IdentityProof, IdentityProofService } from './identity-proof.service';
+import { UserContentClient } from './user-content.client';
+
+/**
+ * What the owner can do to their own account while signed in: set its
+ * password, switch it off, or delete it. Each asks for an [IdentityProof] first.
+ */
+@Injectable()
+export class AccountService {
+  constructor(
+    @Inject(UserRepository) private readonly users: UserRepository,
+    @Inject(SessionRevocationService) private readonly sessions: SessionRevocationService,
+    @Inject(IdentityProofService) private readonly proofs: IdentityProofService,
+    @Inject(UserContentClient) private readonly content: UserContentClient,
+    @Inject(PasswordResetOtpRepository) private readonly otps: PasswordResetOtpRepository,
+    @Inject(FirebaseService) private readonly firebase: FirebaseService,
+  ) {}
+
+  /** Every other device is signed out: whoever else knew the old password is gone. */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    keepSessionId: string | null,
+  ): Promise<void> {
+    await this.proofs.verify(userId, { password: currentPassword });
+
+    await this.users.update(userId, await this.passwordPatch(newPassword));
+    await this.sessions.endAllSessions(userId, keepSessionId);
+  }
+
+  /**
+   * Gives a password to an account that signs in with Google, which has none
+   * of its own. Proven by signing in with Google again just now (`idToken`),
+   * the same way such an account proves itself everywhere else.
+   */
+  async createPassword(userId: string, idToken: string, newPassword: string): Promise<void> {
+    await this.proofs.verify(userId, { idToken });
+
+    await this.users.update(userId, await this.passwordPatch(newPassword));
+  }
+
+  /**
+   * Hides the account and everything it posted, and signs every device out.
+   * Nothing is removed: signing in again brings it all back (see `reactivate`).
+   */
+  async deactivate(userId: string, proof: IdentityProof): Promise<void> {
+    await this.proofs.verify(userId, proof);
+
+    await this.users.update(userId, { deactivated_at: new Date().toISOString() });
+    await this.sessions.endAllSessions(userId);
+    await this.content.visibilityChanged(userId);
+  }
+
+  /**
+   * Removes the account and every trace of it: uploaded files, listings,
+   * chats, sessions, reset codes and its Google sign-in record. Cannot be undone.
+   */
+  async delete(userId: string, proof: IdentityProof): Promise<void> {
+    const user = await this.proofs.verify(userId, proof);
+
+    // Hidden before anything is removed, so nobody is shown a listing whose photos are already gone.
+    await this.users.update(user.id, { deactivated_at: new Date().toISOString() });
+    try {
+      await this.content.eraseFiles(user.id);
+    } catch (error) {
+      // No row is deleted yet: show the account again so its owner can retry.
+      await this.users.update(user.id, { deactivated_at: user.deactivated_at });
+      throw error;
+    }
+
+    await this.sessions.endAllSessions(user.id);
+    if (user.firebase_uid) await this.firebase.deleteUser(user.firebase_uid);
+    if (user.email) await this.otps.deleteAllFor(user.email);
+    // The database deletes everything that hangs off the row with it.
+    await this.users.delete(user.id);
+    await this.content.visibilityChanged(user.id);
+  }
+
+  /** Called on every successful sign-in: that is how a deactivated account comes back. */
+  async reactivate(user: UserRecord): Promise<void> {
+    if (!user.deactivated_at) return;
+    await this.users.update(user.id, { deactivated_at: null });
+    await this.content.visibilityChanged(user.id);
+  }
+
+  private async passwordPatch(password: string): Promise<UserPatch> {
+    return { password_hash: await bcrypt.hash(password, BCRYPT_ROUNDS), has_password: true };
+  }
+}

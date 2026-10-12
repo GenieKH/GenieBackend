@@ -2,18 +2,22 @@ import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { CredentialsAuthService } from './credentials-auth.service';
 
+// firebase-admin (reached through SignInService) pulls in ESM-only packages Jest cannot load.
+jest.mock('../../firebase/firebase.service', () => ({ FirebaseService: class {} }));
+
 describe('CredentialsAuthService', () => {
   const users = {
     create: jest.fn(),
     findByEmail: jest.fn(),
     findByPhone: jest.fn(),
   };
-  const tokens = { issue: jest.fn() };
+  const signIn = { complete: jest.fn() };
+  const client = { deviceName: 'Pixel 8', platform: 'Android 15', ipAddress: '203.0.113.7' };
   let service: CredentialsAuthService;
 
   beforeEach(() => {
     jest.resetAllMocks();
-    service = new CredentialsAuthService(users as never, tokens as never);
+    service = new CredentialsAuthService(users as never, signIn as never);
   });
 
   describe('register', () => {
@@ -24,6 +28,8 @@ describe('CredentialsAuthService', () => {
       expect(saved.role).toBe('user');
       expect(saved.password_hash).not.toBe('password123');
       expect(await bcrypt.compare('password123', saved.password_hash)).toBe(true);
+      // Unlike an account made by Google sign-in, this one has a password to prove itself with.
+      expect(saved.has_password).toBe(true);
     });
 
     it('ignores a role sent by the client', async () => {
@@ -36,37 +42,39 @@ describe('CredentialsAuthService', () => {
   describe('login', () => {
     const passwordHash = bcrypt.hashSync('correct-password', 4);
 
-    it('returns tokens for the right password', async () => {
-      users.findByEmail.mockResolvedValue({ id: 'u1', role: 'user', password_hash: passwordHash });
-      tokens.issue.mockResolvedValue({ accessToken: 'a', refreshToken: 'r' });
+    it('signs the user in for the right password', async () => {
+      const user = { id: 'u1', role: 'user', password_hash: passwordHash };
+      users.findByEmail.mockResolvedValue(user);
+      signIn.complete.mockResolvedValue({ accessToken: 'a', refreshToken: 'r' });
 
-      const result = await service.login({ email: 'a@b.com', password: 'correct-password' });
+      const result = await service.login({ email: 'a@b.com', password: 'correct-password' }, client);
 
       expect(result).toEqual({ accessToken: 'a', refreshToken: 'r' });
-      expect(tokens.issue).toHaveBeenCalledWith('u1', 'user');
+      expect(signIn.complete).toHaveBeenCalledWith(user, client);
     });
 
-    it('answers a wrong password and an unknown user identically', async () => {
+    it('answers a wrong password and an unknown user identically, and signs nobody in', async () => {
       users.findByEmail.mockResolvedValueOnce({ id: 'u1', role: 'user', password_hash: passwordHash });
-      await expect(service.login({ email: 'a@b.com', password: 'nope' })).rejects.toThrow(
+      await expect(service.login({ email: 'a@b.com', password: 'nope' }, client)).rejects.toThrow(
         new UnauthorizedException('Invalid credentials'),
       );
 
       users.findByEmail.mockResolvedValueOnce(null);
-      await expect(service.login({ email: 'x@y.com', password: 'nope' })).rejects.toThrow(
+      await expect(service.login({ email: 'x@y.com', password: 'nope' }, client)).rejects.toThrow(
         new UnauthorizedException('Invalid credentials'),
       );
+      expect(signIn.complete).not.toHaveBeenCalled();
     });
 
     it('looks the user up by phone when no email is given', async () => {
       users.findByPhone.mockResolvedValue(null);
 
-      await expect(service.login({ phone: '+855123', password: 'x' })).rejects.toThrow(UnauthorizedException);
+      await expect(service.login({ phone: '+855123', password: 'x' }, client)).rejects.toThrow(UnauthorizedException);
       expect(users.findByPhone).toHaveBeenCalledWith('+855123');
     });
 
     it('refuses a login with neither email nor phone', async () => {
-      await expect(service.login({ password: 'x' })).rejects.toThrow(BadRequestException);
+      await expect(service.login({ password: 'x' }, client)).rejects.toThrow(BadRequestException);
       expect(users.findByEmail).not.toHaveBeenCalled();
     });
   });

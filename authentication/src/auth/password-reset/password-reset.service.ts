@@ -3,7 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { randomInt } from 'crypto';
 import { BCRYPT_ROUNDS, OTP_TTL_MINUTES } from '../auth.constants';
 import { OtpEmailService } from '../mail/otp-email.service';
-import { RefreshTokenRepository } from '../sessions/refresh-token.repository';
+import { SessionRevocationService } from '../sessions/session-revocation.service';
 import { UserRepository } from '../users/user.repository';
 import { PasswordResetOtpRepository, PasswordResetOtpRecord } from './password-reset-otp.repository';
 
@@ -17,7 +17,7 @@ export class PasswordResetService {
   constructor(
     @Inject(UserRepository) private readonly users: UserRepository,
     @Inject(PasswordResetOtpRepository) private readonly otps: PasswordResetOtpRepository,
-    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(SessionRevocationService) private readonly sessions: SessionRevocationService,
     @Inject(OtpEmailService) private readonly mailer: OtpEmailService,
   ) {}
 
@@ -54,11 +54,12 @@ export class PasswordResetService {
 
     await this.users.update(user.id, {
       password_hash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS),
+      has_password: true,
     });
     await this.otps.markUsed(record.id);
 
     // Force every device to log in again with the new password.
-    await this.refreshTokens.revokeAllForUser(user.id);
+    await this.sessions.endAllSessions(user.id);
 
     return { message: 'Password reset successfully' };
   }

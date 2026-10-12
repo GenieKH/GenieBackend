@@ -1,27 +1,23 @@
 import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { Socket } from 'socket.io';
-import { extractSocketToken, verifyAccessToken } from './ws-auth';
+import { RevokedSessions } from '../auth/revoked-sessions.service';
+import { authenticateSocket } from './ws-auth';
 
-/** Re-checks the socket's token on every message, so expired sessions are cut off. */
+/** Re-checks the socket's token on every message, so expired and signed-out sessions are cut off. */
 @Injectable()
 export class WsJwtGuard implements CanActivate {
   private readonly logger = new Logger(WsJwtGuard.name);
 
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly revokedSessions: RevokedSessions) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     if (context.getType() !== 'ws') {
       return true;
     }
 
     const client = context.switchToWs().getClient<Socket>();
-    const token = extractSocketToken(client);
-    if (!token) {
-      this.logger.warn('No token provided in WebSocket message');
-      client.disconnect();
-      return false;
-    }
-
     try {
-      client.data.userId = verifyAccessToken(token);
+      await authenticateSocket(client, this.revokedSessions);
       return true;
     } catch (error) {
       this.logger.warn(`WebSocket authentication failed: ${(error as Error).message}`);

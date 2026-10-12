@@ -14,7 +14,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     if (!connectionString) {
       throw new Error('DATABASE_URL is required');
     }
-    super({ adapter: new PrismaPg(new Pool({ connectionString })) });
+    // Each instance opens its own pool: instances x this number must stay under
+    // the database's connection limit.
+    const max = Number(process.env.DATABASE_POOL_MAX) || 10;
+    super({ adapter: new PrismaPg(new Pool({ connectionString, max })) });
   }
 
   async onModuleInit() {

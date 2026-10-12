@@ -1,44 +1,52 @@
-import { createRateLimitMiddleware } from './rate-limit.middleware';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { createRateLimitMiddleware, RequestLimiter } from './rate-limit.middleware';
 
 describe('rate limit middleware', () => {
-  let now: number;
-
-  function request(limiter: ReturnType<typeof createRateLimitMiddleware>, ip: string) {
+  async function request(middleware: ReturnType<typeof createRateLimitMiddleware>, ip: string) {
     const res = { setHeader: jest.fn(), status: jest.fn().mockReturnThis(), json: jest.fn() };
     const next = jest.fn();
-    limiter({ ip } as never, res as never, next);
+    await middleware({ ip } as never, res as never, next);
     return { passed: next.mock.calls.length === 1, res };
   }
 
-  beforeEach(() => {
-    now = 0;
+  const limitOf = (points: number) => createRateLimitMiddleware(new RateLimiterMemory({ points, duration: 60 }));
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
-  it('lets a client through up to the limit, then answers 429', () => {
-    const limiter = createRateLimitMiddleware({ limit: 3, windowMs: 60_000 }, () => now);
+  it('lets a client through up to the limit, then answers 429', async () => {
+    const middleware = limitOf(3);
 
-    expect([1, 2, 3].map(() => request(limiter, '1.1.1.1').passed)).toEqual([true, true, true]);
+    for (let i = 0; i < 3; i++) expect((await request(middleware, '1.1.1.1')).passed).toBe(true);
 
-    const blocked = request(limiter, '1.1.1.1');
+    const blocked = await request(middleware, '1.1.1.1');
     expect(blocked.passed).toBe(false);
     expect(blocked.res.status).toHaveBeenCalledWith(429);
     expect(blocked.res.setHeader).toHaveBeenCalledWith('Retry-After', 60);
   });
 
-  it('counts each client address on its own', () => {
-    const limiter = createRateLimitMiddleware({ limit: 1, windowMs: 60_000 }, () => now);
-    request(limiter, '1.1.1.1');
+  it('counts each client address on its own', async () => {
+    const middleware = limitOf(1);
+    await request(middleware, '1.1.1.1');
 
-    expect(request(limiter, '1.1.1.1').passed).toBe(false);
-    expect(request(limiter, '2.2.2.2').passed).toBe(true);
+    expect((await request(middleware, '1.1.1.1')).passed).toBe(false);
+    expect((await request(middleware, '2.2.2.2')).passed).toBe(true);
   });
 
-  it('starts over when the window ends', () => {
-    const limiter = createRateLimitMiddleware({ limit: 1, windowMs: 60_000 }, () => now);
-    request(limiter, '1.1.1.1');
-    expect(request(limiter, '1.1.1.1').passed).toBe(false);
+  it('starts over when the window ends', async () => {
+    jest.useFakeTimers();
+    const middleware = limitOf(1);
+    await request(middleware, '1.1.1.1');
+    expect((await request(middleware, '1.1.1.1')).passed).toBe(false);
 
-    now = 60_000;
-    expect(request(limiter, '1.1.1.1').passed).toBe(true);
+    jest.advanceTimersByTime(61_000);
+    expect((await request(middleware, '1.1.1.1')).passed).toBe(true);
+  });
+
+  it('lets requests through if the limiter itself breaks', async () => {
+    const broken: RequestLimiter = { consume: () => Promise.reject(new Error('limiter crashed')) };
+
+    expect((await request(createRateLimitMiddleware(broken), '1.1.1.1')).passed).toBe(true);
   });
 });

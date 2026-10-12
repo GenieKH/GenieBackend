@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { SupabaseService } from '../../supabase/supabase.service';
 import { PropertyQueryService } from './property-query.service';
+import { PublicPropertyCache } from './public-property-cache.service';
 
 /** Image upload flow: presigned upload URLs, then confirm what was uploaded. */
 @Injectable()
@@ -10,6 +11,7 @@ export class PropertyImageService {
     private readonly prisma: PrismaService,
     private readonly query: PropertyQueryService,
     private readonly storage: SupabaseService,
+    private readonly publicCache: PublicPropertyCache,
   ) {}
 
   async createUploadUrls(userId: string, propertyId: string, fileNames: string[]) {
@@ -33,6 +35,28 @@ export class PropertyImageService {
       })),
     });
 
+    // New photos of a published listing should show up right away.
+    if (property.status === 'Active') {
+      await this.publicCache.changed(propertyId);
+    }
     return this.query.findOwned(userId, propertyId);
   }
+
+  /**
+   * Deletes the stored photos of every listing the user ever made, deleted
+   * ones included. Called before the account itself is deleted, while the
+   * database still says which files those are.
+   */
+  async removeAllOwnedBy(userId: string): Promise<void> {
+    const images = await this.prisma.propertyImage.findMany({
+      where: { property: { userId } },
+      select: { url: true },
+    });
+    await this.storage.removeUploadedFiles(images.map((image) => fileNameOf(image.url)));
+  }
+}
+
+/** The last part of a photo's public URL is the name it was stored under. */
+function fileNameOf(url: string): string {
+  return decodeURIComponent(url.slice(url.lastIndexOf('/') + 1));
 }

@@ -1,5 +1,12 @@
-import * as jwt from 'jsonwebtoken';
 import { Socket } from 'socket.io';
+import { RevokedSessions } from '../auth/revoked-sessions.service';
+import { ACCESS_TOKEN, verifySignedToken } from '../auth/signed-token';
+
+/** Who a socket belongs to. `sessionId` is null for a token from before sessions existed. */
+export interface SocketUser {
+  userId: string;
+  sessionId: string | null;
+}
 
 /** Bearer token from the `Authorization` header, or the socket.io `auth.token` field. */
 export function extractSocketToken(client: Socket): string | undefined {
@@ -11,16 +18,25 @@ export function extractSocketToken(client: Socket): string | undefined {
   return typeof authToken === 'string' ? authToken : undefined;
 }
 
-/** Verifies an access token and returns the user id it was issued to. Throws if invalid. */
-export function verifyAccessToken(token: string): string {
-  const publicKey = process.env.JWT_PUBLIC_KEY?.replace(/\\n/g, '\n') || '';
-  const payload = jwt.verify(token, publicKey, { algorithms: ['RS256'] });
-  if (typeof payload === 'string' || !payload.sub) {
-    throw new Error('Token has no subject');
+/** Verifies an access token and returns who it was issued to. Throws if invalid. */
+export function verifyAccessToken(token: string): SocketUser {
+  const payload = verifySignedToken(token, ACCESS_TOKEN);
+  return { userId: payload.sub, sessionId: typeof payload.sid === 'string' ? payload.sid : null };
+}
+
+/**
+ * Who the socket's token belongs to, written to `client.data`. Throws when
+ * there is no valid token or its device was signed out.
+ */
+export async function authenticateSocket(client: Socket, revoked: RevokedSessions): Promise<SocketUser> {
+  const token = extractSocketToken(client);
+  if (!token) throw new Error('No token provided');
+
+  const user = verifyAccessToken(token);
+  if (user.sessionId && (await revoked.has(user.sessionId))) {
+    throw new Error('This device was signed out');
   }
-  // Refresh tokens are signed with the same key and must not open a socket.
-  if (payload.typ !== 'access') {
-    throw new Error('Not an access token');
-  }
-  return payload.sub;
+  client.data.userId = user.userId;
+  client.data.sessionId = user.sessionId;
+  return user;
 }

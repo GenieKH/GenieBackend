@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs the whole backend in one container:
-#   Redis (cache) -> authentication :4001, user :4002 -> api-gateway :4000
+#   Redis (cache, rate limits, chat events between instances) -> authentication :4001, user :4002 -> api-gateway :4000
 # Only the gateway port is meant to be published. If any process dies the
 # container exits, so Docker's restart policy brings everything back up.
 
@@ -27,8 +27,11 @@ trap 'stop_all; exit 0' TERM INT
 case "${REDIS_URL:-}" in
   ""|*localhost*|*127.0.0.1*)
     export REDIS_URL="redis://127.0.0.1:6379"
+    # Capped, and the least recently used keys go first: it shares this
+    # container's memory with the services.
     start "redis" redis-server --bind 127.0.0.1 --port 6379 \
-      --save "" --appendonly no --dir /tmp
+      --save "" --appendonly no --dir /tmp \
+      --maxmemory 128mb --maxmemory-policy allkeys-lru
     i=0
     until redis-cli -h 127.0.0.1 ping >/dev/null 2>&1; do
       i=$((i + 1))

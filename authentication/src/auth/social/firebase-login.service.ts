@@ -3,8 +3,10 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { FirebaseService } from '../../firebase/firebase.service';
 import { BCRYPT_ROUNDS, DEFAULT_USER_ROLE } from '../auth.constants';
-import { RefreshTokenRepository } from '../sessions/refresh-token.repository';
-import { TokenIssuerService, TokenPair } from '../sessions/token-issuer.service';
+import { ClientContext } from '../sessions/client-context';
+import { SessionRevocationService } from '../sessions/session-revocation.service';
+import { SignInService } from '../sessions/sign-in.service';
+import { TokenPair } from '../sessions/token-issuer.service';
 import { UserPatch, UserRecord, UserRepository } from '../users/user.repository';
 
 interface FirebaseProfile {
@@ -16,6 +18,13 @@ interface FirebaseProfile {
   photoUrl: string | null;
 }
 
+/** Google serves every profile photo from this domain. */
+const GOOGLE_PHOTO_HOST = '.googleusercontent.com';
+
+function isGooglePhoto(url: string): boolean {
+  return URL.canParse(url) && new URL(url).hostname.endsWith(GOOGLE_PHOTO_HOST);
+}
+
 /** Logs a user in (or creates the account) from a verified Firebase ID token. */
 @Injectable()
 export class FirebaseLoginService {
@@ -24,19 +33,19 @@ export class FirebaseLoginService {
   constructor(
     @Inject(FirebaseService) private readonly firebase: FirebaseService,
     @Inject(UserRepository) private readonly users: UserRepository,
-    @Inject(TokenIssuerService) private readonly tokens: TokenIssuerService,
-    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(SessionRevocationService) private readonly sessions: SessionRevocationService,
+    @Inject(SignInService) private readonly signIn: SignInService,
   ) {}
 
-  async login(idToken: string): Promise<TokenPair> {
+  async login(idToken: string, client: ClientContext): Promise<TokenPair> {
     const profile = await this.readProfile(idToken);
 
     let user = await this.users.findByFirebaseUid(profile.uid);
     if (!user) user = await this.linkExistingAccount(profile);
     if (!user) user = await this.createAccount(profile);
 
-    user = await this.fillMissingProfile(user, profile);
-    return this.tokens.issue(user.id, user.role);
+    user = await this.syncProfile(user, profile);
+    return this.signIn.complete(user, client);
   }
 
   private async readProfile(idToken: string): Promise<FirebaseProfile> {
@@ -70,10 +79,10 @@ export class FirebaseLoginService {
     }
     if (!existing) return null;
 
-    const password_hash = await this.unusablePasswordHash();
-    await this.users.update(existing.id, { firebase_uid: profile.uid, password_hash });
-    await this.refreshTokens.revokeAllForUser(existing.id);
-    return { ...existing, firebase_uid: profile.uid, password_hash };
+    const patch = { firebase_uid: profile.uid, password_hash: await this.unusablePasswordHash(), has_password: false };
+    await this.users.update(existing.id, patch);
+    await this.sessions.endAllSessions(existing.id);
+    return { ...existing, ...patch };
   }
 
   private async createAccount(profile: FirebaseProfile): Promise<UserRecord> {
@@ -81,7 +90,7 @@ export class FirebaseLoginService {
       return await this.users.create({
         email: profile.email,
         phone: profile.phone,
-        username: profile.displayName,
+        name: profile.displayName,
         avatar_url: profile.photoUrl,
         password_hash: await this.unusablePasswordHash(),
         role: DEFAULT_USER_ROLE,
@@ -98,11 +107,20 @@ export class FirebaseLoginService {
     return bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
   }
 
-  /** Copies the Google name/photo onto the account when it has none. */
-  private async fillMissingProfile(user: UserRecord, profile: FirebaseProfile): Promise<UserRecord> {
+  /**
+   * Copies the Google name onto an account that has none, and keeps a picture
+   * that comes from Google ("Sync from Google account" in the app) the same as
+   * the Google account's. A picture the user uploaded, or chose not to have,
+   * is left alone: a new account gets the Google photo once, when it is created.
+   */
+  private async syncProfile(user: UserRecord, profile: FirebaseProfile): Promise<UserRecord> {
     const patch: UserPatch = {};
-    if (!user.username && profile.displayName) patch.username = profile.displayName;
-    if (!user.avatar_url && profile.photoUrl) patch.avatar_url = profile.photoUrl;
+    if (!user.name && profile.displayName) patch.name = profile.displayName;
+
+    const followsGoogle = !!user.avatar_url && isGooglePhoto(user.avatar_url);
+    if (followsGoogle && profile.photoUrl && profile.photoUrl !== user.avatar_url) {
+      patch.avatar_url = profile.photoUrl;
+    }
     if (Object.keys(patch).length === 0) return user;
 
     await this.users.update(user.id, patch);

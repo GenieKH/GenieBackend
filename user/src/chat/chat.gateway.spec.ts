@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { memoryRateLimits } from '../../test/fake-redis';
 import { ChatGateway } from './chat.gateway';
 import * as wsAuth from './ws-auth';
 
@@ -10,6 +11,14 @@ const LAST_SEEN = new Date('2026-01-01T10:00:00Z');
 describe('ChatGateway', () => {
   const chatService = { sendMessage: jest.fn() };
   const presenceService = { markLastSeen: jest.fn(), getLastSeen: jest.fn() };
+  /** Stands in for the list of signed-out sessions; `signOut` is what the gateway registered. */
+  const revokedSessions = {
+    has: jest.fn(),
+    signOut: (_sessionId: string): void => undefined,
+    onRevoked: (listener: (sessionId: string) => void) => {
+      revokedSessions.signOut = listener;
+    },
+  };
   let gateway: ChatGateway;
 
   /** Room name -> socket ids, as socket.io tracks them. */
@@ -54,9 +63,14 @@ describe('ChatGateway', () => {
     presenceService.markLastSeen.mockResolvedValue(LAST_SEEN);
     presenceService.getLastSeen.mockResolvedValue(LAST_SEEN);
 
-    gateway = new ChatGateway(chatService as never, presenceService as never);
+    revokedSessions.has.mockResolvedValue(false);
+
+    gateway = new ChatGateway(chatService as never, presenceService as never, revokedSessions as never, memoryRateLimits);
     (gateway as unknown as { server: unknown }).server = {
       adapter: { rooms },
+      in: (room: string) => ({
+        fetchSockets: () => Promise.resolve([...(rooms.get(room) ?? [])]),
+      }),
       to: (room: string) => ({
         emit: (event: string, data: unknown) => broadcasts.push([room, event, data]),
       }),
@@ -64,32 +78,30 @@ describe('ChatGateway', () => {
   });
 
   describe('handshake', () => {
-    function runHandshake(token: string | undefined) {
-      let middleware: (client: unknown, next: (error?: Error) => void) => void = () => undefined;
+    async function runHandshake(token: string | undefined) {
+      let middleware: (client: unknown, next: (error?: Error) => void) => Promise<void> = async () => undefined;
       gateway.afterInit({ use: (fn: typeof middleware) => (middleware = fn) } as never);
 
       const client = { handshake: { headers: {}, auth: { token } }, data: {} as { userId?: string } };
       const next = jest.fn();
-      middleware(client, next);
+      await middleware(client, next);
       return { client, next };
     }
 
-    it('accepts a valid token and remembers the user', () => {
-      jest.spyOn(wsAuth, 'verifyAccessToken').mockReturnValue(ALICE);
+    it('accepts a socket that authenticates', async () => {
+      const authenticate = jest.spyOn(wsAuth, 'authenticateSocket').mockResolvedValue({ userId: ALICE, sessionId: 'phone' });
 
-      const { client, next } = runHandshake('good-token');
+      const { client, next } = await runHandshake('good-token');
 
       expect(next).toHaveBeenCalledWith();
-      expect(client.data.userId).toBe(ALICE);
+      // Asked with the list of signed-out sessions, so such a device is turned away here.
+      expect(authenticate).toHaveBeenCalledWith(client, revokedSessions);
     });
 
-    it('rejects a missing or invalid token', () => {
-      jest.spyOn(wsAuth, 'verifyAccessToken').mockImplementation(() => {
-        throw new Error('jwt expired');
-      });
+    it('rejects one that does not: no token, an expired one, a signed-out device', async () => {
+      jest.spyOn(wsAuth, 'authenticateSocket').mockRejectedValue(new Error('This device was signed out'));
 
-      expect(runHandshake(undefined).next.mock.calls[0][0]).toEqual(new Error('unauthorized'));
-      expect(runHandshake('expired').next.mock.calls[0][0]).toEqual(new Error('unauthorized'));
+      expect((await runHandshake('good-token')).next.mock.calls[0][0]).toEqual(new Error('unauthorized'));
     });
   });
 
@@ -99,6 +111,21 @@ describe('ChatGateway', () => {
     await gateway.handleConnection(client as never);
 
     expect(client.join).toHaveBeenCalledWith(`user:${ALICE}`);
+  });
+
+  it('closes the connections of a device the moment it is signed out, and only those', async () => {
+    const closed: string[] = [];
+    gateway.afterInit({
+      use: () => undefined,
+      local: { in: (room: string) => ({ disconnectSockets: () => closed.push(room) }) },
+    } as never);
+    const phone = { ...socketFor(ALICE, 'phone'), data: { userId: ALICE, sessionId: 'session-phone' } };
+    await gateway.handleConnection(phone as never);
+    expect(phone.join).toHaveBeenCalledWith([`user:${ALICE}`, 'session:session-phone']);
+
+    revokedSessions.signOut('session-phone');
+
+    expect(closed).toEqual(['session:session-phone']);
   });
 
   describe('presence', () => {

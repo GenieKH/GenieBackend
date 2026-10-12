@@ -9,7 +9,9 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@genie/prisma-client';
 import { PrismaService } from '../prisma.service';
+import { JsonCache } from '../redis/json-cache.service';
 import { BackupSeal, MIN_BACKUP_SECRET_LENGTH } from './backup-seal';
+import { publicKeyCacheKey } from './public-key-cache';
 
 const ATTEMPTS_PER_ROUND = 5;
 const FIRST_LOCK_MS = 15 * 60 * 1000;
@@ -35,6 +37,19 @@ export interface NewKeyBackup {
   verifier: string;
 }
 
+/** What may accompany a new backup. */
+export interface SaveBackupOptions {
+  /** Proof of the PIN of the backup being replaced. Required when there is one... */
+  currentVerifier?: string;
+  /**
+   * ...unless the owner proved their account password instead: the way back
+   * in for someone who forgot the PIN. A locked backup does not stop it.
+   */
+  provenByPassword?: boolean;
+  /** Resetting keys: the new public key, stored together with its backup. */
+  identityPublicKey?: string;
+}
+
 interface BackupRow {
   blob: string;
   nonce: string;
@@ -55,10 +70,23 @@ export class ChatBackupService {
   private readonly logger = new Logger(ChatBackupService.name);
   private seal?: BackupSeal;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: JsonCache,
+  ) {}
 
-  async save(userId: string, backup: NewKeyBackup) {
+  /**
+   * Stores a backup, and with `identityPublicKey` the new public key it belongs
+   * to. A backup that already exists is only replaced for its own PIN or the
+   * account password: otherwise anyone holding an unlocked phone could swap in
+   * keys of their own and read the account's chats from then on.
+   */
+  async save(userId: string, backup: NewKeyBackup, options: SaveBackupOptions = {}) {
     const seal = this.requireSeal();
+    if (!options.provenByPassword) {
+      await this.requireCurrentPin(seal, userId, options.currentVerifier);
+    }
+
     const stored = {
       blob: seal.wrap(userId, backup.blob),
       salt: backup.salt,
@@ -73,9 +101,17 @@ export class ChatBackupService {
       // A backup from before PIN attempts were counted is replaced, not kept beside the new one.
       this.prisma.user.update({
         where: { id: userId },
-        data: { backupBlob: null, backupSalt: null, backupNonce: null },
+        data: {
+          backupBlob: null,
+          backupSalt: null,
+          backupNonce: null,
+          ...(options.identityPublicKey && { identityPublicKey: options.identityPublicKey }),
+        },
       }),
     ]);
+    if (options.identityPublicKey) {
+      await this.cache.delete(publicKeyCacheKey(userId));
+    }
     return { success: true };
   }
 
@@ -103,10 +139,29 @@ export class ChatBackupService {
     const seal = this.requireSeal();
     // The attempt is recorded inside the transaction, so the answer is thrown only after it commits.
     const outcome = await this.prisma.$transaction((tx) => this.attempt(tx, seal, userId, verifier));
+    if (outcome.kind === 'missing') {
+      throw new NotFoundException('No backup found');
+    }
+    const opened = this.openOrThrow(outcome);
+    return { backupBlob: seal.unwrap(userId, opened.blob), backupNonce: opened.nonce };
+  }
 
+  /** Passes when there is no backup yet, or `currentVerifier` proves its PIN. A wrong one is counted. */
+  private async requireCurrentPin(seal: BackupSeal, userId: string, currentVerifier?: string): Promise<void> {
+    const existing = await this.prisma.chatKeyBackup.findUnique({ where: { userId }, select: { userId: true } });
+    if (!existing) return;
+    if (!currentVerifier) {
+      throw new ForbiddenException('The current PIN is required to replace the chat key backup');
+    }
+
+    const outcome = await this.prisma.$transaction((tx) => this.attempt(tx, seal, userId, currentVerifier));
+    // Deleted in between: there is nothing left to protect.
+    if (outcome.kind !== 'missing') this.openOrThrow(outcome);
+  }
+
+  /** The stored key for a right PIN; `403` for a wrong one, `429` while locked. */
+  private openOrThrow(outcome: Exclude<UnlockOutcome, { kind: 'missing' }>) {
     switch (outcome.kind) {
-      case 'missing':
-        throw new NotFoundException('No backup found');
       case 'locked':
         throw new HttpException(
           {
@@ -123,7 +178,7 @@ export class ChatBackupService {
           attemptsLeft: outcome.attemptsLeft,
         });
       case 'open':
-        return { backupBlob: seal.unwrap(userId, outcome.blob), backupNonce: outcome.nonce };
+        return outcome;
     }
   }
 

@@ -1,43 +1,93 @@
+import { HttpException, HttpStatus, Injectable, Optional } from '@nestjs/common';
+import { RateLimiterMemory, RateLimiterRedis, RateLimiterRes } from 'rate-limiter-flexible';
+import { RedisConnection } from '../redis/redis-connection';
+
+interface Limiter {
+  consume(key: string): Promise<unknown>;
+  delete(key: string): Promise<boolean>;
+}
+
 /**
  * Allows a fixed number of attempts per key (an email, a phone number) in a
  * time window, so a password or a 6-digit code cannot be guessed by trying
- * them all. Counts are kept in memory: correct for the single auth instance
- * this project runs; move them to Redis before running several.
+ * them all.
  */
 export class AttemptLimiter {
-  /** Above this many tracked keys, expired ones are swept out. */
-  private static readonly SWEEP_THRESHOLD = 10_000;
-
-  private readonly windows = new Map<string, { count: number; resetAt: number }>();
-
-  constructor(
-    private readonly limit: number,
-    private readonly windowMs: number,
-    private readonly now: () => number = Date.now,
-  ) {}
+  constructor(private readonly limiter: Limiter) {}
 
   /** Records one attempt. Returns false once the key has none left in this window. */
-  tryConsume(key: string): boolean {
-    const now = this.now();
-    const window = this.windows.get(key);
-    if (!window || window.resetAt <= now) {
-      this.sweepIfLarge(now);
-      this.windows.set(key, { count: 1, resetAt: now + this.windowMs });
+  async tryConsume(key: string): Promise<boolean> {
+    try {
+      await this.limiter.consume(key);
       return true;
+    } catch (rejected) {
+      if (rejected instanceof RateLimiterRes) return false;
+      throw rejected;
     }
-    window.count += 1;
-    return window.count <= this.limit;
+  }
+
+  /** Records one attempt, or answers `429` once the key has none left. */
+  async consumeOrReject(key: string, retry = 'in 15 minutes'): Promise<void> {
+    if (!(await this.tryConsume(key))) {
+      throw new HttpException(`Too many attempts. Try again ${retry}.`, HttpStatus.TOO_MANY_REQUESTS);
+    }
   }
 
   /** Forgets a key, e.g. after a successful login. */
-  reset(key: string): void {
-    this.windows.delete(key);
+  async reset(key: string): Promise<void> {
+    await this.limiter.delete(key);
+  }
+}
+
+const FIFTEEN_MINUTES = 15 * 60;
+const ONE_DAY = 24 * 60 * 60;
+
+/**
+ * Every attempt limit of the auth endpoints. Counts live in Redis, so they are
+ * shared by all instances and a restart does not hand an attacker fresh tries.
+ * Without Redis (unreachable, or in tests) each instance counts in memory.
+ */
+@Injectable()
+export class AuthAttemptLimits {
+  /** Wrong passwords per account before login pauses: stops password guessing. */
+  readonly login: AttemptLimiter;
+
+  /** Reset emails per address: stops inbox flooding and endless fresh codes. */
+  readonly resetRequests: AttemptLimiter;
+
+  /** Guesses at a 6-digit reset code per address, across verify and reset. */
+  readonly otp: AttemptLimiter;
+
+  /**
+   * A 6-digit code has only a million values, so guesses are capped per day as
+   * well: at 5 per 15 minutes alone, a year of patient guessing would succeed
+   * about one time in six.
+   */
+  readonly otpPerDay: AttemptLimiter;
+
+  /** Wrong passwords per signed-in account when confirming a sensitive change. */
+  readonly identityProof: AttemptLimiter;
+
+  constructor(@Optional() private readonly redis?: RedisConnection) {
+    this.login = this.limit('login', 10, FIFTEEN_MINUTES);
+    this.resetRequests = this.limit('reset-request', 3, FIFTEEN_MINUTES);
+    this.otp = this.limit('otp', 5, FIFTEEN_MINUTES);
+    this.otpPerDay = this.limit('otp-day', 15, ONE_DAY);
+    this.identityProof = this.limit('identity-proof', 10, FIFTEEN_MINUTES);
   }
 
-  private sweepIfLarge(now: number): void {
-    if (this.windows.size < AttemptLimiter.SWEEP_THRESHOLD) return;
-    for (const [key, window] of this.windows) {
-      if (window.resetAt <= now) this.windows.delete(key);
-    }
+  private limit(name: string, points: number, duration: number): AttemptLimiter {
+    const inMemory = new RateLimiterMemory({ points, duration });
+    if (!this.redis) return new AttemptLimiter(inMemory);
+
+    return new AttemptLimiter(
+      new RateLimiterRedis({
+        storeClient: this.redis.client,
+        keyPrefix: `limit:auth:${name}`,
+        points,
+        duration,
+        insuranceLimiter: inMemory,
+      }),
+    );
   }
 }

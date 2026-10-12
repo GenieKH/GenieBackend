@@ -3,7 +3,9 @@ import * as bcrypt from 'bcrypt';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { BCRYPT_ROUNDS, DEFAULT_USER_ROLE } from '../auth.constants';
-import { TokenIssuerService, TokenPair } from '../sessions/token-issuer.service';
+import { ClientContext } from '../sessions/client-context';
+import { SignInService } from '../sessions/sign-in.service';
+import { TokenPair } from '../sessions/token-issuer.service';
 import { UserRecord, UserRepository } from '../users/user.repository';
 
 /** Email/phone + password registration and login. */
@@ -11,7 +13,7 @@ import { UserRecord, UserRepository } from '../users/user.repository';
 export class CredentialsAuthService {
   constructor(
     @Inject(UserRepository) private readonly users: UserRepository,
-    @Inject(TokenIssuerService) private readonly tokens: TokenIssuerService,
+    @Inject(SignInService) private readonly signIn: SignInService,
   ) {}
 
   async register(dto: RegisterDto): Promise<void> {
@@ -22,11 +24,12 @@ export class CredentialsAuthService {
       email: dto.email || null,
       phone: dto.phone || null,
       password_hash: passwordHash,
+      has_password: true,
       role: DEFAULT_USER_ROLE,
     });
   }
 
-  async login(dto: LoginDto): Promise<TokenPair> {
+  async login(dto: LoginDto, client: ClientContext): Promise<TokenPair> {
     const user = await this.findByIdentifier(dto);
 
     // Same error for "unknown user" and "wrong password" so accounts can't be probed.
@@ -35,7 +38,7 @@ export class CredentialsAuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.tokens.issue(user.id, user.role);
+    return this.signIn.complete(user, client);
   }
 
   private findByIdentifier(dto: LoginDto): Promise<UserRecord | null> {

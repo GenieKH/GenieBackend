@@ -1,11 +1,13 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ACCESS_TOKEN_TYPE } from './auth.constants';
+import { AuthenticatedUser } from './decorators/current-user.decorator';
+import { RevokedSessionStore } from './sessions/revoked-session.store';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  constructor(@Inject(RevokedSessionStore) private readonly revoked: RevokedSessionStore) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -15,10 +17,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   /** `payload` is the verified JWT; the result becomes `req.user`. */
-  validate(payload: { sub: string; role: string; typ?: string }) {
+  async validate(payload: { sub: string; role: string; typ?: string; sid?: string }): Promise<AuthenticatedUser> {
     if (payload.typ !== ACCESS_TOKEN_TYPE) {
       throw new UnauthorizedException('Not an access token');
     }
-    return { userId: payload.sub, role: payload.role };
+    // The gateway does not check tokens on `/auth` routes, so a signed-out device is refused here.
+    if (payload.sid && (await this.revoked.has(payload.sid))) {
+      throw new UnauthorizedException('This device was signed out');
+    }
+    return { userId: payload.sub, role: payload.role, sessionId: payload.sid ?? null };
   }
 }

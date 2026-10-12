@@ -51,6 +51,15 @@ export class PasswordResetOtpRepository {
     return (data?.[0] as PasswordResetOtpRecord | undefined) ?? null;
   }
 
+  /** Removes every code ever sent to the email: nothing of a deleted account is kept. */
+  async deleteAllFor(email: string): Promise<void> {
+    const { error } = await this.supabase.from('password_reset_otps').delete().eq('email', email);
+    if (error) {
+      this.logger.error(`Failed to delete OTPs: ${error.message}`);
+      throw new InternalServerErrorException('Failed to delete account');
+    }
+  }
+
   async markUsed(id: string): Promise<void> {
     await this.supabase.from('password_reset_otps').update({ used: true }).eq('id', id);
   }

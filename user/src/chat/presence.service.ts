@@ -13,9 +13,12 @@ export class PresenceService {
     return lastSeenAt;
   }
 
-  /** When the user was last connected, or null if never (or unknown user). */
+  /** When the user was last connected, or null if never (or an unknown or deactivated user). */
   async getLastSeen(userId: string): Promise<Date | null> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { lastSeenAt: true } });
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deactivatedAt: null },
+      select: { lastSeenAt: true },
+    });
     return user?.lastSeenAt ?? null;
   }
 }

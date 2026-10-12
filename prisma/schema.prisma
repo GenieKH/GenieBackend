@@ -19,8 +19,20 @@ model RefreshToken {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  /// The sign-in this token belongs to. Each refresh replaces the token and
+  /// copies the fields below to the new row, so the unrevoked row of a session
+  /// describes the device; its `createdAt` is when the device was last used.
+  sessionId        String?   @map("session_id") @db.Uuid
+  sessionStartedAt DateTime? @map("session_started_at") @db.Timestamptz(6)
+  deviceName       String?   @map("device_name")
+  platform         String?
+  ipAddress        String?   @map("ip_address")
+  /// Roughly where `ipAddress` is, e.g. "Phnom Penh, Cambodia".
+  location         String?
+
   @@index([expiresAt], map: "idx_refresh_tokens_expires_at")
   @@index([userId], map: "idx_refresh_tokens_user_id")
+  @@index([sessionId], map: "idx_refresh_tokens_session_id")
   @@map("refresh_tokens")
 }
 
@@ -31,12 +43,26 @@ model User {
   phone         String?              @unique
   email         String?              @unique
   passwordHash  String               @map("password_hash")
+  /// False while `passwordHash` is a value nobody can match: an account made
+  /// by Google sign-in whose owner has not chosen a password yet.
+  hasPassword   Boolean              @default(false) @map("has_password")
   role          String               @default("user")
   createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   firebaseUid   String?              @unique @map("firebase_uid")
   avatarUrl     String?              @map("avatar_url")
-  username      String?
-  payments      PaymentTransaction[]
+  /// The unique handle: lowercase letters, digits, "_" and ".". The database
+  /// gives every new account one. Null only on a row written by a backend
+  /// older than migration 7 that passed an explicit null.
+  username      String?              @unique @default(dbgenerated("('user_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 10))"))
+  /// What people see. Not unique.
+  name          String?
+  firstName     String?              @map("first_name")
+  lastName      String?              @map("last_name")
+  /// 'male', 'female' or 'other' (checked by the database).
+  sex           String?
+  /// Set while the owner has switched the account off; signing in clears it.
+  deactivatedAt DateTime?            @map("deactivated_at") @db.Timestamptz(6)
+  payments     PaymentTransaction[]
   properties    Property[]
   contacts      PropertyContact[]
   favorites     PropertyFavorite[]
@@ -151,7 +177,7 @@ model PropertyContact {
   message    String
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  user       User?    @relation(fields: [userId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([propertyId])
   @@index([userId])
@@ -225,8 +251,8 @@ model Message {
   readAt      DateTime? @map("read_at") @db.Timestamptz(6)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  sender    User @relation("MessagesSent", fields: [senderId], references: [id])
-  recipient User @relation("MessagesReceived", fields: [recipientId], references: [id])
+  sender    User @relation("MessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User @relation("MessagesReceived", fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@index([recipientId, createdAt])
   @@index([recipientId, readAt])

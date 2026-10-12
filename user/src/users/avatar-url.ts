@@ -1,20 +1,19 @@
 const GOOGLE_PHOTO_HOST = '.googleusercontent.com';
 
 /**
+ * True for a profile photo served by Google (what Google sign-in reports).
+ *
  * Every app that shows a user loads their avatar, so an avatar on a server of
  * the user's choosing would tell that server who is looking and from where.
- * Only our own storage and Google's profile photos (from Google sign-in) are
- * accepted.
+ * A picture is therefore either uploaded to our own storage (`AvatarService`)
+ * or one of these.
  */
-export function isAllowedAvatarUrl(url: string, storageUrl = process.env.SUPABASE_URL): boolean {
-  let avatar: URL;
+export function isGooglePhotoUrl(url: string): boolean {
+  let photo: URL;
   try {
-    avatar = new URL(url);
+    photo = new URL(url);
   } catch {
     return false;
   }
-  if (avatar.protocol !== 'https:') return false;
-
-  if (avatar.hostname.endsWith(GOOGLE_PHOTO_HOST)) return true;
-  return !!storageUrl && URL.canParse(storageUrl) && avatar.host === new URL(storageUrl).host;
+  return photo.protocol === 'https:' && photo.hostname.endsWith(GOOGLE_PHOTO_HOST);
 }

@@ -42,7 +42,10 @@ export class ChatAttachmentService implements OnModuleInit {
     if (recipientId === senderId) {
       throw new BadRequestException('You cannot message yourself');
     }
-    const recipient = await this.prisma.user.findUnique({ where: { id: recipientId }, select: { id: true } });
+    const recipient = await this.prisma.user.findFirst({
+      where: { id: recipientId, deactivatedAt: null },
+      select: { id: true },
+    });
     if (!recipient) {
       throw new NotFoundException('Recipient not found');
     }
@@ -65,6 +68,24 @@ export class ChatAttachmentService implements OnModuleInit {
       throw new NotFoundException('File not found');
     }
     return { url };
+  }
+
+  /**
+   * Deletes every file of the user's conversations: what they sent, and what
+   * others sent to them. Called before the account itself is deleted, while
+   * its messages still say who those others are.
+   */
+  async removeAllOf(userId: string): Promise<void> {
+    const senders = await this.prisma.message.findMany({
+      where: { recipientId: userId },
+      select: { senderId: true },
+      distinct: ['senderId'],
+    });
+
+    await this.storage.removeFolder(BUCKET, userId);
+    for (const { senderId } of senders) {
+      await this.storage.removeFolder(BUCKET, `${senderId}/${userId}`);
+    }
   }
 
   private pathOf(location: AttachmentLocation): string {

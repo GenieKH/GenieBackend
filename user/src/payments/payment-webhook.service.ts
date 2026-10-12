@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { PublicPropertyCache } from '../properties/services/public-property-cache.service';
 import { AbaPaywayProvider } from './aba-payway.provider';
 import { PaymentWebhookDto } from './dto/payment.dto';
 import { PaymentStatus } from './payment-status';
@@ -19,6 +20,7 @@ export class PaymentWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly provider: AbaPaywayProvider,
+    private readonly publicCache: PublicPropertyCache,
   ) {}
 
   async handle(dto: PaymentWebhookDto, signature: string): Promise<WebhookResult> {
@@ -41,9 +43,16 @@ export class PaymentWebhookService {
       return { success: transaction.status === PaymentStatus.Success, alreadyProcessed: true };
     }
 
-    return dto.status === 'SUCCESS'
-      ? this.settle(transaction.id, transaction.propertyId, PaymentStatus.Success, 'Active')
-      : this.settle(transaction.id, transaction.propertyId, PaymentStatus.Failed, 'Draft');
+    if (dto.status !== 'SUCCESS') {
+      return this.settle(transaction.id, transaction.propertyId, PaymentStatus.Failed, 'Draft');
+    }
+
+    const result = await this.settle(transaction.id, transaction.propertyId, PaymentStatus.Success, 'Active');
+    // The listing just went live: let the map show it without waiting for the cache to expire.
+    if (result.success) {
+      await this.publicCache.changed(transaction.propertyId);
+    }
+    return result;
   }
 
   /**

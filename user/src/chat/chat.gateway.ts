@@ -11,12 +11,13 @@ import {
 } from '@nestjs/websockets';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
-import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { Namespace, Socket } from 'socket.io';
+import { RevokedSessions } from '../auth/revoked-sessions.service';
+import { RateLimit, RateLimits } from '../redis/rate-limits.service';
 import { ChatService } from './chat.service';
 import { PresenceTargetDto, SendMessageDto } from './dto/chat.dto';
 import { PresenceService } from './presence.service';
-import { extractSocketToken, verifyAccessToken } from './ws-auth';
+import { authenticateSocket } from './ws-auth';
 import { WsJwtGuard } from './ws-jwt.guard';
 
 /** Every device a user is signed in on joins this room. */
@@ -24,10 +25,18 @@ function userRoom(userId: string): string {
   return `user:${userId}`;
 }
 
+/** The connections of one signed-in device, so they can be closed when it is signed out. */
+function sessionRoom(sessionId: string): string {
+  return `session:${sessionId}`;
+}
+
 /** Sockets that want to know when this user comes online or goes offline. */
 function presenceRoom(userId: string): string {
   return `presence:${userId}`;
 }
+
+/** Asking the other instances must never hold up a connection for long. */
+const PRESENCE_TIMEOUT_MS = 1000;
 
 /** Reads a socket payload into a DTO, or returns null if it is not valid. */
 function parsePayload<T extends object>(dto: new () => T, payload: unknown): T | null {
@@ -49,34 +58,43 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   private readonly logger = new Logger(ChatGateway.name);
 
   /** Stops one account from flooding others: 30 messages per 10 seconds. */
-  private readonly sendRateLimiter = new RateLimiterMemory({ points: 30, duration: 10 });
+  private readonly sendRateLimiter: RateLimit;
 
   constructor(
     private readonly chatService: ChatService,
     private readonly presenceService: PresenceService,
-  ) {}
+    private readonly revokedSessions: RevokedSessions,
+    rateLimits: RateLimits,
+  ) {
+    this.sendRateLimiter = rateLimits.create('chat-send', 30, 10);
+  }
 
   /** Rejects the handshake itself, so an unauthenticated socket never connects. */
   afterInit(server: Namespace) {
-    server.use((client, next) => {
+    server.use(async (client, next) => {
       try {
-        const token = extractSocketToken(client);
-        if (!token) throw new Error('No token provided');
-
-        client.data.userId = verifyAccessToken(token);
+        await authenticateSocket(client, this.revokedSessions);
         next();
       } catch (error) {
         this.logger.warn(`Connection rejected: ${(error as Error).message}`);
         next(new Error('unauthorized'));
       }
     });
+
+    // A device that is signed out stops receiving messages at once, not when
+    // its token expires. Every instance hears this and closes its own sockets.
+    this.revokedSessions.onRevoked((sessionId) => {
+      server.local.in(sessionRoom(sessionId)).disconnectSockets(true);
+    });
   }
 
   async handleConnection(client: Socket) {
     const userId: string = client.data.userId;
-    const cameOnline = !this.isOnline(userId);
+    const sessionId: string | null = client.data.sessionId ?? null;
+    // Joined first: receiving messages must not wait for the presence check below.
+    await client.join(sessionId ? [userRoom(userId), sessionRoom(sessionId)] : userRoom(userId));
+    const cameOnline = (await this.connectedDevices(userId)) <= 1;
 
-    await client.join(userRoom(userId));
     this.logger.log(`Connected: user ${userId} (socket ${client.id})`);
     if (cameOnline) {
       this.server.to(presenceRoom(userId)).emit('presence', { userId, online: true, lastSeenAt: null });
@@ -88,7 +106,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId: string | undefined = client.data.userId;
     if (!userId) return;
     this.logger.log(`Disconnected: user ${userId} (socket ${client.id})`);
-    if (this.isOnline(userId)) return;
+    if ((await this.connectedDevices(userId)) > 0) return;
 
     try {
       const lastSeenAt = await this.presenceService.markLastSeen(userId);
@@ -140,7 +158,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
 
     await client.join(presenceRoom(dto.userId));
-    const online = this.isOnline(dto.userId);
+    const online = (await this.connectedDevices(dto.userId)) > 0;
     return { status: 'ok', presence: { userId: dto.userId, online, lastSeenAt: await this.lastSeenOf(dto.userId, online) } };
   }
 
@@ -165,7 +183,20 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     return { status: 'ok' };
   }
 
-  private isOnline(userId: string): boolean {
-    return (this.server.adapter.rooms.get(userRoom(userId))?.size ?? 0) > 0;
+  /** How many devices the user has connected, counted across every instance of this service. */
+  private async connectedDevices(userId: string): Promise<number> {
+    let timer: NodeJS.Timeout | undefined;
+    const tooSlow = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('no answer from the other instances')), PRESENCE_TIMEOUT_MS);
+    });
+    try {
+      return (await Promise.race([this.server.in(userRoom(userId)).fetchSockets(), tooSlow])).length;
+    } catch (error) {
+      // Redis could not relay the question: count the devices on this instance.
+      this.logger.warn(`Presence counted on this instance only: ${(error as Error).message}`);
+      return this.server.adapter.rooms.get(userRoom(userId))?.size ?? 0;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

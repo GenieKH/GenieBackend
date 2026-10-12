@@ -10,14 +10,14 @@ describe('PasswordResetService', () => {
     findLatestActive: jest.fn(),
     markUsed: jest.fn(),
   };
-  const refreshTokens = { revokeAllForUser: jest.fn() };
+  const sessions = { endAllSessions: jest.fn() };
   const mailer = { sendOtp: jest.fn() };
   let service: PasswordResetService;
 
   beforeEach(() => {
     jest.resetAllMocks();
     mailer.sendOtp.mockResolvedValue(undefined);
-    service = new PasswordResetService(users as never, otps as never, refreshTokens as never, mailer as never);
+    service = new PasswordResetService(users as never, otps as never, sessions as never, mailer as never);
   });
 
   describe('requestReset', () => {
@@ -79,8 +79,10 @@ describe('PasswordResetService', () => {
 
       const patch = users.update.mock.calls[0][1];
       expect(await bcrypt.compare('new-password', patch.password_hash)).toBe(true);
+      // Also how a Google account ends up with a password of its own.
+      expect(patch.has_password).toBe(true);
       expect(otps.markUsed).toHaveBeenCalledWith('o1');
-      expect(refreshTokens.revokeAllForUser).toHaveBeenCalledWith('u1');
+      expect(sessions.endAllSessions).toHaveBeenCalledWith('u1');
     });
 
     it('does not touch the password when the code is wrong', async () => {

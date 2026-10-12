@@ -1,13 +1,26 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { RedisConnection } from '../redis/redis-connection';
+import { AccountController } from './account/account.controller';
+import { AccountService } from './account/account.service';
+import { IdentityProofService } from './account/identity-proof.service';
+import { PasswordProofService } from './account/password-proof.service';
+import { UserContentClient } from './account/user-content.client';
+import { AuthAttemptLimits } from './attempt-limiter';
 import { AuthController } from './auth.controller';
 import { CredentialsAuthService } from './credentials/credentials-auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { EmailDeliveryService } from './mail/email-delivery.service';
 import { OtpEmailService } from './mail/otp-email.service';
 import { PasswordResetOtpRepository } from './password-reset/password-reset-otp.repository';
 import { PasswordResetService } from './password-reset/password-reset.service';
+import { IpLocationProvider, IpWhoIsLocationProvider } from './sessions/ip-location.provider';
 import { RefreshTokenRepository } from './sessions/refresh-token.repository';
+import { RevokedSessionStore } from './sessions/revoked-session.store';
+import { SessionRevocationService } from './sessions/session-revocation.service';
 import { SessionService } from './sessions/session.service';
+import { SessionsController } from './sessions/sessions.controller';
+import { SignInService } from './sessions/sign-in.service';
 import { TokenIssuerService } from './sessions/token-issuer.service';
 import { FirebaseLoginService } from './social/firebase-login.service';
 import { UserRepository } from './users/user.repository';
@@ -21,17 +34,28 @@ import { UserRepository } from './users/user.repository';
       verifyOptions: { algorithms: ['RS256'] },
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, SessionsController, AccountController],
   providers: [
+    RedisConnection,
+    AuthAttemptLimits,
+    RevokedSessionStore,
     JwtStrategy,
     UserRepository,
     RefreshTokenRepository,
     PasswordResetOtpRepository,
+    { provide: IpLocationProvider, useClass: IpWhoIsLocationProvider },
     TokenIssuerService,
+    SessionRevocationService,
     SessionService,
+    IdentityProofService,
+    PasswordProofService,
+    UserContentClient,
+    AccountService,
+    SignInService,
     CredentialsAuthService,
     FirebaseLoginService,
     PasswordResetService,
+    EmailDeliveryService,
     OtpEmailService,
   ],
 })

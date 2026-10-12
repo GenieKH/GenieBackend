@@ -20,10 +20,16 @@ const MAX_PAGE_SIZE = 100;
 const MAX_BACKUP_FIELD_LENGTH = 512;
 /** Exactly 32 bytes as base64. */
 const BACKUP_VERIFIER = /^[A-Za-z0-9+/]{43}=$/;
+/** A signed token is a few hundred characters. */
+const MAX_PROOF_TOKEN_LENGTH = 2048;
+
+/** A 32-byte public key is 44 characters. */
+const MAX_PUBLIC_KEY_LENGTH = 128;
 
 export class SetPublicKeyDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(MAX_PUBLIC_KEY_LENGTH)
   identityPublicKey: string;
 }
 
@@ -47,6 +53,25 @@ export class SetBackupDto {
   /** Made from the PIN on the device. Sent again later to prove the PIN. */
   @Matches(BACKUP_VERIFIER)
   backupVerifier: string;
+
+  /** Proof of the PIN of the backup this one replaces. Required when there is one... */
+  @IsOptional()
+  @Matches(BACKUP_VERIFIER)
+  currentBackupVerifier?: string;
+
+  /** ...or, for a forgotten PIN, the token from `POST /auth/account/password-proof`. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_PROOF_TOKEN_LENGTH)
+  passwordProofToken?: string;
+}
+
+/** "Reset keys": a new key pair and its backup, replacing the old ones together. */
+export class ResetKeysDto extends SetBackupDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_PUBLIC_KEY_LENGTH)
+  identityPublicKey: string;
 }
 
 /** One try at opening the backup. */

@@ -28,10 +28,8 @@
   },
   "homepage": "https://github.com/GenieKH/GenieBackend#readme",
   "dependencies": {
-    "@nestjs/cache-manager": "^3.0.0",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
-    "cache-manager": "^6.4.0",
     "pg": "^8.23.0",
     "prisma": "^7.9.1"
   }

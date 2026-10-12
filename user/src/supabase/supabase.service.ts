@@ -1,6 +1,11 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+/** The most entries storage lists or deletes in one call. */
+const LIST_PAGE_SIZE = 1000;
+/** Far more than any account has; stops a loop if storage keeps listing a file it will not delete. */
+const MAX_LIST_PAGES = 100;
+
 @Injectable()
 export class SupabaseService implements OnModuleInit {
   private supabase: SupabaseClient;
@@ -58,6 +63,43 @@ export class SupabaseService implements OnModuleInit {
       throw error;
     }
     return data.signedUrl;
+  }
+
+  /** The address of a file in a public bucket. */
+  publicUrl(bucket: string, path: string): string {
+    return this.supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+  }
+
+  /** Deletes files of a bucket. Ones that do not exist are ignored. */
+  async removeFiles(bucket: string, paths: string[]): Promise<void> {
+    for (let start = 0; start < paths.length; start += LIST_PAGE_SIZE) {
+      const { error } = await this.supabase.storage.from(bucket).remove(paths.slice(start, start + LIST_PAGE_SIZE));
+      if (error) throw error;
+    }
+  }
+
+  /** Deletes every file under `folder`, at any depth. */
+  async removeFolder(bucket: string, folder: string): Promise<void> {
+    // Storage lists one level at a time and at most a page of it, so keep
+    // going until the level is empty. A folder disappears with its last file.
+    for (let page = 0; page < MAX_LIST_PAGES; page++) {
+      const { data, error } = await this.supabase.storage.from(bucket).list(folder, { limit: LIST_PAGE_SIZE });
+      if (error) throw error;
+      if (!data || data.length === 0) return;
+
+      // A folder is listed without an id.
+      const files = data.filter((entry) => entry.id !== null).map((entry) => `${folder}/${entry.name}`);
+      for (const subfolder of data.filter((entry) => entry.id === null)) {
+        await this.removeFolder(bucket, `${folder}/${subfolder.name}`);
+      }
+      await this.removeFiles(bucket, files);
+    }
+    throw new Error(`${bucket}/${folder} still has files after ${MAX_LIST_PAGES} passes`);
+  }
+
+  /** Deletes listing photos by the names `createPresignedUrls` gave them. */
+  removeUploadedFiles(fileNames: string[]): Promise<void> {
+    return this.removeFiles(this.bucketName, fileNames.filter((fileName) => this.isUploadedFileName(fileName)));
   }
 
   /**

@@ -1,9 +1,10 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { fakeCache } from '../../test/fake-redis';
 import { ChatService } from './chat.service';
 
 describe('ChatService', () => {
   const messageTable = { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), groupBy: jest.fn() };
-  const userTable = { findUnique: jest.fn(), findMany: jest.fn() };
+  const userTable = { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() };
   const prisma = { message: messageTable, user: userTable, $queryRaw: jest.fn() };
   let service: ChatService;
 
@@ -23,8 +24,62 @@ describe('ChatService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     userTable.findUnique.mockResolvedValue({ id: 'bob' });
+    // How another person is looked up: only if their account is not deactivated.
+    userTable.findFirst.mockResolvedValue({ id: 'bob' });
     messageTable.create.mockResolvedValue(stored);
-    service = new ChatService(prisma as never);
+    service = new ChatService(prisma as never, fakeCache());
+  });
+
+  describe('public keys', () => {
+    it('reads a key from the database once, then from the cache', async () => {
+      userTable.findFirst.mockResolvedValue({ identityPublicKey: 'key-1' });
+
+      expect(await service.getPublicKey('bob')).toEqual({ identityPublicKey: 'key-1' });
+      expect(await service.getPublicKey('bob')).toEqual({ identityPublicKey: 'key-1' });
+      expect(userTable.findFirst).toHaveBeenCalledTimes(1);
+    });
+
+    it('serves the new key immediately after the owner replaces it', async () => {
+      userTable.update.mockResolvedValue({});
+      userTable.findFirst.mockResolvedValue({ identityPublicKey: 'key-1' });
+      await service.getPublicKey('bob');
+
+      await service.setPublicKey('bob', 'key-2');
+      userTable.findFirst.mockResolvedValue({ identityPublicKey: 'key-2' });
+
+      expect(await service.getPublicKey('bob')).toEqual({ identityPublicKey: 'key-2' });
+    });
+
+    it('accepts the first key, and the same key again', async () => {
+      userTable.findUnique.mockResolvedValue({ identityPublicKey: null, keyBackup: null });
+      await expect(service.setPublicKey('bob', 'key-1')).resolves.toEqual({ success: true });
+
+      userTable.findUnique.mockResolvedValue({ identityPublicKey: 'key-1', keyBackup: { userId: 'bob' } });
+      await expect(service.setPublicKey('bob', 'key-1')).resolves.toEqual({ success: true });
+      expect(userTable.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses another key once a PIN protects the account, so a stolen session cannot swap it', async () => {
+      userTable.findUnique.mockResolvedValue({ identityPublicKey: 'key-1', keyBackup: { userId: 'bob' } });
+
+      await expect(service.setPublicKey('bob', 'attacker-key')).rejects.toThrow(ConflictException);
+      expect(userTable.update).not.toHaveBeenCalled();
+    });
+
+    it('has no key to give for a deactivated account', async () => {
+      userTable.findFirst.mockResolvedValue(null);
+
+      await expect(service.getPublicKey('bob')).rejects.toThrow(NotFoundException);
+      expect(userTable.findFirst.mock.calls[0][0].where).toEqual({ id: 'bob', deactivatedAt: null });
+    });
+
+    it('does not remember that a user had no key', async () => {
+      userTable.findFirst.mockResolvedValue({ identityPublicKey: null });
+      await expect(service.getPublicKey('bob')).rejects.toThrow(NotFoundException);
+
+      userTable.findFirst.mockResolvedValue({ identityPublicKey: 'key-1' });
+      expect(await service.getPublicKey('bob')).toEqual({ identityPublicKey: 'key-1' });
+    });
   });
 
   describe('sendMessage', () => {
@@ -59,8 +114,8 @@ describe('ChatService', () => {
       await expect(service.sendMessage('alice', newMessage)).rejects.toThrow(ConflictException);
     });
 
-    it('rejects an unknown recipient without storing anything', async () => {
-      userTable.findUnique.mockResolvedValue(null);
+    it('rejects an unknown or deactivated recipient without storing anything', async () => {
+      userTable.findFirst.mockResolvedValue(null);
 
       await expect(service.sendMessage('alice', newMessage)).rejects.toThrow(NotFoundException);
       expect(messageTable.create).not.toHaveBeenCalled();
@@ -119,6 +174,18 @@ describe('ChatService', () => {
       expect(messageTable.groupBy.mock.calls[0][0].where).toEqual({ recipientId: 'alice', readAt: null });
     });
 
+    it('leaves out a conversation with a deactivated account, unread messages included', async () => {
+      prisma.$queryRaw.mockResolvedValue([row('bob', '2026-01-01T10:00:00Z'), row('carol', '2026-01-02T10:00:00Z')]);
+      // Carol deactivated her account, so the query for visible partners does not return her.
+      userTable.findMany.mockResolvedValue([{ id: 'bob', name: 'Bob', username: 'bob', email: null, phone: null, avatarUrl: null }]);
+      messageTable.groupBy.mockResolvedValue([{ senderId: 'carol', _count: { _all: 2 } }]);
+
+      const conversations = await service.getConversations('alice');
+
+      expect(conversations.map((conversation) => conversation.participantId)).toEqual(['bob']);
+      expect(userTable.findMany.mock.calls[0][0].where).toMatchObject({ deactivatedAt: null });
+    });
+
     it('asks for nothing more when the user has no messages', async () => {
       prisma.$queryRaw.mockResolvedValue([]);
 
@@ -135,6 +202,13 @@ describe('ChatService', () => {
 
       expect(page.map((m) => m.id)).toEqual(['oldest', 'middle', 'newest']);
       expect(messageTable.findMany.mock.calls[0][0]).toMatchObject({ orderBy: { createdAt: 'desc' }, take: 3 });
+    });
+
+    it('shows nothing of a conversation with a deactivated account', async () => {
+      userTable.findFirst.mockResolvedValue(null);
+
+      expect(await service.getMessagesWith('alice', 'bob', 50)).toEqual([]);
+      expect(messageTable.findMany).not.toHaveBeenCalled();
     });
 
     it('only reads the conversation between the two users', async () => {

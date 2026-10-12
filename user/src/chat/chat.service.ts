@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { JsonCache } from '../redis/json-cache.service';
+import { PUBLIC_KEY_TTL_SECONDS, publicKeyCacheKey } from './public-key-cache';
 
 export interface Conversation {
   participantId: string;
@@ -30,37 +32,70 @@ export interface NewMessage {
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
-const DISPLAY_FIELDS = { username: true, email: true, phone: true, avatarUrl: true } as const;
+/** A deactivated account is hidden from everyone else, as if it did not exist. */
+const VISIBLE = { deactivatedAt: null } as const;
 
-type DisplayFields = { username: string | null; email: string | null; phone: string | null };
+const DISPLAY_FIELDS = { name: true, username: true, email: true, phone: true, avatarUrl: true } as const;
 
+type DisplayFields = {
+  name: string | null;
+  username: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+/** The name a user chose, else their handle. */
 function displayName(user: DisplayFields | null): string {
-  return user?.username || user?.email || user?.phone || 'Property Owner';
+  return user?.name || user?.username || user?.email || user?.phone || 'Property Owner';
 }
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: JsonCache,
+  ) {}
 
+  /**
+   * Publishes a device's public key. Once the account has a PIN-protected
+   * backup its key is fixed: a different one is refused here and can only come
+   * in through "reset keys" with the current PIN (`ChatBackupService.save`).
+   */
   async setPublicKey(userId: string, publicKey: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { identityPublicKey: true, keyBackup: { select: { userId: true } } },
+    });
+    if (user?.identityPublicKey === publicKey) return { success: true };
+    if (user?.identityPublicKey && user.keyBackup) {
+      throw new ConflictException('This account already has chat keys. Replacing them needs the backup PIN.');
+    }
+
     await this.prisma.user.update({
       where: { id: userId },
       data: { identityPublicKey: publicKey },
     });
+    await this.cache.delete(publicKeyCacheKey(userId));
     return { success: true };
   }
 
-  async getPublicKey(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { identityPublicKey: true },
+  /** Fetched every time a conversation opens. */
+  getPublicKey(userId: string) {
+    return this.cache.remember(publicKeyCacheKey(userId), PUBLIC_KEY_TTL_SECONDS, async () => {
+      const user = await this.prisma.user.findFirst({
+        where: { id: userId, ...VISIBLE },
+        select: { identityPublicKey: true },
+      });
+      if (!user || !user.identityPublicKey) {
+        throw new NotFoundException('Public key not found for this user');
+      }
+      return { identityPublicKey: user.identityPublicKey };
     });
+  }
 
-    if (!user || !user.identityPublicKey) {
-      throw new NotFoundException('Public key not found for this user');
-    }
-
-    return { identityPublicKey: user.identityPublicKey };
+  /** Called when the account is hidden, shown again or deleted. */
+  async forgetPublicKey(userId: string): Promise<void> {
+    await this.cache.delete(publicKeyCacheKey(userId));
   }
 
   /**
@@ -72,11 +107,7 @@ export class ChatService {
       throw new BadRequestException('You cannot message yourself');
     }
 
-    const recipient = await this.prisma.user.findUnique({
-      where: { id: message.recipientId },
-      select: { id: true },
-    });
-    if (!recipient) {
+    if (!(await this.isVisible(message.recipientId))) {
       throw new NotFoundException('Recipient not found');
     }
 
@@ -114,7 +145,8 @@ export class ChatService {
   /**
    * One row per person the user has exchanged messages with, most recent
    * first. Only the last message of each conversation leaves the database.
-   * Messages to oneself (possible in old versions) are not a conversation.
+   * Messages to oneself (possible in old versions) are not a conversation,
+   * and a conversation with a deactivated account is not listed.
    */
   async getConversations(userId: string): Promise<Conversation[]> {
     const lastMessages = await this.prisma.$queryRaw<LastMessageRow[]>`
@@ -138,7 +170,7 @@ export class ChatService {
 
     const [partners, unread] = await Promise.all([
       this.prisma.user.findMany({
-        where: { id: { in: lastMessages.map((row) => row.partnerId) } },
+        where: { id: { in: lastMessages.map((row) => row.partnerId) }, ...VISIBLE },
         select: { id: true, ...DISPLAY_FIELDS },
       }),
       this.prisma.message.groupBy({
@@ -151,13 +183,14 @@ export class ChatService {
     const unreadBySender = new Map(unread.map((group) => [group.senderId, group._count._all]));
 
     return lastMessages
+      .filter((row) => partnerById.has(row.partnerId))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(({ partnerId, ...lastMessage }) => {
-        const partner = partnerById.get(partnerId) ?? null;
+        const partner = partnerById.get(partnerId)!;
         return {
           participantId: partnerId,
           participantName: displayName(partner),
-          participantAvatar: partner?.avatarUrl || null,
+          participantAvatar: partner.avatarUrl || null,
           lastMessage,
           unreadCount: unreadBySender.get(partnerId) ?? 0,
         };
@@ -169,6 +202,8 @@ export class ChatService {
    * given), returned oldest first so they can be shown top to bottom.
    */
   async getMessagesWith(userId: string, participantId: string, limit = 50, before?: string) {
+    if (!(await this.isVisible(participantId))) return [];
+
     const newestFirst = await this.prisma.message.findMany({
       where: {
         OR: [
@@ -181,6 +216,11 @@ export class ChatService {
       take: limit,
     });
     return newestFirst.reverse();
+  }
+
+  private async isVisible(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, ...VISIBLE }, select: { id: true } });
+    return user !== null;
   }
 
   async markAsRead(userId: string, participantId: string) {

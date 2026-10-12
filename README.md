@@ -24,15 +24,17 @@ Flutter app ──► api-gateway ──► authentication   (/auth/*)
 authentication/src/auth/
   credentials/     register + login with password
   social/          Google login via Firebase
-  sessions/        token issuing, refresh rotation, logout, session list
+  sessions/        token issuing, refresh rotation, sign-in, sign-out (immediate), logged-in devices
+  account/         password, deactivate, delete (each asks for proof of identity)
   password-reset/  forgot / verify / reset
-  mail/            delivering the reset code
+  mail/            sending email: the reset code, the new sign-in alert
   users/           the only place that touches the `users` table
 user/src/
   properties/      services/ (query, lifecycle, images, engagement, guest sessions)
   payments/        checkout, webhook, provider adapter
   chat/            REST, WebSocket gateway, E2EE message storage
-  users/           profile
+  users/           profile, profile picture, hiding and erasing an account's content
+  auth/            who is calling: user id, signed tokens, signed-out sessions
 ```
 
 Rule of thumb: controllers only validate and delegate, services hold business rules,
@@ -61,6 +63,38 @@ Only port 4000 is published. If any process dies the container exits and Docker 
 (`restart: unless-stopped`), so everything comes back whenever Docker Desktop opens.
 To use an external Redis instead, set `REDIS_URL` in `.env` to a non-local address.
 
+### Redis: cache, limits, chat between instances
+
+Redis never holds the only copy of anything. If it is unreachable the services keep working:
+reads go to the database, limits are counted per instance in memory, chat still delivers between
+sockets on the same instance.
+
+| Cached | Expires | Cleared at once when |
+|---|---|---|
+| Map search (`/public/properties/map`), per ~1 km grid box | 30 s | any published listing is created, edited, published, hidden, sold, paid for, or gets photos |
+| Listing page (`/public/properties/:id`) | 60 s | that listing changes |
+| Chat public key (`/chat/keys/:userId`) | 10 min | that user publishes a new key, or their account is hidden, shown again or deleted |
+| Public profile (`/users/:id`) | 2 min | that user edits their profile or picture, or their account is hidden, shown again or deleted |
+
+Redis also holds the sessions that were signed out (`sessions:revoked:<id>`, 15 minutes each, and
+a `sessions:revoked` channel), see "Sessions, password and account".
+
+Only data that is the same for every viewer is cached; `isVisited` is looked up per user. Map
+searches are widened to the grid box, so the answer can contain listings just outside the viewport.
+
+Also in Redis: the gateway's 300 requests/minute per address, login and reset-code attempt limits,
+chat send / upload / backup-lookup limits, and the Socket.IO adapter that relays chat events and
+presence between instances.
+
+### Running more than one instance
+
+1. Point every instance at the same external Redis (`REDIS_URL`). The Redis inside the container
+   is private to that container.
+2. Keep instances x `DATABASE_POOL_MAX` (default 10) under the database's connection limit.
+3. Clients must connect to chat with the `websocket` transport only (the app does); long-polling
+   would need sticky sessions.
+4. Every service closes its connections on `SIGTERM`, so instances can be replaced one at a time.
+
 Check it: `curl http://localhost:4000/health` should return `{"status":"ok"}`.
 
 ## Tests
@@ -78,6 +112,17 @@ npx prisma migrate dev --name <what_changed>   # create + apply locally
 npx prisma migrate deploy                      # apply on staging / production
 ```
 
+The Prisma CLI cannot connect through the pooled `DATABASE_URL` of the hosted database, and no
+deploy step applies migrations. There, apply them by name, in order:
+
+```bash
+node scripts/apply-migrations.js 7_user_profile_fields 8_refresh_token_sessions 9_account_lifecycle 10_password_flag_and_full_erase
+```
+
+The named migrations run in one transaction (all or nothing), and each is written to be safe to
+run again. **Apply a migration before starting a build that needs it:** the services read the new
+columns as soon as they start.
+
 `2_complete_schema` is idempotent: it creates whatever is missing and skips what already exists.
 If a database was built by hand and `_prisma_migrations` does not list `0_init`, mark it first:
 `npx prisma migrate resolve --applied 0_init`.
@@ -89,17 +134,25 @@ All routes go through the gateway. JWT = `Authorization: Bearer <accessToken>`.
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | POST | `/auth/register` | – | `{email|phone, password}` |
-| POST | `/auth/login` | – | `{email|phone, password}` → `{accessToken, refreshToken}` |
+| POST | `/auth/login` | – | `{email|phone, password}` → `{accessToken, refreshToken}`; reactivates a deactivated account |
 | POST | `/auth/firebase-login` | – | `{idToken}` → tokens |
 | POST | `/auth/refresh` | – | `{refreshToken}` → new pair (old one is revoked) |
 | POST | `/auth/logout` | – | `{refreshToken}` |
-| GET / POST | `/auth/sessions`, `/auth/logout-all` | JWT | list / revoke sessions |
+| GET | `/auth/sessions` | JWT | logged-in devices (see below) |
+| DELETE | `/auth/sessions/:id` | JWT | sign one device out, at once; `403` from a device signed in for less than a day, `404` if it is not the caller's |
+| POST | `/auth/logout-all` | JWT | sign every device out, the caller's included; `403` as above |
+| POST | `/auth/change-password` | JWT | `{currentPassword, newPassword}`; other devices are signed out |
+| POST | `/auth/account/password` | JWT | `{idToken, newPassword}`: the first password of a Google account |
+| POST | `/auth/account/password-proof` | JWT | `{password}` → `{proofToken, expiresInSeconds}`, for a forgotten chat PIN |
+| POST | `/auth/account/deactivate` | JWT | `{password}` or `{idToken}`; hides the account until the next sign-in |
+| POST | `/auth/account/delete` | JWT | `{password}` or `{idToken}`; deletes the account and its files for good |
 | POST | `/auth/forgot-password`, `/auth/verify-otp`, `/auth/reset-password` | – | password reset |
 | GET | `/public/properties/map` | optional | `minLat,maxLat,minLng,maxLng` |
 | GET | `/public/properties/:id` | – | published property |
 | POST | `/public/properties/guest-session` | – | `{deviceId}` |
 | `*` | `/properties/...` | JWT | own listings, images, like, favorite, contact |
-| GET / PATCH | `/users/me` | JWT | profile |
+| GET / PATCH | `/users/me` | JWT | profile (see below) |
+| POST / PUT / DELETE | `/users/me/avatar...` | JWT | profile picture (see below) |
 | `*` | `/chat/...` | JWT | keys, backup, conversations, messages |
 | POST | `/payments/checkout` | JWT | `{propertyId}` → `{checkoutUrl, transactionId}` |
 | POST | `/payments/webhook` | signature | called by the payment provider |
@@ -107,6 +160,106 @@ All routes go through the gateway. JWT = `Authorization: Bearer <accessToken>`.
 
 Errors use Nest's standard shape: `{ statusCode, message, error }`.
 Unknown body fields are dropped and invalid ones return `400`.
+
+## Profile
+
+`GET /users/me` → `{ id, email, phone, username, name, firstName, lastName, sex, role,
+createdAt, firebaseUid, avatarUrl, avatarFromGoogle, hasPassword }`. `PATCH /users/me` changes
+only the fields it is sent; `null` or an empty string clears one (never `username`).
+
+- `hasPassword` is `false` for an account made by Google sign-in whose owner has not created a
+  password yet (`users.has_password`). Such an account cannot prove itself with a password.
+- `avatarFromGoogle` is `true` while the picture is the Google account's photo.
+
+| Field | Rule |
+|---|---|
+| `username` | The unique handle: 3-30 of `a-z 0-9 _ .`, stored lowercase. `409` `Username is already taken`. The database gives every new account one (`user_<10 hex>`). |
+| `name` | What people see. Up to 60 characters, not unique. Google sign-in fills it in. |
+| `firstName`, `lastName` | Up to 50 characters each. |
+| `sex` | `male`, `female` or `other`. |
+| `phone` | Unique. `409` `Phone number is already taken`. |
+
+`GET /users/:id` (JWT) returns another user's public profile: `{ id, username, name, avatarUrl,
+createdAt }`, never contact details. A deactivated account answers `404`.
+
+**Profile picture.** It is either a file uploaded to the public `avatars` bucket (one folder per
+user, 5 MB per file) or the Google account's photo. It cannot be set to any other URL: every app
+that shows a user loads their picture, so a URL of the user's choosing would tell that server who
+is looking.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/users/me/avatar/upload` | → `{ path, uploadUrl }`: a signed URL to PUT one image to (10 per user per minute) |
+| PUT | `/users/me/avatar` | `{ path }`: use the uploaded file. `400` if it is not in the caller's folder or was not uploaded |
+| PUT | `/users/me/avatar/google` | `{ photoUrl }`: "Sync from Google account". Must be a `*.googleusercontent.com` photo |
+| DELETE | `/users/me/avatar` | no picture |
+
+Each returns the profile. The file that was replaced is deleted. While the picture is a Google
+photo, every Google sign-in updates it to the account's current photo; a picture the user uploaded
+or removed is never overwritten.
+
+## Sessions, password and account
+
+**Logged-in devices.** A session is one sign-in on one device. `GET /auth/sessions` →
+`{ sessions: [{ id, deviceName, platform, ipAddress, location, signedInAt, lastUsedAt, current }],
+canSignOutOthers, canSignOutOthersFrom }`, most recently used first; `current` marks the device
+that asked.
+
+- The app describes itself on every `/auth` call with `X-Device-Name` and `X-Device-Platform`
+  (URL-encoded, at most 100 characters). The gateway writes the caller's address to
+  `X-Client-IP`, replacing anything a client sent.
+- `location` ("Phnom Penh, Cambodia") is looked up from the IP address after the response is
+  sent, so it is `null` at first, and stays `null` for a private address (local testing) or when
+  the lookup fails. `IP_LOCATION_API_URL` selects the lookup server or switches it off.
+- `lastUsedAt` moves when the device refreshes its token, so it is accurate to about 15 minutes.
+- **Signing a device out takes effect at once.** An access token is valid on its signature alone
+  and lives 15 minutes, so every sign-out also writes the session to Redis
+  (`sessions:revoked:<session id>`, kept 15 minutes) and announces it on the `sessions:revoked`
+  channel. The gateway checks that list on every request, the authentication service on its own
+  routes, and the chat server at the handshake and on every message; on the announcement it
+  closes the device's open chat connections. Without Redis the check cannot be made and a
+  signed-out device works until its token expires, as before; it can never renew it.
+- **A device may sign other devices out only after it has been signed in for 24 hours**
+  (`canSignOutOthers`; `403` with `canSignOutOthersFrom` otherwise). Someone who just got into an
+  account cannot lock its owner out, while the owner's older devices can remove the newcomer.
+  A device can always sign itself out. Changing the password still signs the other devices out
+  whatever the age of the session, because it needs the current password.
+- **New sign-in alert.** When someone signs in while the account already has an active session,
+  the owner is emailed (device, time, IP address), if the account has an email. The app also
+  compares the device list on its side and tells the user on their other devices.
+- Sessions live in `refresh_tokens`: every refresh adds a row that copies the session's columns
+  from the row it replaces. Tokens issued before migration 8 have no session and are not listed
+  until that device refreshes once.
+
+**Proof of identity.** Changing the password, deactivating and deleting need more than an access
+token: the password, or for a Google account an `idToken` from signing in with Google again
+within the last 5 minutes. A wrong proof is `403` (never `401`, which the app treats as "session
+expired"); after 10 wrong tries in 15 minutes the answer is `429`.
+
+**A Google account's password.** An account made by Google sign-in has no password
+(`hasPassword: false`). `POST /auth/account/password` `{idToken, newPassword}` gives it one,
+confirmed by a fresh Google sign-in; "forgot password" by email does the same.
+
+**Password proof.** `POST /auth/account/password-proof` `{password}` → a token valid for
+5 minutes that says the password was just typed. The user service accepts it where only the
+password can vouch for the owner (a forgotten chat PIN, below). It is not an access token.
+
+**Deactivate** sets `users.deactivated_at` and signs every device out. From that moment the
+account is hidden from everyone else: its public profile and chat key answer `404`, its listings
+leave the map, the listing pages and other people's saved lists, and its conversations leave
+their chat lists. Nothing is deleted; signing in again brings it all back at once.
+
+**Delete** removes every trace, in this order: the account is hidden; the user service deletes
+its files from storage (listing photos, chat attachments in both directions, profile pictures);
+its sessions end; its Google sign-in record in Firebase and its password-reset codes are removed;
+the `users` row is deleted, and the database deletes everything that hangs off it (listings,
+favourites, contact requests it sent, chat messages and keys, payment records). If the files
+cannot be removed the answer is `503`, nothing is deleted and the account is shown again.
+
+**Calls between services.** For the two actions above the authentication service calls the user
+service directly at `USER_SERVICE_URL`: `DELETE /internal/accounts/:id/files` and
+`POST /internal/accounts/:id/visibility-changed`. The gateway does not forward `/internal`, and
+each call carries a one-minute token signed with the JWT key and naming the account.
 
 ## Chat (end-to-end encrypted)
 
@@ -116,9 +269,10 @@ REST (JWT):
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/chat/keys` | `{identityPublicKey}`: publish own public key |
+| POST | `/chat/keys` | `{identityPublicKey}`: publish own public key. `409` for a different key once a PIN backup exists |
+| POST | `/chat/keys/reset` | `{identityPublicKey, backupBlob, backupSalt, backupNonce, backupVerifier, currentBackupVerifier? \| passwordProofToken?}`: replace the key pair and its backup together |
 | GET | `/chat/keys/:userId` | a user's public key, `404` if they have none |
-| POST | `/chat/backup` | `{backupBlob, backupSalt, backupNonce, backupVerifier}`: store the PIN-encrypted key backup |
+| POST | `/chat/backup` | `{backupBlob, backupSalt, backupNonce, backupVerifier, currentBackupVerifier? \| passwordProofToken?}`: store the PIN-encrypted key backup |
 | GET | `/chat/backup` | `{backupSalt}`, `404` if there is none (5 per 15 min) |
 | POST | `/chat/backup/unlock` | `{backupVerifier}` → `{backupBlob, backupNonce}` for the right PIN |
 | GET | `/chat/conversations` | one row per partner: last message + `unreadCount` |
@@ -151,6 +305,16 @@ the device, and `backupVerifier` (32 bytes, base64), which proves the PIN to the
   `{ message, retryAfterSeconds }` while locked. Every 5th wrong PIN in a row locks the backup:
   15 minutes, then 30, then double each time up to 24 hours. A correct PIN clears the count.
   The count is stored in `chat_key_backups`, so restarts and deploys do not reset it.
+- Replacing what the PIN protects needs the PIN. Once a backup exists, `POST /chat/backup`
+  (change PIN) and `POST /chat/keys/reset` (reset keys) must carry `currentBackupVerifier`, the
+  proof of the current PIN; it is checked and counted exactly like an unlock (`403`, `429`). And
+  `POST /chat/keys` no longer accepts a different key. Without this, anyone holding a signed-in
+  phone could publish keys of their own and read the account's chats from then on.
+- A forgotten PIN is recovered with the account password: both calls accept `passwordProofToken`
+  (from `POST /auth/account/password-proof`) in place of `currentBackupVerifier`, also while
+  wrong PINs have the backup locked. A device that still holds the keys saves a new backup of
+  them under a new PIN (`POST /chat/backup`), and no history is lost. A device without them can
+  only reset the keys (`POST /chat/keys/reset`); earlier history can then no longer be read.
 - Stored backups are sealed with `CHAT_BACKUP_SECRET` (the proof as a keyed hash, the encrypted
   key encrypted once more), so a copy of the database alone cannot be used to try PINs. Without
   that variable saving and unlocking answer `503`. Losing or changing it makes stored backups
@@ -168,16 +332,13 @@ bucket (25 MB per file):
 - `GET /chat/attachments/:senderId/:recipientId/:fileId` → `{ url }`: a download link valid for
   one minute, given only to the sender or the recipient (`403` for anyone else).
 
-`GET /users/:id` (JWT) returns another user's public profile: `{ id, username, avatarUrl,
-createdAt }`, never contact details.
-
 What the server cannot do: read messages, show one person's message as the other's (sender
 and recipient are sealed inside each message), or swap a user's public key unnoticed (the app
 remembers the key first seen for each contact, warns when it changes, and shows a security
 code both people can compare).
 
-Delivery and presence are tracked per process (Socket.IO rooms). Running more than one `user`
-instance requires the Socket.IO Redis adapter first.
+Delivery and presence go through the Socket.IO Redis adapter, so they work across several `user`
+instances that share one Redis.
 
 ## Payments (mock)
 
@@ -193,6 +354,11 @@ integrated yet. The flow around it is production-shaped:
 ## Security notes
 
 - Secrets live only in environment variables (see `.env.example`). Never commit `.env`.
-- Refresh tokens rotate on every use; reuse of a revoked token revokes all of the user's sessions.
+- Refresh tokens rotate on every use. A revoked token presented again while its session has a
+  newer token means it was stolen: all of the user's sessions are revoked. A token of a session
+  that was signed out is simply refused.
+- A signed-out session's access token is refused at once (see "Sessions, password and account").
+- Every token is signed with the same key and says what it is in `typ` (`access`, `refresh`,
+  `password-proof`, `internal`); each place that accepts a token accepts exactly one kind.
 - Self-registration always creates role `user`.
 - Password-reset codes are generated with a CSPRNG and stored hashed.

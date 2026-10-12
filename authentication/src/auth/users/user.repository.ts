@@ -8,13 +8,23 @@ export interface UserRecord {
   email: string | null;
   phone: string | null;
   password_hash: string;
+  /**
+   * False while `password_hash` is a value nobody can match: an account made
+   * by Google sign-in whose owner has not chosen a password yet.
+   */
+  has_password: boolean;
   role: string;
+  /** The unique handle. The database fills it in for a new account. */
   username: string | null;
+  /** The name people see. */
+  name: string | null;
   avatar_url: string | null;
   firebase_uid: string | null;
+  /** Set while the owner has switched the account off. */
+  deactivated_at: string | null;
 }
 
-export type NewUser = Partial<Omit<UserRecord, 'id'>> & Pick<UserRecord, 'password_hash'>;
+export type NewUser = Partial<Omit<UserRecord, 'id' | 'username'>> & Pick<UserRecord, 'password_hash'>;
 export type UserPatch = Partial<Omit<UserRecord, 'id'>>;
 
 const UNIQUE_VIOLATION = '23505';
@@ -59,6 +69,18 @@ export class UserRepository {
     if (error) {
       this.logger.error(`Failed to update user ${id}: ${error.message}`);
       throw new InternalServerErrorException('Failed to update user');
+    }
+  }
+
+  /**
+   * Removes the account for good. The database deletes everything that belongs
+   * to it with the row: sessions, listings, favourites, chat messages and keys.
+   */
+  async delete(id: string): Promise<void> {
+    const { error } = await this.supabase.from('users').delete().eq('id', id);
+    if (error) {
+      this.logger.error(`Failed to delete user ${id}: ${error.message}`);
+      throw new InternalServerErrorException('Failed to delete account');
     }
   }
 

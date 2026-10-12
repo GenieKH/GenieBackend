@@ -77,6 +77,7 @@ describe('ChatBackupService', () => {
     chatKeyBackup: { upsert: jest.fn(), findUnique: jest.fn() },
     user: { update: jest.fn(), findUnique: jest.fn() },
   };
+  const cache = { delete: jest.fn() };
   let service: ChatBackupService;
 
   const unlockStatus = async (verifier: string) => {
@@ -99,7 +100,7 @@ describe('ChatBackupService', () => {
       failedAttempts: 0,
       lockedUntil: null,
     };
-    service = new ChatBackupService(prisma as never);
+    service = new ChatBackupService(prisma as never, cache as never);
   });
 
   afterAll(() => {
@@ -164,6 +165,78 @@ describe('ChatBackupService', () => {
   });
 
   describe('save', () => {
+    const NEW_BACKUP = { blob: 'new-ciphertext', salt: 'salt', nonce: 'nonce', verifier: WRONG };
+    const saveStatus = async (currentVerifier?: string) => {
+      try {
+        await service.save(ALICE, NEW_BACKUP, { currentVerifier, identityPublicKey: 'new-public-key' });
+        return HttpStatus.OK;
+      } catch (error) {
+        return (error as { getStatus(): number }).getStatus();
+      }
+    };
+
+    describe('over an existing backup', () => {
+      beforeEach(() => prisma.chatKeyBackup.findUnique.mockResolvedValue({ userId: ALICE }));
+
+      it('is refused without proof of the current PIN', async () => {
+        expect(await saveStatus()).toBe(HttpStatus.FORBIDDEN);
+        expect(prisma.chatKeyBackup.upsert).not.toHaveBeenCalled();
+        expect(prisma.user.update).not.toHaveBeenCalled();
+      });
+
+      it('is refused for a wrong PIN, which counts as a try', async () => {
+        expect(await saveStatus(WRONG)).toBe(HttpStatus.FORBIDDEN);
+        expect(row!.failedAttempts).toBe(1);
+        expect(prisma.chatKeyBackup.upsert).not.toHaveBeenCalled();
+      });
+
+      it('locks like unlocking does, so the PIN cannot be guessed here instead', async () => {
+        const statuses: number[] = [];
+        for (let i = 0; i < 5; i++) statuses.push(await saveStatus(WRONG));
+
+        expect(statuses).toEqual([403, 403, 403, 403, 429]);
+        expect(await saveStatus(RIGHT)).toBe(HttpStatus.TOO_MANY_REQUESTS);
+      });
+
+      it('replaces the backup and the public key together for the right PIN', async () => {
+        expect(await saveStatus(RIGHT)).toBe(HttpStatus.OK);
+
+        expect(prisma.chatKeyBackup.upsert).toHaveBeenCalledTimes(1);
+        expect(prisma.user.update.mock.calls[0][0].data).toMatchObject({ identityPublicKey: 'new-public-key' });
+        // Other people must stop encrypting to the old key at once.
+        expect(cache.delete).toHaveBeenCalledWith(`chat:public-key:${ALICE}`);
+      });
+    });
+
+    describe('for an owner who forgot the PIN and proved their account password instead', () => {
+      beforeEach(() => prisma.chatKeyBackup.findUnique.mockResolvedValue({ userId: ALICE }));
+
+      it('replaces the backup without the PIN', async () => {
+        await service.save(ALICE, NEW_BACKUP, { provenByPassword: true, identityPublicKey: 'new-public-key' });
+
+        expect(prisma.chatKeyBackup.upsert).toHaveBeenCalledTimes(1);
+        expect(row!.failedAttempts).toBe(0);
+      });
+
+      it('gets back in even while wrong PINs have the backup locked', async () => {
+        for (let i = 0; i < 5; i++) await saveStatus(WRONG);
+
+        await service.save(ALICE, NEW_BACKUP, { provenByPassword: true });
+
+        // The new backup starts with a clean count.
+        expect(prisma.chatKeyBackup.upsert.mock.calls[0][0].update).toMatchObject({
+          failedAttempts: 0,
+          lockedUntil: null,
+        });
+      });
+    });
+
+    it('needs no proof for the first backup', async () => {
+      prisma.chatKeyBackup.findUnique.mockResolvedValue(null);
+
+      expect(await saveStatus()).toBe(HttpStatus.OK);
+    });
+
     it('stores neither the PIN proof nor the device ciphertext as received', async () => {
       await service.save(ALICE, { blob: 'device-ciphertext', salt: 'salt', nonce: 'nonce', verifier: RIGHT });
 

@@ -7,20 +7,22 @@ const MALLORY = '99999999-9999-4999-8999-999999999999';
 const FILE = '33333333-3333-4333-8333-333333333333';
 
 describe('ChatAttachmentService', () => {
-  const userTable = { findUnique: jest.fn() };
+  const userTable = { findFirst: jest.fn() };
+  const messageTable = { findMany: jest.fn() };
   const storage = {
     ensureBucket: jest.fn(),
     createSignedUploadUrl: jest.fn(),
     createSignedDownloadUrl: jest.fn(),
+    removeFolder: jest.fn(),
   };
   let service: ChatAttachmentService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    userTable.findUnique.mockResolvedValue({ id: BOB });
+    userTable.findFirst.mockResolvedValue({ id: BOB });
     storage.createSignedUploadUrl.mockResolvedValue('https://storage.test/upload?token=t');
     storage.createSignedDownloadUrl.mockResolvedValue('https://storage.test/download?token=t');
-    service = new ChatAttachmentService({ user: userTable } as never, storage as never);
+    service = new ChatAttachmentService({ user: userTable, message: messageTable } as never, storage as never);
   });
 
   it('keeps attachments in a private, size-limited bucket', async () => {
@@ -54,10 +56,10 @@ describe('ChatAttachmentService', () => {
       expect(first.path).not.toBe(second.path);
     });
 
-    it('refuses an unknown recipient and a file to yourself', async () => {
+    it('refuses an unknown or deactivated recipient, and a file to yourself', async () => {
       await expect(service.createUpload(ALICE, ALICE)).rejects.toThrow(BadRequestException);
 
-      userTable.findUnique.mockResolvedValue(null);
+      userTable.findFirst.mockResolvedValue(null);
       await expect(service.createUpload(ALICE, BOB)).rejects.toThrow(NotFoundException);
       expect(storage.createSignedUploadUrl).not.toHaveBeenCalled();
     });
@@ -86,5 +88,18 @@ describe('ChatAttachmentService', () => {
 
       await expect(service.createDownloadUrl(BOB, location)).rejects.toThrow(NotFoundException);
     });
+  });
+
+  it('erases both directions of a deleted account: what it sent and what it was sent', async () => {
+    messageTable.findMany.mockResolvedValue([{ senderId: BOB }, { senderId: MALLORY }]);
+
+    await service.removeAllOf(ALICE);
+
+    expect(messageTable.findMany.mock.calls[0][0]).toMatchObject({ where: { recipientId: ALICE }, distinct: ['senderId'] });
+    expect(storage.removeFolder.mock.calls).toEqual([
+      ['chat-attachments', ALICE],
+      ['chat-attachments', `${BOB}/${ALICE}`],
+      ['chat-attachments', `${MALLORY}/${ALICE}`],
+    ]);
   });
 });

@@ -12,6 +12,9 @@ async function bootstrap() {
   // Reject malformed bodies and drop any field a DTO does not declare.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
+  // On SIGTERM (every deploy): finish what is running and close connections.
+  app.enableShutdownHooks();
+
   // Internal service: it is only reached through the api-gateway, so no CORS.
   const port = process.env.PORT || 4001;
   await app.listen(port, '0.0.0.0');

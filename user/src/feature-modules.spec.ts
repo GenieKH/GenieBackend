@@ -10,11 +10,12 @@ import { PrismaModule } from './prisma.module';
 import { PropertiesController } from './properties/properties.controller';
 import { PropertiesModule } from './properties/properties.module';
 import { PublicPropertiesController } from './properties/public-properties.controller';
+import { RedisModule } from './redis/redis.module';
 import { UsersController } from './users/users.controller';
 import { UsersModule } from './users/users.module';
 
 // Nest only reports a missing provider at boot time, so resolve every feature
-// module here. Nothing connects: the DB pool and Supabase client are lazy.
+// module here. Nothing connects: the DB pool, Redis and Supabase client are lazy.
 describe('feature module wiring', () => {
   beforeAll(() => {
     process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
@@ -25,7 +26,7 @@ describe('feature module wiring', () => {
 
   it('resolves every controller and the chat gateway', async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [PrismaModule, PropertiesModule, PaymentsModule, UsersModule, ChatModule],
+      imports: [RedisModule, PrismaModule, PropertiesModule, PaymentsModule, UsersModule, ChatModule],
     }).compile();
 
     for (const type of [
@@ -42,11 +43,10 @@ describe('feature module wiring', () => {
     await moduleRef.close();
   });
 
-  // AppModule itself needs Redis, so its imports are skipped; its own
-  // controllers and providers are still resolved exactly as declared.
+  // AppModule's own controllers and providers, resolved exactly as declared.
   it('resolves the controllers and providers declared by AppModule', async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [PrismaModule, PropertiesModule, PaymentsModule, UsersModule, ChatModule],
+      imports: [RedisModule, PrismaModule, PropertiesModule, PaymentsModule, UsersModule, ChatModule],
       controllers: Reflect.getMetadata('controllers', AppModule),
       providers: Reflect.getMetadata('providers', AppModule),
     }).compile();

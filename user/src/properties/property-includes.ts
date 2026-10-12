@@ -2,6 +2,7 @@
 export const OWNER_SUMMARY_SELECT = {
   id: true,
   username: true,
+  name: true,
   phone: true,
   email: true,
   avatarUrl: true,

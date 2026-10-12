@@ -13,6 +13,7 @@ describe('PaymentWebhookService', () => {
     ),
   };
   const provider = { verifyWebhook: jest.fn() };
+  const publicCache = { changed: jest.fn() };
   let service: PaymentWebhookService;
 
   const pending = { id: 'tx-1', propertyId: 'p-1', status: 'Pending', amount: { equals: (n: number) => n === 50 } };
@@ -24,7 +25,7 @@ describe('PaymentWebhookService', () => {
     transactionTable.findUnique.mockResolvedValue(pending);
     transactionTable.updateMany.mockResolvedValue({ count: 1 });
     propertyTable.updateMany.mockResolvedValue({ count: 1 });
-    service = new PaymentWebhookService(prisma as never, provider as never);
+    service = new PaymentWebhookService(prisma as never, provider as never, publicCache as never);
   });
 
   it('rejects an unsigned/forged webhook before touching the database', async () => {
@@ -52,6 +53,7 @@ describe('PaymentWebhookService', () => {
       where: { id: 'p-1', status: 'Pending' },
       data: { status: 'Active' },
     });
+    expect(publicCache.changed).toHaveBeenCalledWith('p-1');
   });
 
   it('returns the property to Draft when the payment fails', async () => {
@@ -62,6 +64,7 @@ describe('PaymentWebhookService', () => {
       where: { id: 'p-1', status: 'Pending' },
       data: { status: 'Draft' },
     });
+    expect(publicCache.changed).not.toHaveBeenCalled();
   });
 
   it('ignores a repeated webhook for an already settled transaction', async () => {

@@ -161,6 +161,7 @@ export class ChatService {
   /**
    * One row per person the user has exchanged messages with, most recent
    * first. Only the last message of each conversation leaves the database.
+   * Messages to oneself (possible in old versions) are not a conversation.
    */
   async getConversations(userId: string): Promise<Conversation[]> {
     const lastMessages = await this.prisma.$queryRaw<LastMessageRow[]>`
@@ -176,7 +177,8 @@ export class ChatService {
         SELECT m.*,
           CASE WHEN m.sender_id = ${userId}::uuid THEN m.recipient_id ELSE m.sender_id END AS partner_id
         FROM messages m
-        WHERE m.sender_id = ${userId}::uuid OR m.recipient_id = ${userId}::uuid
+        WHERE (m.sender_id = ${userId}::uuid OR m.recipient_id = ${userId}::uuid)
+          AND m.sender_id <> m.recipient_id
       ) conversation
       ORDER BY partner_id, created_at DESC`;
     if (lastMessages.length === 0) return [];

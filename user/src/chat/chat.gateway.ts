@@ -77,6 +77,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const cameOnline = !this.isOnline(userId);
 
     await client.join(userRoom(userId));
+    this.logger.log(`Connected: user ${userId} (socket ${client.id})`);
     if (cameOnline) {
       this.server.to(presenceRoom(userId)).emit('presence', { userId, online: true, lastSeenAt: null });
     }
@@ -85,7 +86,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   /** The user is offline once their last device has disconnected. */
   async handleDisconnect(client: Socket) {
     const userId: string | undefined = client.data.userId;
-    if (!userId || this.isOnline(userId)) return;
+    if (!userId) return;
+    this.logger.log(`Disconnected: user ${userId} (socket ${client.id})`);
+    if (this.isOnline(userId)) return;
 
     try {
       const lastSeenAt = await this.presenceService.markLastSeen(userId);
@@ -136,14 +139,19 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       return { status: 'error', message: 'Invalid user' };
     }
 
+    await client.join(presenceRoom(dto.userId));
+    const online = this.isOnline(dto.userId);
+    return { status: 'ok', presence: { userId: dto.userId, online, lastSeenAt: await this.lastSeenOf(dto.userId, online) } };
+  }
+
+  /** Online status is still worth showing when "last seen" cannot be read. */
+  private async lastSeenOf(userId: string, online: boolean): Promise<Date | null> {
+    if (online) return null;
     try {
-      await client.join(presenceRoom(dto.userId));
-      const online = this.isOnline(dto.userId);
-      const lastSeenAt = online ? null : await this.presenceService.getLastSeen(dto.userId);
-      return { status: 'ok', presence: { userId: dto.userId, online, lastSeenAt } };
+      return await this.presenceService.getLastSeen(userId);
     } catch (error) {
-      this.logger.error(`Failed to read presence: ${(error as Error).message}`);
-      return { status: 'error', message: 'Failed to read presence' };
+      this.logger.error(`Failed to read last seen: ${(error as Error).message}`);
+      return null;
     }
   }
 

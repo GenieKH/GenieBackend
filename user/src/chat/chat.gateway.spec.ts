@@ -161,6 +161,14 @@ describe('ChatGateway', () => {
       expect(ack).toEqual({ status: 'ok', presence: { userId: BOB, online: false, lastSeenAt: LAST_SEEN } });
     });
 
+    it('still answers when last seen cannot be read', async () => {
+      presenceService.getLastSeen.mockRejectedValue(new Error('column does not exist'));
+
+      const ack = await gateway.handleWatchPresence(socketFor(ALICE) as never, { userId: BOB });
+
+      expect(ack).toEqual({ status: 'ok', presence: { userId: BOB, online: false, lastSeenAt: null } });
+    });
+
     it('rejects a watch request without a valid user id', async () => {
       const watcher = socketFor(ALICE);
 

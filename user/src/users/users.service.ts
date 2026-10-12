@@ -1,5 +1,6 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { isAllowedAvatarUrl } from './avatar-url';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 /** Profile fields that are safe to return to the client. */
@@ -51,6 +52,9 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
+    if (dto.avatarUrl && !isAllowedAvatarUrl(dto.avatarUrl)) {
+      throw new BadRequestException('The avatar must be an image uploaded to Genie or a Google profile photo');
+    }
     try {
       return await this.prisma.user.update({
         where: { id: userId },

@@ -15,9 +15,12 @@ export function extractSocketToken(client: Socket): string | undefined {
 export function verifyAccessToken(token: string): string {
   const publicKey = process.env.JWT_PUBLIC_KEY?.replace(/\\n/g, '\n') || '';
   const payload = jwt.verify(token, publicKey, { algorithms: ['RS256'] });
-  const userId = typeof payload === 'string' ? undefined : payload.sub;
-  if (!userId) {
+  if (typeof payload === 'string' || !payload.sub) {
     throw new Error('Token has no subject');
   }
-  return userId;
+  // Refresh tokens are signed with the same key and must not open a socket.
+  if (payload.typ !== 'access') {
+    throw new Error('Not an access token');
+  }
+  return payload.sub;
 }

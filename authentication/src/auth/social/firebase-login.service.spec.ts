@@ -14,6 +14,7 @@ describe('FirebaseLoginService', () => {
     update: jest.fn(),
   };
   const tokens = { issue: jest.fn() };
+  const refreshTokens = { revokeAllForUser: jest.fn() };
   let service: FirebaseLoginService;
 
   const existingUser = {
@@ -23,12 +24,13 @@ describe('FirebaseLoginService', () => {
     username: 'Has Name',
     avatar_url: 'https://img/a.png',
     firebase_uid: null,
+    password_hash: 'hash-of-a-password-someone-chose',
   };
 
   beforeEach(() => {
     jest.resetAllMocks();
     tokens.issue.mockResolvedValue({ accessToken: 'a', refreshToken: 'r' });
-    service = new FirebaseLoginService(firebase as never, users as never, tokens as never);
+    service = new FirebaseLoginService(firebase as never, users as never, tokens as never, refreshTokens as never);
   });
 
   it('logs in a user already linked to the Firebase uid', async () => {
@@ -48,8 +50,31 @@ describe('FirebaseLoginService', () => {
 
     await service.login('id-token');
 
-    expect(users.update).toHaveBeenCalledWith('u1', { firebase_uid: 'fb1' });
+    expect(users.update).toHaveBeenCalledWith('u1', expect.objectContaining({ firebase_uid: 'fb1' }));
     expect(users.create).not.toHaveBeenCalled();
+  });
+
+  it('linking discards a password nobody proved they own, and its sessions', async () => {
+    firebase.verifyIdToken.mockResolvedValue({ uid: 'fb1', email: 'a@b.com', email_verified: true });
+    users.findByFirebaseUid.mockResolvedValue(null);
+    users.findByEmail.mockResolvedValue(existingUser);
+
+    await service.login('id-token');
+
+    const patch = users.update.mock.calls[0][1];
+    expect(patch.password_hash).toMatch(/^\$2[aby]\$/);
+    expect(patch.password_hash).not.toBe(existingUser.password_hash);
+    expect(refreshTokens.revokeAllForUser).toHaveBeenCalledWith('u1');
+  });
+
+  it('leaves the password alone once the account is linked', async () => {
+    firebase.verifyIdToken.mockResolvedValue({ uid: 'fb1', email: 'a@b.com', email_verified: true });
+    users.findByFirebaseUid.mockResolvedValue({ ...existingUser, firebase_uid: 'fb1' });
+
+    await service.login('id-token');
+
+    expect(users.update).not.toHaveBeenCalled();
+    expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
   });
 
   it('never links an account through an UNVERIFIED email', async () => {

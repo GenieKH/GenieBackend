@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { SupabaseService } from '../../supabase/supabase.service';
 import { PropertyQueryService } from './property-query.service';
@@ -20,6 +20,9 @@ export class PropertyImageService {
   /** Attaches uploaded files to the property, after its existing images. */
   async confirmUploads(userId: string, propertyId: string, fileNames: string[]) {
     const property = await this.query.findOwned(userId, propertyId);
+    if (!fileNames.every((fileName) => this.storage.isUploadedFileName(fileName))) {
+      throw new BadRequestException('Unknown image file');
+    }
     const lastOrder = Math.max(0, ...property.images.map((image) => image.order));
 
     await this.prisma.propertyImage.createMany({

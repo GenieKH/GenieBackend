@@ -5,7 +5,8 @@ import * as jwt from 'jsonwebtoken';
 /**
  * Verifies the access token and writes the caller's id to `x-user-id`
  * for the downstream services. Anything the client sent in that header is
- * overwritten.
+ * overwritten. A refresh token is refused: it is signed with the same key but
+ * lives 30 days and is never checked for revocation here.
  */
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
@@ -23,10 +24,10 @@ export class AuthMiddleware implements NestMiddleware {
 
     try {
       const payload = jwt.verify(token, this.publicKey, { algorithms: ['RS256'] });
-      const userId = typeof payload === 'string' ? undefined : payload.sub;
-      if (!userId) throw new Error('Token has no subject');
+      if (typeof payload === 'string' || !payload.sub) throw new Error('Token has no subject');
+      if (payload.typ !== 'access') throw new Error('Not an access token');
 
-      req.headers['x-user-id'] = userId;
+      req.headers['x-user-id'] = payload.sub;
       next();
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

@@ -1,6 +1,13 @@
 /** Lifetime of the short-lived JWT used to call the API. */
 export const ACCESS_TOKEN_TTL = '15m';
 
+/**
+ * `typ` claim of each token. Both kinds are signed with the same key, so this
+ * is what stops a 30-day refresh token from being used as an access token.
+ */
+export const ACCESS_TOKEN_TYPE = 'access';
+export const REFRESH_TOKEN_TYPE = 'refresh';
+
 /** Lifetime of the refresh token, in days (also used for the DB expiry). */
 export const REFRESH_TOKEN_TTL_DAYS = 30;
 

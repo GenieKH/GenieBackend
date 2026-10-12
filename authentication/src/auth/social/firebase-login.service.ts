@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { FirebaseService } from '../../firebase/firebase.service';
 import { BCRYPT_ROUNDS, DEFAULT_USER_ROLE } from '../auth.constants';
+import { RefreshTokenRepository } from '../sessions/refresh-token.repository';
 import { TokenIssuerService, TokenPair } from '../sessions/token-issuer.service';
 import { UserPatch, UserRecord, UserRepository } from '../users/user.repository';
 
@@ -24,6 +25,7 @@ export class FirebaseLoginService {
     @Inject(FirebaseService) private readonly firebase: FirebaseService,
     @Inject(UserRepository) private readonly users: UserRepository,
     @Inject(TokenIssuerService) private readonly tokens: TokenIssuerService,
+    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
   ) {}
 
   async login(idToken: string): Promise<TokenPair> {
@@ -53,6 +55,11 @@ export class FirebaseLoginService {
    * Attaches the Firebase identity to an account that already exists with the
    * same email or phone. An email is only trusted when Firebase verified it,
    * otherwise anyone could claim someone else's account.
+   *
+   * Registration never checked who owns that email or phone, so the account's
+   * password may have been set by a stranger waiting for the real owner to sign
+   * in. Linking therefore discards the password and ends every open session;
+   * the owner can set a new password with "forgot password".
    */
   private async linkExistingAccount(profile: FirebaseProfile): Promise<UserRecord | null> {
     let existing: UserRecord | null = null;
@@ -63,20 +70,20 @@ export class FirebaseLoginService {
     }
     if (!existing) return null;
 
-    await this.users.update(existing.id, { firebase_uid: profile.uid });
-    return { ...existing, firebase_uid: profile.uid };
+    const password_hash = await this.unusablePasswordHash();
+    await this.users.update(existing.id, { firebase_uid: profile.uid, password_hash });
+    await this.refreshTokens.revokeAllForUser(existing.id);
+    return { ...existing, firebase_uid: profile.uid, password_hash };
   }
 
   private async createAccount(profile: FirebaseProfile): Promise<UserRecord> {
-    // Firebase accounts have no password; store an unguessable one.
-    const unusablePassword = randomBytes(16).toString('hex');
     try {
       return await this.users.create({
         email: profile.email,
         phone: profile.phone,
         username: profile.displayName,
         avatar_url: profile.photoUrl,
-        password_hash: await bcrypt.hash(unusablePassword, BCRYPT_ROUNDS),
+        password_hash: await this.unusablePasswordHash(),
         role: DEFAULT_USER_ROLE,
         firebase_uid: profile.uid,
       });
@@ -84,6 +91,11 @@ export class FirebaseLoginService {
       this.logger.error(`Could not create user for Firebase uid ${profile.uid}`);
       throw new InternalServerErrorException('Failed to create user from Firebase token');
     }
+  }
+
+  /** Accounts without a password of their own still need a hash nobody can match. */
+  private unusablePasswordHash(): Promise<string> {
+    return bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
   }
 
   /** Copies the Google name/photo onto the account when it has none. */

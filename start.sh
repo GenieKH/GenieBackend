@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs the whole backend in one container:
-#   Redis (rate limiting + cache) -> authentication :4001, user :4002 -> api-gateway :4000
+#   Redis (cache) -> authentication :4001, user :4002 -> api-gateway :4000
 # Only the gateway port is meant to be published. If any process dies the
 # container exits, so Docker's restart policy brings everything back up.
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { GuestSessionDto } from './dto/guest-session.dto';
@@ -27,7 +27,7 @@ export class PublicPropertiesController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.query.findPublic(id);
   }
 }

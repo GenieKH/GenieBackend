@@ -118,7 +118,9 @@ REST (JWT):
 |---|---|---|
 | POST | `/chat/keys` | `{identityPublicKey}`: publish own public key |
 | GET | `/chat/keys/:userId` | a user's public key, `404` if they have none |
-| GET / POST | `/chat/backup` | PIN-encrypted key backup (GET is limited to 5 per 15 min) |
+| POST | `/chat/backup` | `{backupBlob, backupSalt, backupNonce, backupVerifier}`: store the PIN-encrypted key backup |
+| GET | `/chat/backup` | `{backupSalt}`, `404` if there is none (5 per 15 min) |
+| POST | `/chat/backup/unlock` | `{backupVerifier}` → `{backupBlob, backupNonce}` for the right PIN |
 | GET | `/chat/conversations` | one row per partner: last message + `unreadCount` |
 | GET | `/chat/messages/:participantId?limit=&before=` | newest page (default 50, max 100), oldest first; `before` = ISO time for older pages |
 | POST | `/chat/messages/:participantId/read` | mark that partner's messages as read |
@@ -140,6 +142,31 @@ Socket.IO, namespace `/chat`, connected through the gateway with `auth: { token:
   `presence` with the same shape whenever that user's first device connects or last device
   disconnects (`users.last_seen_at` is written at that moment). `unwatchPresence` `{ userId }`
   stops it. Watching ends with the connection, so clients ask again after reconnecting.
+
+The key backup is protected by a 6-digit PIN, so the server counts every try. The device turns
+the PIN and the salt into two values (Argon2id): a key that encrypts the backup and never leaves
+the device, and `backupVerifier` (32 bytes, base64), which proves the PIN to the server.
+
+- `POST /chat/backup/unlock` answers `403` `{ message, attemptsLeft }` for a wrong PIN and `429`
+  `{ message, retryAfterSeconds }` while locked. Every 5th wrong PIN in a row locks the backup:
+  15 minutes, then 30, then double each time up to 24 hours. A correct PIN clears the count.
+  The count is stored in `chat_key_backups`, so restarts and deploys do not reset it.
+- Stored backups are sealed with `CHAT_BACKUP_SECRET` (the proof as a keyed hash, the encrypted
+  key encrypted once more), so a copy of the database alone cannot be used to try PINs. Without
+  that variable saving and unlocking answer `503`. Losing or changing it makes stored backups
+  unreadable; users then need "Reset keys".
+- A backup saved before this (in `users.backup_*`) is still returned whole by `GET /chat/backup`
+  as `{backupSalt, backupBlob, backupNonce}`. The app opens it with the PIN and saves it again in
+  the protected form, which removes the old copy.
+
+Pictures are encrypted on the sender's device with a one-time key that travels inside the
+encrypted message. The server only stores unreadable bytes in the private `chat-attachments`
+bucket (25 MB per file):
+
+- `POST /chat/attachments` `{ recipientId }` → `{ path, uploadUrl }`: a signed URL to PUT one
+  encrypted file to (20 requests per user per minute). `path` is `sender/recipient/fileId`.
+- `GET /chat/attachments/:senderId/:recipientId/:fileId` → `{ url }`: a download link valid for
+  one minute, given only to the sender or the recipient (`403` for anyone else).
 
 `GET /users/:id` (JWT) returns another user's public profile: `{ id, username, avatarUrl,
 createdAt }`, never contact details.

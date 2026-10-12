@@ -2,7 +2,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { ACCESS_TOKEN_TTL, BCRYPT_ROUNDS, REFRESH_TOKEN_TTL_DAYS } from '../auth.constants';
+import {
+  ACCESS_TOKEN_TTL,
+  ACCESS_TOKEN_TYPE,
+  BCRYPT_ROUNDS,
+  REFRESH_TOKEN_TTL_DAYS,
+  REFRESH_TOKEN_TYPE,
+} from '../auth.constants';
 import { RefreshTokenRepository } from './refresh-token.repository';
 
 export interface TokenPair {
@@ -19,12 +25,15 @@ export class TokenIssuerService {
   ) {}
 
   async issue(userId: string, role: string): Promise<TokenPair> {
-    const accessToken = this.jwt.sign({ sub: userId, role }, { expiresIn: ACCESS_TOKEN_TTL });
+    const accessToken = this.jwt.sign(
+      { sub: userId, role, typ: ACCESS_TOKEN_TYPE },
+      { expiresIn: ACCESS_TOKEN_TTL },
+    );
 
     // The jti ties the signed token to its database row so it can be revoked.
     const jti = randomUUID();
     const refreshToken = this.jwt.sign(
-      { sub: userId, jti },
+      { sub: userId, jti, typ: REFRESH_TOKEN_TYPE },
       { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` },
     );
 

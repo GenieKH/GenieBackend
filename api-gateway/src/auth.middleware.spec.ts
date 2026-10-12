@@ -21,8 +21,8 @@ describe('AuthMiddleware', () => {
     middleware.use(req as never, {} as never, next);
     return { req, next };
   };
-  const sign = (options: jwt.SignOptions = {}, key = privateKey) =>
-    jwt.sign({ sub: 'user-1' }, key, { algorithm: 'RS256', expiresIn: '5m', ...options });
+  const sign = (options: jwt.SignOptions = {}, key = privateKey, claims: object = { typ: 'access' }) =>
+    jwt.sign({ sub: 'user-1', ...claims }, key, { algorithm: 'RS256', expiresIn: '5m', ...options });
 
   it('writes the verified user id to x-user-id and continues', () => {
     const { req, next } = run({ authorization: `Bearer ${sign()}` });
@@ -54,6 +54,14 @@ describe('AuthMiddleware', () => {
     });
 
     expect(() => run({ authorization: `Bearer ${sign({}, other.privateKey)}` })).toThrow(UnauthorizedException);
+  });
+
+  it('rejects a refresh token, and a token that does not say what it is', () => {
+    const refresh = sign({ expiresIn: '30d' }, privateKey, { typ: 'refresh', jti: 'token-1' });
+    const untyped = sign({}, privateKey, {});
+
+    expect(() => run({ authorization: `Bearer ${refresh}` })).toThrow(UnauthorizedException);
+    expect(() => run({ authorization: `Bearer ${untyped}` })).toThrow(UnauthorizedException);
   });
 
   it('rejects an HS256 token (algorithm confusion)', () => {

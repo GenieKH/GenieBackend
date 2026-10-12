@@ -7,7 +7,8 @@ COPY package.json package-lock.json ./
 COPY api-gateway/package.json api-gateway/
 COPY authentication/package.json authentication/
 COPY user/package.json user/
-RUN npm ci
+# Retries ride out a dropped connection to the npm registry (ECONNRESET).
+RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
 COPY . .
 # Generates the Prisma client, then builds api-gateway, authentication and user.
@@ -25,7 +26,7 @@ COPY package.json package-lock.json ./
 COPY api-gateway/package.json api-gateway/
 COPY authentication/package.json authentication/
 COPY user/package.json user/
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
 # The generated client lives in node_modules, so it is regenerated here.
 COPY prisma ./prisma

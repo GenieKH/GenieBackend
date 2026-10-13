@@ -14,7 +14,10 @@ import { PasswordProofService } from './password-proof.service';
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('auth')
-@ApiResponse({ status: 403, description: 'The password (or Google confirmation) is wrong' })
+@ApiResponse({
+  status: 403,
+  description: 'The password (or Google confirmation) is wrong, or `code: DEVICE_TOO_NEW`: signed in less than a day ago',
+})
 @ApiResponse({ status: 429, description: 'Too many wrong tries' })
 export class AccountController {
   constructor(
@@ -28,7 +31,7 @@ export class AccountController {
   @ApiOperation({ summary: 'Set a new password; every other device is signed out' })
   async changePassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangePasswordDto) {
     await this.withLimitedTries(user.userId, () =>
-      this.account.changePassword(user.userId, dto.currentPassword, dto.newPassword, user.sessionId),
+      this.account.changePassword(user, dto.currentPassword, dto.newPassword),
     );
     return { message: 'Password changed' };
   }
@@ -54,7 +57,7 @@ export class AccountController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Hide the account until its owner signs in again' })
   async deactivate(@CurrentUser() user: AuthenticatedUser, @Body() dto: IdentityProofDto) {
-    await this.withLimitedTries(user.userId, () => this.account.deactivate(user.userId, dto));
+    await this.withLimitedTries(user.userId, () => this.account.deactivate(user, dto));
     return { message: 'Account deactivated' };
   }
 
@@ -63,7 +66,7 @@ export class AccountController {
   @ApiOperation({ summary: 'Delete the account and everything that belongs to it, for good' })
   @ApiResponse({ status: 503, description: 'Its files could not be removed; nothing was deleted' })
   async delete(@CurrentUser() user: AuthenticatedUser, @Body() dto: IdentityProofDto) {
-    await this.withLimitedTries(user.userId, () => this.account.delete(user.userId, dto));
+    await this.withLimitedTries(user.userId, () => this.account.delete(user, dto));
     return { message: 'Account deleted' };
   }
 

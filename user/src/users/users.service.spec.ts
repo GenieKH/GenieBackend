@@ -47,7 +47,11 @@ describe('UpdateProfileDto', () => {
 });
 
 describe('UsersService', () => {
-  const prisma = { user: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() } };
+  const prisma = {
+    user: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+    property: { findMany: jest.fn() },
+  };
+  const publicProperties = { changed: jest.fn() };
   const cache = {
     delete: jest.fn(),
     remember: jest.fn((_key: string, _ttl: number, load: () => Promise<unknown>) => load()),
@@ -58,7 +62,8 @@ describe('UsersService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new UsersService(prisma as never, cache as never);
+    prisma.property.findMany.mockResolvedValue([]);
+    service = new UsersService(prisma as never, cache as never, publicProperties as never);
   });
 
   it('saves the changed fields and drops the cached public profile', async () => {
@@ -71,6 +76,18 @@ describe('UsersService', () => {
     );
     expect(cache.delete).toHaveBeenCalledWith(`users:public-profile:${ME}`);
     expect(profile).toMatchObject({ username: 'sokha' });
+  });
+
+  it('shows a changed name or picture to other people at once, on listings too', async () => {
+    prisma.user.update.mockResolvedValue({ id: ME, name: 'New Name' });
+    // Published listings carry their owner's name and picture, and are cached.
+    prisma.property.findMany.mockResolvedValue([{ id: 'listing-1' }, { id: 'listing-2' }]);
+
+    await service.updateProfile(ME, { name: 'New Name' });
+
+    expect(prisma.property.findMany.mock.calls[0][0].where).toEqual({ userId: ME, status: 'Active' });
+    expect(publicProperties.changed.mock.calls).toEqual([['listing-1'], ['listing-2']]);
+    expect(cache.delete).toHaveBeenCalledWith(`users:public-profile:${ME}`);
   });
 
   it('says the username is taken when someone else has it', async () => {

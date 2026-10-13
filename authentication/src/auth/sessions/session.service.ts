@@ -1,8 +1,9 @@
-import { ForbiddenException, HttpStatus, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UserRepository } from '../users/user.repository';
 import { ClientContext } from './client-context';
+import { EstablishedDeviceService, SessionCaller, sessionStartOf } from './established-device.service';
 import { RefreshTokenRecord, RefreshTokenRepository } from './refresh-token.repository';
 import { SessionRevocationService } from './session-revocation.service';
 import { TokenIssuerService, TokenPair } from './token-issuer.service';
@@ -33,24 +34,6 @@ export interface DeviceList {
   canSignOutOthersFrom: string | null;
 }
 
-/** The session a request comes from. `sessionId` is null for a token from before sessions existed. */
-export interface SessionCaller {
-  userId: string;
-  sessionId: string | null;
-}
-
-/**
- * How long a device must have been signed in before it may sign other devices
- * out. Someone who just got into an account (a stolen password) could
- * otherwise lock its owner out at once; this way the owner's own, older
- * devices can remove the newcomer first.
- */
-export const SIGN_OUT_OTHERS_AFTER_MS = 24 * 60 * 60 * 1000;
-
-function startedAt(token: RefreshTokenRecord): string {
-  return token.session_started_at ?? token.created_at;
-}
-
 /** Refresh-token rotation, logout and the list of signed-in devices. */
 @Injectable()
 export class SessionService {
@@ -60,6 +43,7 @@ export class SessionService {
     @Inject(TokenIssuerService) private readonly issuer: TokenIssuerService,
     @Inject(UserRepository) private readonly users: UserRepository,
     @Inject(SessionRevocationService) private readonly revocations: SessionRevocationService,
+    @Inject(EstablishedDeviceService) private readonly devices: EstablishedDeviceService,
   ) {}
 
   /** Exchanges a refresh token for a new pair; the old token can never be used again. */
@@ -112,7 +96,7 @@ export class SessionService {
 
   async listSessions(caller: SessionCaller): Promise<DeviceList> {
     const tokens = await this.refreshTokens.listSessionTokens(caller.userId);
-    const allowedFrom = this.signOutOthersAllowedFrom(tokens, caller);
+    const established = this.devices.statusAmong(tokens, caller);
 
     return {
       sessions: tokens.map((token) => ({
@@ -121,20 +105,20 @@ export class SessionService {
         platform: token.platform,
         ipAddress: token.ip_address,
         location: token.location,
-        signedInAt: startedAt(token),
+        signedInAt: sessionStartOf(token),
         // Each use replaces the token, so the live token's age is the time since the last use.
         lastUsedAt: token.created_at,
         current: token.session_id === caller.sessionId,
       })),
-      canSignOutOthers: allowedFrom !== null && allowedFrom.getTime() <= Date.now(),
-      canSignOutOthersFrom: allowedFrom?.toISOString() ?? null,
+      canSignOutOthers: established.isEstablished,
+      canSignOutOthersFrom: established.from?.toISOString() ?? null,
     };
   }
 
-  /** Signs one device out, at once. Another device than the caller's needs `requireMaySignOutOthers`. */
+  /** Signs one device out, at once. Signing out another device than the caller's needs an established device. */
   async revokeSession(caller: SessionCaller, sessionId: string): Promise<{ message: string }> {
     if (sessionId !== caller.sessionId) {
-      await this.requireMaySignOutOthers(caller);
+      await this.devices.require(caller);
     }
     if (!(await this.revocations.endSession(caller.userId, sessionId))) {
       throw new NotFoundException('Session not found');
@@ -144,27 +128,9 @@ export class SessionService {
 
   /** Signs every device out, the caller's included. */
   async logoutAll(caller: SessionCaller): Promise<{ message: string }> {
-    await this.requireMaySignOutOthers(caller);
+    await this.devices.require(caller);
     await this.revocations.endAllSessions(caller.userId);
     return { message: 'All sessions revoked successfully' };
-  }
-
-  /** `403` while the caller's device is too new to sign others out (see `SIGN_OUT_OTHERS_AFTER_MS`). */
-  private async requireMaySignOutOthers(caller: SessionCaller): Promise<void> {
-    const tokens = await this.refreshTokens.listSessionTokens(caller.userId);
-    const allowedFrom = this.signOutOthersAllowedFrom(tokens, caller);
-    if (allowedFrom && allowedFrom.getTime() <= Date.now()) return;
-
-    throw new ForbiddenException({
-      statusCode: HttpStatus.FORBIDDEN,
-      message: 'This device signed in less than a day ago, so it cannot sign other devices out yet.',
-      canSignOutOthersFrom: allowedFrom?.toISOString() ?? null,
-    });
-  }
-
-  private signOutOthersAllowedFrom(tokens: RefreshTokenRecord[], caller: SessionCaller): Date | null {
-    const own = tokens.find((token) => token.session_id === caller.sessionId);
-    return own ? new Date(new Date(startedAt(own)).getTime() + SIGN_OUT_OTHERS_AFTER_MS) : null;
   }
 
   /**

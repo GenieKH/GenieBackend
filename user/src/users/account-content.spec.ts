@@ -18,7 +18,7 @@ describe('AvatarService', () => {
     removeFiles: jest.fn(),
     removeFolder: jest.fn(),
   };
-  const users = { forgetPublicProfile: jest.fn(), getProfile: jest.fn() };
+  const users = { publicViewChanged: jest.fn(), getProfile: jest.fn() };
   let avatars: AvatarService;
 
   beforeEach(() => {
@@ -41,7 +41,7 @@ describe('AvatarService', () => {
     await avatars.useUpload(ME, `${ME}/${FILE}`);
 
     expect(userTable.update).toHaveBeenCalledWith({ where: { id: ME }, data: { avatarUrl: `${PUBLIC}/${ME}/${FILE}` } });
-    expect(users.forgetPublicProfile).toHaveBeenCalledWith(ME);
+    expect(users.publicViewChanged).toHaveBeenCalledWith(ME);
   });
 
   it.each([
@@ -90,24 +90,19 @@ describe('AvatarService', () => {
 });
 
 describe('AccountContentService', () => {
-  const propertyTable = { findMany: jest.fn() };
-  const users = { forgetPublicProfile: jest.fn() };
+  const users = { publicViewChanged: jest.fn() };
   const avatars = { removeAllOf: jest.fn() };
   const propertyImages = { removeAllOwnedBy: jest.fn() };
-  const publicProperties = { changed: jest.fn() };
   const chat = { forgetPublicKey: jest.fn() };
   const chatAttachments = { removeAllOf: jest.fn() };
   let content: AccountContentService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    propertyTable.findMany.mockResolvedValue([{ id: 'listing-1' }, { id: 'listing-2' }]);
     content = new AccountContentService(
-      { property: propertyTable } as never,
       users as never,
       avatars as never,
       propertyImages as never,
-      publicProperties as never,
       chat as never,
       chatAttachments as never,
     );
@@ -130,9 +125,8 @@ describe('AccountContentService', () => {
   it('drops everything cached about an account that was hidden or came back', async () => {
     await content.visibilityChanged(ME);
 
-    expect(users.forgetPublicProfile).toHaveBeenCalledWith(ME);
+    expect(users.publicViewChanged).toHaveBeenCalledWith(ME);
     expect(chat.forgetPublicKey).toHaveBeenCalledWith(ME);
-    expect(publicProperties.changed.mock.calls).toEqual([['listing-1'], ['listing-2']]);
   });
 });
 

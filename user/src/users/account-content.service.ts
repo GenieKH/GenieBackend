@@ -1,9 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ChatAttachmentService } from '../chat/chat-attachment.service';
 import { ChatService } from '../chat/chat.service';
-import { PrismaService } from '../prisma.service';
 import { PropertyImageService } from '../properties/services/property-image.service';
-import { PublicPropertyCache } from '../properties/services/public-property-cache.service';
 import { AvatarService } from './avatar.service';
 import { UsersService } from './users.service';
 
@@ -18,11 +16,9 @@ import { UsersService } from './users.service';
 @Injectable()
 export class AccountContentService {
   constructor(
-    private readonly prisma: PrismaService,
     private readonly users: UsersService,
     private readonly avatars: AvatarService,
     private readonly propertyImages: PropertyImageService,
-    private readonly publicProperties: PublicPropertyCache,
     private readonly chat: ChatService,
     private readonly chatAttachments: ChatAttachmentService,
   ) {}
@@ -45,14 +41,6 @@ export class AccountContentService {
    * cached about it, so the change shows at once instead of when the caches expire.
    */
   async visibilityChanged(userId: string): Promise<void> {
-    const listings = await this.prisma.property.findMany({
-      where: { userId, status: 'Active' },
-      select: { id: true },
-    });
-    await Promise.all([
-      this.users.forgetPublicProfile(userId),
-      this.chat.forgetPublicKey(userId),
-      ...listings.map((listing) => this.publicProperties.changed(listing.id)),
-    ]);
+    await Promise.all([this.users.publicViewChanged(userId), this.chat.forgetPublicKey(userId)]);
   }
 }

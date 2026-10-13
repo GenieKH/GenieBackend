@@ -1,6 +1,7 @@
 import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { clientContextFrom } from './client-context';
+import { EstablishedDeviceService } from './established-device.service';
 import { isPublicAddress } from './ip-location.provider';
 import { SessionRevocationService } from './session-revocation.service';
 import { SessionService } from './session.service';
@@ -51,6 +52,7 @@ describe('SessionService', () => {
       issuer as never,
       users as never,
       new SessionRevocationService(refreshTokens as never, cutOff as never),
+      new EstablishedDeviceService(refreshTokens as never),
     );
     jwt.verify.mockReturnValue({ sub: 'u1', jti: 't1' });
   });
@@ -210,7 +212,8 @@ describe('SessionService', () => {
 
       it('is told from when it may', async () => {
         await expect(service.logoutAll(fromNewcomer)).rejects.toMatchObject({
-          response: { canSignOutOthersFrom: '2026-03-11T11:00:00.000Z' },
+          // The code is how the app tells this refusal from a wrong password.
+          response: { code: 'DEVICE_TOO_NEW', canSignOutOthersFrom: '2026-03-11T11:00:00.000Z' },
         });
         expect(await service.listSessions(fromNewcomer)).toMatchObject({
           canSignOutOthers: false,

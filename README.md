@@ -71,8 +71,8 @@ sockets on the same instance.
 
 | Cached | Expires | Cleared at once when |
 |---|---|---|
-| Map search (`/public/properties/map`), per ~1 km grid box | 30 s | any published listing is created, edited, published, hidden, sold, paid for, or gets photos |
-| Listing page (`/public/properties/:id`) | 60 s | that listing changes |
+| Map search (`/public/properties/map`), per ~1 km grid box | 30 s | any published listing is created, edited, published, hidden, sold, paid for, or gets photos, or an owner's name or picture changes |
+| Listing page (`/public/properties/:id`) | 60 s | that listing changes, or its owner's name or picture does |
 | Chat public key (`/chat/keys/:userId`) | 10 min | that user publishes a new key, or their account is hidden, shown again or deleted |
 | Public profile (`/users/:id`) | 2 min | that user edits their profile or picture, or their account is hidden, shown again or deleted |
 
@@ -141,11 +141,11 @@ All routes go through the gateway. JWT = `Authorization: Bearer <accessToken>`.
 | GET | `/auth/sessions` | JWT | logged-in devices (see below) |
 | DELETE | `/auth/sessions/:id` | JWT | sign one device out, at once; `403` from a device signed in for less than a day, `404` if it is not the caller's |
 | POST | `/auth/logout-all` | JWT | sign every device out, the caller's included; `403` as above |
-| POST | `/auth/change-password` | JWT | `{currentPassword, newPassword}`; other devices are signed out |
+| POST | `/auth/change-password` | JWT | `{currentPassword, newPassword}`; other devices are signed out. `403 DEVICE_TOO_NEW` from a device signed in for less than a day |
 | POST | `/auth/account/password` | JWT | `{idToken, newPassword}`: the first password of a Google account |
 | POST | `/auth/account/password-proof` | JWT | `{password}` → `{proofToken, expiresInSeconds}`, for a forgotten chat PIN |
-| POST | `/auth/account/deactivate` | JWT | `{password}` or `{idToken}`; hides the account until the next sign-in |
-| POST | `/auth/account/delete` | JWT | `{password}` or `{idToken}`; deletes the account and its files for good |
+| POST | `/auth/account/deactivate` | JWT | `{password}` or `{idToken}`; hides the account until the next sign-in. `403 DEVICE_TOO_NEW` as above |
+| POST | `/auth/account/delete` | JWT | `{password}` or `{idToken}`; deletes the account and its files for good. `403 DEVICE_TOO_NEW` as above |
 | POST | `/auth/forgot-password`, `/auth/verify-otp`, `/auth/reset-password` | – | password reset |
 | GET | `/public/properties/map` | optional | `minLat,maxLat,minLng,maxLng` |
 | GET | `/public/properties/:id` | – | published property |
@@ -194,7 +194,9 @@ is looking.
 | PUT | `/users/me/avatar/google` | `{ photoUrl }`: "Sync from Google account". Must be a `*.googleusercontent.com` photo |
 | DELETE | `/users/me/avatar` | no picture |
 
-Each returns the profile. The file that was replaced is deleted. While the picture is a Google
+Each returns the profile. The file that was replaced is deleted. Other people see a changed name
+or picture at once: the public profile and the owner details on the user's published listings are
+dropped from the cache, and chat lists read both live. While the picture is a Google
 photo, every Google sign-in updates it to the account's current photo; a picture the user uploaded
 or removed is never overwritten.
 
@@ -219,11 +221,13 @@ that asked.
   routes, and the chat server at the handshake and on every message; on the announcement it
   closes the device's open chat connections. Without Redis the check cannot be made and a
   signed-out device works until its token expires, as before; it can never renew it.
-- **A device may sign other devices out only after it has been signed in for 24 hours**
-  (`canSignOutOthers`; `403` with `canSignOutOthersFrom` otherwise). Someone who just got into an
-  account cannot lock its owner out, while the owner's older devices can remove the newcomer.
-  A device can always sign itself out. Changing the password still signs the other devices out
-  whatever the age of the session, because it needs the current password.
+- **The one-day rule.** Only a device that has been signed in for 24 hours may take the account
+  away from its other devices: sign them out, change the password, deactivate or delete the
+  account. From a newer device those answer `403` with `code: "DEVICE_TOO_NEW"` and
+  `canSignOutOthersFrom` (the list reports the same as `canSignOutOthers`). Someone who just got
+  into an account, even with its password, cannot lock the owner out, while the owner's older
+  devices can remove the newcomer. A device can always sign itself out, and "forgot password" by
+  email is not affected: it proves ownership of the email, not of a device.
 - **New sign-in alert.** When someone signs in while the account already has an active session,
   the owner is emailed (device, time, IP address), if the account has an email. The app also
   compares the device list on its side and tells the user on their other devices.

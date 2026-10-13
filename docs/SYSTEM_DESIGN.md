@@ -361,7 +361,7 @@ These come from reading the code, not from load testing.
 - Forgetting the chat PIN loses history forever (the price of end-to-end encryption). Consider telling users clearly at PIN creation.
 - A forgotten chat PIN is recovered with the account password (a Google account creates one first). On a device that still has the keys only the PIN changes; on any other device the keys are reset and earlier history is lost. Whoever knows the account password can therefore reset the chat keys; the other person in each chat is warned that the key changed.
 - Deleting an account deletes everything: its files in storage, its payment records, and its messages in other people's conversations with it.
-- The one-day rule covers "sign out" in the device list. Changing the password (which needs the current password) and deactivating or deleting the account still end the other sessions from any device.
+- The one-day rule covers everything that takes the account away from its other devices: signing them out, changing the password, deactivating and deleting. A legitimate owner on a brand-new device therefore waits a day for those too, or uses an older device, or resets the password by email. Recovering a forgotten chat PIN with the password is not under the rule.
 - Only one contact path to an owner (chat vs contact form): decide which is the product's main one.
 
 ### Not covered

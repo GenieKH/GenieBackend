@@ -14,6 +14,7 @@ import { EmailDeliveryService } from './mail/email-delivery.service';
 import { OtpEmailService } from './mail/otp-email.service';
 import { PasswordResetOtpRepository } from './password-reset/password-reset-otp.repository';
 import { PasswordResetService } from './password-reset/password-reset.service';
+import { EstablishedDeviceService } from './sessions/established-device.service';
 import { IpLocationProvider, IpWhoIsLocationProvider } from './sessions/ip-location.provider';
 import { RefreshTokenRepository } from './sessions/refresh-token.repository';
 import { RevokedSessionStore } from './sessions/revoked-session.store';
@@ -46,6 +47,7 @@ import { UserRepository } from './users/user.repository';
     { provide: IpLocationProvider, useClass: IpWhoIsLocationProvider },
     TokenIssuerService,
     SessionRevocationService,
+    EstablishedDeviceService,
     SessionService,
     IdentityProofService,
     PasswordProofService,

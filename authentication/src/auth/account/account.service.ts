@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { FirebaseService } from '../../firebase/firebase.service';
 import { BCRYPT_ROUNDS } from '../auth.constants';
 import { PasswordResetOtpRepository } from '../password-reset/password-reset-otp.repository';
+import { EstablishedDeviceService, SessionCaller } from '../sessions/established-device.service';
 import { SessionRevocationService } from '../sessions/session-revocation.service';
 import { UserPatch, UserRecord, UserRepository } from '../users/user.repository';
 import { IdentityProof, IdentityProofService } from './identity-proof.service';
@@ -11,12 +12,18 @@ import { UserContentClient } from './user-content.client';
 /**
  * What the owner can do to their own account while signed in: set its
  * password, switch it off, or delete it. Each asks for an [IdentityProof] first.
+ *
+ * Changing the password, deactivating and deleting also take the account away
+ * from its other devices, so they are refused on a device that signed in less
+ * than a day ago (`EstablishedDeviceService`): knowing the password is not
+ * enough to lock the owner out.
  */
 @Injectable()
 export class AccountService {
   constructor(
     @Inject(UserRepository) private readonly users: UserRepository,
     @Inject(SessionRevocationService) private readonly sessions: SessionRevocationService,
+    @Inject(EstablishedDeviceService) private readonly devices: EstablishedDeviceService,
     @Inject(IdentityProofService) private readonly proofs: IdentityProofService,
     @Inject(UserContentClient) private readonly content: UserContentClient,
     @Inject(PasswordResetOtpRepository) private readonly otps: PasswordResetOtpRepository,
@@ -24,16 +31,12 @@ export class AccountService {
   ) {}
 
   /** Every other device is signed out: whoever else knew the old password is gone. */
-  async changePassword(
-    userId: string,
-    currentPassword: string,
-    newPassword: string,
-    keepSessionId: string | null,
-  ): Promise<void> {
-    await this.proofs.verify(userId, { password: currentPassword });
+  async changePassword(caller: SessionCaller, currentPassword: string, newPassword: string): Promise<void> {
+    await this.devices.require(caller);
+    await this.proofs.verify(caller.userId, { password: currentPassword });
 
-    await this.users.update(userId, await this.passwordPatch(newPassword));
-    await this.sessions.endAllSessions(userId, keepSessionId);
+    await this.users.update(caller.userId, await this.passwordPatch(newPassword));
+    await this.sessions.endAllSessions(caller.userId, caller.sessionId);
   }
 
   /**
@@ -51,20 +54,22 @@ export class AccountService {
    * Hides the account and everything it posted, and signs every device out.
    * Nothing is removed: signing in again brings it all back (see `reactivate`).
    */
-  async deactivate(userId: string, proof: IdentityProof): Promise<void> {
-    await this.proofs.verify(userId, proof);
+  async deactivate(caller: SessionCaller, proof: IdentityProof): Promise<void> {
+    await this.devices.require(caller);
+    const { id } = await this.proofs.verify(caller.userId, proof);
 
-    await this.users.update(userId, { deactivated_at: new Date().toISOString() });
-    await this.sessions.endAllSessions(userId);
-    await this.content.visibilityChanged(userId);
+    await this.users.update(id, { deactivated_at: new Date().toISOString() });
+    await this.sessions.endAllSessions(id);
+    await this.content.visibilityChanged(id);
   }
 
   /**
    * Removes the account and every trace of it: uploaded files, listings,
    * chats, sessions, reset codes and its Google sign-in record. Cannot be undone.
    */
-  async delete(userId: string, proof: IdentityProof): Promise<void> {
-    const user = await this.proofs.verify(userId, proof);
+  async delete(caller: SessionCaller, proof: IdentityProof): Promise<void> {
+    await this.devices.require(caller);
+    const user = await this.proofs.verify(caller.userId, proof);
 
     // Hidden before anything is removed, so nobody is shown a listing whose photos are already gone.
     await this.users.update(user.id, { deactivated_at: new Date().toISOString() });

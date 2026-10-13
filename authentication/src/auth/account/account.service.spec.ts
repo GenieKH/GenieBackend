@@ -108,6 +108,10 @@ describe('PasswordProofService', () => {
 describe('AccountService', () => {
   const users = { findById: jest.fn(), update: jest.fn(), delete: jest.fn() };
   const sessions = { endAllSessions: jest.fn() };
+  /** The one-day rule: `require` rejects for a device that signed in less than a day ago. */
+  const devices = { require: jest.fn() };
+  const tooNew = new ForbiddenException({ code: 'DEVICE_TOO_NEW' });
+  const caller = { userId: 'u1', sessionId: 'this-session' };
   const content = { eraseFiles: jest.fn(), visibilityChanged: jest.fn() };
   const otps = { deleteAllFor: jest.fn() };
   const firebase = { verifyIdToken: jest.fn(), deleteUser: jest.fn() };
@@ -120,6 +124,7 @@ describe('AccountService', () => {
     service = new AccountService(
       users as never,
       sessions as never,
+      devices as never,
       new IdentityProofService(users as never, firebase as never),
       content as never,
       otps as never,
@@ -131,7 +136,7 @@ describe('AccountService', () => {
 
   describe('changePassword', () => {
     it('stores a hash of the new password and signs out every other device', async () => {
-      await service.changePassword('u1', PASSWORD, 'a-new-password', 'this-session');
+      await service.changePassword(caller, PASSWORD, 'a-new-password');
 
       const patch = users.update.mock.calls[0][1];
       expect(await bcrypt.compare('a-new-password', patch.password_hash)).toBe(true);
@@ -139,7 +144,7 @@ describe('AccountService', () => {
     });
 
     it('changes nothing when the current password is wrong', async () => {
-      await expect(service.changePassword('u1', 'guess', 'a-new-password', 's1')).rejects.toThrow(ForbiddenException);
+      await expect(service.changePassword(caller, 'guess', 'a-new-password')).rejects.toThrow(ForbiddenException);
       expect(users.update).not.toHaveBeenCalled();
       expect(sessions.endAllSessions).not.toHaveBeenCalled();
     });
@@ -172,7 +177,7 @@ describe('AccountService', () => {
 
   describe('deactivate', () => {
     it('hides the account at once and signs every device out, keeping the data', async () => {
-      await service.deactivate('u1', { password: PASSWORD });
+      await service.deactivate(caller, { password: PASSWORD });
 
       expect(users.update).toHaveBeenCalledWith('u1', { deactivated_at: expect.any(String) });
       expect(sessions.endAllSessions).toHaveBeenCalledWith('u1');
@@ -182,7 +187,7 @@ describe('AccountService', () => {
     });
 
     it('needs proof', async () => {
-      await expect(service.deactivate('u1', { password: 'guess' })).rejects.toThrow(ForbiddenException);
+      await expect(service.deactivate(caller, { password: 'guess' })).rejects.toThrow(ForbiddenException);
       expect(users.update).not.toHaveBeenCalled();
     });
   });
@@ -196,7 +201,7 @@ describe('AccountService', () => {
       sessions.endAllSessions.mockImplementation(async () => void order.push('sign out'));
       users.delete.mockImplementation(async () => void order.push('delete account'));
 
-      await service.delete('u1', { password: PASSWORD });
+      await service.delete(caller, { password: PASSWORD });
 
       // Hidden first, so nobody is shown a listing whose photos are gone; the
       // files before the rows, because the rows say which files there are.
@@ -209,7 +214,7 @@ describe('AccountService', () => {
     it('deletes nothing, and shows the account again, when its files could not be erased', async () => {
       content.eraseFiles.mockRejectedValue(new ServiceUnavailableException());
 
-      await expect(service.delete('u1', { password: PASSWORD })).rejects.toThrow(ServiceUnavailableException);
+      await expect(service.delete(caller, { password: PASSWORD })).rejects.toThrow(ServiceUnavailableException);
 
       expect(users.update).toHaveBeenLastCalledWith('u1', { deactivated_at: null });
       expect(sessions.endAllSessions).not.toHaveBeenCalled();
@@ -217,9 +222,36 @@ describe('AccountService', () => {
     });
 
     it('needs proof', async () => {
-      await expect(service.delete('u1', { password: 'guess' })).rejects.toThrow(ForbiddenException);
+      await expect(service.delete(caller, { password: 'guess' })).rejects.toThrow(ForbiddenException);
       expect(content.eraseFiles).not.toHaveBeenCalled();
       expect(users.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('on a device that signed in less than a day ago', () => {
+    beforeEach(() => devices.require.mockRejectedValue(tooNew));
+
+    it('the password cannot be changed, even with the right password', async () => {
+      await expect(service.changePassword(caller, PASSWORD, 'a-new-password')).rejects.toBe(tooNew);
+
+      expect(users.update).not.toHaveBeenCalled();
+      expect(sessions.endAllSessions).not.toHaveBeenCalled();
+    });
+
+    it('the account cannot be deactivated or deleted', async () => {
+      await expect(service.deactivate(caller, { password: PASSWORD })).rejects.toBe(tooNew);
+      await expect(service.delete(caller, { password: PASSWORD })).rejects.toBe(tooNew);
+
+      expect(users.update).not.toHaveBeenCalled();
+      expect(content.eraseFiles).not.toHaveBeenCalled();
+      expect(users.delete).not.toHaveBeenCalled();
+    });
+
+    it('a first password can still be created: that takes nothing away from other devices', async () => {
+      users.findById.mockResolvedValue(account({ firebase_uid: 'fb1', has_password: false }));
+      firebase.verifyIdToken.mockResolvedValue({ uid: 'fb1', auth_time: NOW_SECONDS - 30 });
+
+      await expect(service.createPassword('u1', 'fresh-id-token', 'my-first-password')).resolves.toBeUndefined();
     });
   });
 
@@ -298,7 +330,7 @@ describe('AccountController', () => {
   it('keeps the calling device signed in when the password changes', async () => {
     await controller.changePassword(user, { currentPassword: PASSWORD, newPassword: 'a-new-password' });
 
-    expect(service.changePassword).toHaveBeenCalledWith('u1', PASSWORD, 'a-new-password', 's1');
+    expect(service.changePassword).toHaveBeenCalledWith(user, PASSWORD, 'a-new-password');
   });
 
   it('returns the password proof to the app', async () => {

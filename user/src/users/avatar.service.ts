@@ -79,7 +79,7 @@ export class AvatarService implements OnModuleInit {
   private async replace(userId: string, avatarUrl: string | null) {
     const previous = await this.prisma.user.findUnique({ where: { id: userId }, select: { avatarUrl: true } });
     await this.prisma.user.update({ where: { id: userId }, data: { avatarUrl } });
-    await this.users.forgetPublicProfile(userId);
+    await this.users.publicViewChanged(userId);
 
     await this.removeUploadedFile(userId, previous?.avatarUrl);
     return this.users.getProfile(userId);

@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Redis } from 'ioredis';
-import { RedisConnection, redisUrl } from '../redis/redis-connection';
+import { pubSubRedisOptions, RedisConnection, redisUrl } from '../redis/redis-connection';
 
 /** Written by the authentication service (`RevokedSessionStore`): spelled the same there. */
 const KEY_PREFIX = 'sessions:revoked:';
@@ -38,7 +38,7 @@ export class RevokedSessions implements OnModuleInit, OnModuleDestroy {
     // A subscribed connection can do nothing else, so it is a second one. It
     // queues the subscription while Redis is unreachable and restores it after
     // a reconnect.
-    this.subscriber = new Redis(redisUrl(), { retryStrategy: (attempt) => Math.min(attempt * 500, 5000) });
+    this.subscriber = new Redis(redisUrl(), pubSubRedisOptions);
     // An outage is already reported once by RedisConnection.
     this.subscriber.on('error', () => undefined);
     this.subscriber.on('message', (_channel: string, sessionId: string) => {

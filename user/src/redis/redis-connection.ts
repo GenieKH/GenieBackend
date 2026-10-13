@@ -5,6 +5,23 @@ export function redisUrl(): string {
   return process.env.REDIS_URL || 'redis://localhost:6379';
 }
 
+/** Wait before reconnect attempt `attempt`: 0.5s, 1s, 1.5s ... capped at 5s. Never gives up. */
+export function reconnectDelay(attempt: number): number {
+  return Math.min(attempt * 500, 5000);
+}
+
+/**
+ * Options for the long-lived pub/sub connections (chat adapter, session
+ * revocation). They queue commands while reconnecting and keep retrying
+ * forever. ioredis's default of 20 retries per command would otherwise reject
+ * the queued commands after about 80s of outage as an uncaught error, which
+ * kills the process.
+ */
+export const pubSubRedisOptions = {
+  maxRetriesPerRequest: null,
+  retryStrategy: reconnectDelay,
+} as const;
+
 /**
  * The connection for ordinary commands (cache, rate limits). Redis only makes
  * things faster or shared between instances, so a command never waits for a
@@ -19,7 +36,7 @@ export class RedisConnection implements OnModuleInit, OnModuleDestroy {
     lazyConnect: true,
     enableOfflineQueue: false,
     maxRetriesPerRequest: 1,
-    retryStrategy: (attempt) => Math.min(attempt * 500, 5000),
+    retryStrategy: reconnectDelay,
   });
 
   constructor() {

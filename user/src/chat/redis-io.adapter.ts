@@ -3,7 +3,7 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { Redis } from 'ioredis';
 import { Server, ServerOptions } from 'socket.io';
-import { redisUrl } from '../redis/redis-connection';
+import { pubSubRedisOptions, redisUrl } from '../redis/redis-connection';
 
 /**
  * Lets several instances of this service act as one chat server: a message
@@ -19,10 +19,19 @@ export class RedisIoAdapter extends IoAdapter {
   constructor(app: INestApplicationContext) {
     super(app);
     // These two queue commands while reconnecting, so subscriptions survive an outage.
-    this.publisher = new Redis(redisUrl(), { retryStrategy: (attempt) => Math.min(attempt * 500, 5000) });
+    this.publisher = new Redis(redisUrl(), pubSubRedisOptions);
     this.subscriber = this.publisher.duplicate();
     for (const connection of [this.publisher, this.subscriber]) {
-      connection.on('error', (error: Error & { code?: string }) => this.logger.error(`Chat Redis connection error: ${error.message || error.code || 'cannot connect'}`));
+      // Logged once per outage, not once per reconnect attempt.
+      let healthy = true;
+      connection.on('error', (error: Error & { code?: string }) => {
+        if (healthy) this.logger.error(`Chat Redis unavailable, retrying: ${error.message || error.code || 'cannot connect'}`);
+        healthy = false;
+      });
+      connection.on('ready', () => {
+        if (!healthy) this.logger.log('Chat Redis is available again');
+        healthy = true;
+      });
     }
   }
 

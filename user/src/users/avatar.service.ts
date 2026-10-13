@@ -7,7 +7,8 @@ import { UsersService } from './users.service';
 
 /** Public bucket: a profile picture is shown to everyone. One folder per user. */
 const BUCKET = 'avatars';
-const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+/** The app compresses a picture to under 1 MB (`ImageUploadPolicy.avatar`); storage refuses more than this. */
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 /** Only used to ask storage whether a file is there. */
 const EXISTENCE_CHECK_SECONDS = 60;
 

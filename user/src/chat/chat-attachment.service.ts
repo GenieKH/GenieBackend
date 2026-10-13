@@ -5,7 +5,12 @@ import { SupabaseService } from '../supabase/supabase.service';
 
 /** Private bucket: nothing in it is readable without a signed URL from this service. */
 const BUCKET = 'chat-attachments';
-const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+/**
+ * Pictures are compressed to under 3 MB before they are encrypted, and the
+ * app refuses files above 10 MB. Storage refuses more than this, which also
+ * covers the few bytes encryption adds.
+ */
+const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 const DOWNLOAD_URL_SECONDS = 60;
 
 /** Where an attachment lives. Both people are in the path, so access needs no lookup. */

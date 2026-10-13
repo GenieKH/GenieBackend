@@ -1,6 +1,13 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+/**
+ * Listing photos are compressed to under 4 MB on the phone (the app's
+ * `ImageUploadPolicy.propertyPhoto`). Storage refuses anything above this,
+ * so a client that skips compression still cannot upload a large file.
+ */
+const PROPERTY_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+
 /** The most entries storage lists or deletes in one call. */
 const LIST_PAGE_SIZE = 1000;
 /** Far more than any account has; stops a loop if storage keeps listing a file it will not delete. */
@@ -25,19 +32,25 @@ export class SupabaseService implements OnModuleInit {
 
   async onModuleInit() {
     try {
-      await this.ensureBucket(this.bucketName, { public: true });
+      await this.ensureBucket(this.bucketName, { public: true, fileSizeLimit: PROPERTY_IMAGE_MAX_BYTES });
     } catch (error) {
       this.logger.error('Error initializing Supabase storage buckets', error);
     }
   }
 
-  /** Creates the bucket if it does not exist yet. */
+  /**
+   * Creates the bucket if it does not exist yet. A bucket that does exist keeps
+   * the limits it was made with, so they are applied to it again: a limit
+   * added later must reach buckets that were created before it.
+   */
   async ensureBucket(name: string, options: { public: boolean; fileSizeLimit?: number }) {
     const { data: buckets, error } = await this.supabase.storage.listBuckets();
     if (error) throw error;
 
     if (buckets.some((bucket) => bucket.name === name)) {
-      this.logger.log(`Bucket ${name} already exists.`);
+      const { error: updateError } = await this.supabase.storage.updateBucket(name, options);
+      if (updateError) throw updateError;
+      this.logger.log(`Bucket ${name} already exists; limits applied.`);
       return;
     }
     this.logger.log(`Bucket ${name} not found, creating it...`);

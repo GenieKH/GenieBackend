@@ -90,6 +90,37 @@ describe('UsersService', () => {
     expect(cache.delete).toHaveBeenCalledWith(`users:public-profile:${ME}`);
   });
 
+  describe('checking a username while it is typed', () => {
+    it('is available when nobody has it', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.checkUsername(ME, '  Sokha_99 ')).resolves.toEqual({
+        username: 'sokha_99',
+        available: true,
+        reason: null,
+      });
+      // Compared the way it would be saved: lowercase, no surrounding spaces.
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({ where: { username: 'sokha_99' }, select: { id: true } });
+    });
+
+    it('is taken when another account has it', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: SOMEONE_ELSE });
+
+      await expect(service.checkUsername(ME, 'dara')).resolves.toMatchObject({ available: false, reason: 'taken' });
+    });
+
+    it('is still available when it is the caller\'s own, so an unchanged field is not an error', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: ME });
+
+      await expect(service.checkUsername(ME, 'sokha')).resolves.toMatchObject({ available: true, reason: null });
+    });
+
+    it.each(['ab', 'has space', 'សុខា', 'x'.repeat(31), ''])('rejects %p without asking the database', async (input) => {
+      await expect(service.checkUsername(ME, input)).resolves.toMatchObject({ available: false, reason: 'invalid' });
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
   it('says the username is taken when someone else has it', async () => {
     prisma.user.update.mockRejectedValue(uniqueViolation);
     prisma.user.findUnique.mockResolvedValue({ id: SOMEONE_ELSE });

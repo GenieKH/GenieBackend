@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma.service';
 import { PublicPropertyCache } from '../properties/services/public-property-cache.service';
 import { JsonCache } from '../redis/json-cache.service';
 import { isGooglePhotoUrl } from './avatar-url';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateProfileDto, USERNAME_PATTERN } from './dto/update-profile.dto';
 
 /** The columns the owner's own profile is built from. Never the password hash. */
 const PROFILE_SELECT = {
@@ -49,6 +49,14 @@ const PUBLIC_PROFILE_SELECT = {
   createdAt: true,
 } as const;
 
+/** Whether a username may be chosen, and if not why. */
+export interface UsernameAvailability {
+  /** The username as it would be saved (trimmed, lowercase). */
+  username: string;
+  available: boolean;
+  reason: 'invalid' | 'taken' | null;
+}
+
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
 /** Short, because a name or photo set by Google sign-in (another service) cannot clear it. */
@@ -92,6 +100,25 @@ export class UsersService {
       }
       return user;
     });
+  }
+
+  /**
+   * Whether `input` could be this user's username right now: well formed, and
+   * not another account's. The user's own current username counts as available.
+   *
+   * This is only for showing the answer while someone types. Saving is what
+   * decides: two people can ask about the same free name, and only the first
+   * save wins (the unique index refuses the second with a 409).
+   */
+  async checkUsername(userId: string, input: string): Promise<UsernameAvailability> {
+    const username = input.trim().toLowerCase();
+    if (!USERNAME_PATTERN.test(username)) {
+      return { username, available: false, reason: 'invalid' };
+    }
+
+    const owner = await this.prisma.user.findUnique({ where: { username }, select: { id: true } });
+    const taken = owner !== null && owner.id !== userId;
+    return { username, available: !taken, reason: taken ? 'taken' : null };
   }
 
   /**

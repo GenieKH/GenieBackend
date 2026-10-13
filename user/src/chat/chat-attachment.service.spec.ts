@@ -30,7 +30,7 @@ describe('ChatAttachmentService', () => {
 
     expect(storage.ensureBucket).toHaveBeenCalledWith('chat-attachments', {
       public: false,
-      fileSizeLimit: 25 * 1024 * 1024,
+      fileSizeLimit: 12 * 1024 * 1024,
     });
   });
 

@@ -152,6 +152,7 @@ All routes go through the gateway. JWT = `Authorization: Bearer <accessToken>`.
 | POST | `/public/properties/guest-session` | – | `{deviceId}` |
 | `*` | `/properties/...` | JWT | own listings, images, like, favorite, contact |
 | GET / PATCH | `/users/me` | JWT | profile (see below) |
+| GET | `/users/username-available` | JWT | is this username free (see below) |
 | POST / PUT / DELETE | `/users/me/avatar...` | JWT | profile picture (see below) |
 | `*` | `/chat/...` | JWT | keys, backup, conversations, messages |
 | POST | `/payments/checkout` | JWT | `{propertyId}` → `{checkoutUrl, transactionId}` |
@@ -173,17 +174,23 @@ only the fields it is sent; `null` or an empty string clears one (never `usernam
 
 | Field | Rule |
 |---|---|
-| `username` | The unique handle: 3-30 of `a-z 0-9 _ .`, stored lowercase. `409` `Username is already taken`. The database gives every new account one (`user_<10 hex>`). |
+| `username` | The unique handle: 3-30 of `a-z 0-9 _ .`, stored lowercase. `409` `Username is already taken`. Every new account is given a random unused one (`user_<10 hex>`, drawn by the database; sign-up retries if it ever collides), which the owner can change. |
 | `name` | What people see. Up to 60 characters, not unique. Google sign-in fills it in. |
 | `firstName`, `lastName` | Up to 50 characters each. |
 | `sex` | `male`, `female` or `other`. |
 | `phone` | Unique. `409` `Phone number is already taken`. |
 
+`GET /users/username-available?username=` (JWT) → `{ username, available, reason }` where `reason` is
+`null`, `"taken"` or `"invalid"`. It compares the name the way it would be saved (trimmed, lowercase)
+and counts the caller's own current username as available. The app calls it while the user types;
+it is advice only: two people can be told the same free name, and the save (`PATCH /users/me`) is
+what decides, answering `409` to the second. Limited to 60 checks per user per minute.
+
 `GET /users/:id` (JWT) returns another user's public profile: `{ id, username, name, avatarUrl,
 createdAt }`, never contact details. A deactivated account answers `404`.
 
 **Profile picture.** It is either a file uploaded to the public `avatars` bucket (one folder per
-user, 5 MB per file) or the Google account's photo. It cannot be set to any other URL: every app
+user, 2 MB per file) or the Google account's photo. It cannot be set to any other URL: every app
 that shows a user loads their picture, so a URL of the user's choosing would tell that server who
 is looking.
 
@@ -366,3 +373,21 @@ integrated yet. The flow around it is production-shaped:
   `password-proof`, `internal`); each place that accepts a token accepts exactly one kind.
 - Self-registration always creates role `user`.
 - Password-reset codes are generated with a CSPRNG and stored hashed.
+
+## Uploaded files
+
+Files never pass through the gateway or the services: the app asks for a signed upload URL and
+sends the file straight to Supabase storage. What keeps a large file out is therefore the bucket's
+size limit, applied by the user service when it starts (and to buckets that already existed, which
+keep the limits they were made with otherwise).
+
+| Bucket | Holds | Limit | What the app sends |
+|---|---|---|---|
+| `avatars` | profile pictures | 2 MB | JPEG under 1 MB |
+| `property-images` | listing photos | 8 MB | JPEG under 4 MB |
+| `chat-attachments` | encrypted chat files | 12 MB | encrypted JPEG under 3 MB |
+
+The app compresses every picture before upload (see its README), so the limits are a safety net
+for a client that does not. Changing a limit means changing the constant next to the code that
+owns the bucket and restarting the user service. The server cannot compress chat files: they are
+encrypted on the sender's device and the server never sees them readable.

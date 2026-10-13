@@ -178,3 +178,45 @@ describe('SupabaseService.removeFolder', () => {
     expect(files.size).toBe(1);
   });
 });
+
+describe('SupabaseService.ensureBucket', () => {
+  function serviceWith(existing: string[]) {
+    process.env.SUPABASE_URL = 'http://localhost:54321';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
+    const storage = {
+      listBuckets: jest.fn().mockResolvedValue({ data: existing.map((name) => ({ name })), error: null }),
+      createBucket: jest.fn().mockResolvedValue({ error: null }),
+      updateBucket: jest.fn().mockResolvedValue({ error: null }),
+    };
+    const service = new SupabaseService();
+    (service as unknown as { supabase: unknown }).supabase = { storage };
+    return { service, storage };
+  }
+
+  const limits = { public: false, fileSizeLimit: 2 * 1024 * 1024 };
+
+  it('creates a missing bucket with its size limit', async () => {
+    const { service, storage } = serviceWith([]);
+
+    await service.ensureBucket('avatars', limits);
+
+    expect(storage.createBucket).toHaveBeenCalledWith('avatars', limits);
+    expect(storage.updateBucket).not.toHaveBeenCalled();
+  });
+
+  it('applies the limit to a bucket made before the limit existed', async () => {
+    const { service, storage } = serviceWith(['avatars']);
+
+    await service.ensureBucket('avatars', limits);
+
+    expect(storage.updateBucket).toHaveBeenCalledWith('avatars', limits);
+    expect(storage.createBucket).not.toHaveBeenCalled();
+  });
+
+  it('reports a limit that could not be applied, instead of carrying on unprotected', async () => {
+    const { service, storage } = serviceWith(['avatars']);
+    storage.updateBucket.mockResolvedValue({ error: new Error('forbidden') });
+
+    await expect(service.ensureBucket('avatars', limits)).rejects.toThrow('forbidden');
+  });
+});

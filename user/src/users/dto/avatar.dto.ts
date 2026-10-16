@@ -11,7 +11,9 @@ export class UseAvatarUploadDto {
 
 /** "Sync from Google account". */
 export class UseGooglePhotoDto {
-  @ApiProperty({ description: "The Google account's photo URL, as Google sign-in reports it" })
+  @ApiProperty({
+    description: "The Google account's photo URL, as Google sign-in reports it",
+  })
   @IsUrl({ protocols: ['https'], require_protocol: true })
   @MaxLength(500)
   photoUrl!: string;

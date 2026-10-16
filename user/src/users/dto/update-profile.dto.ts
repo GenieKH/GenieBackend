@@ -1,6 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsIn, IsOptional, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  ValidateIf,
+} from 'class-validator';
 
 /** A handle: 3 to 30 lowercase letters, digits, "_" or ".". */
 export const USERNAME_PATTERN = /^[a-z0-9_.]{3,30}$/;
@@ -26,15 +33,20 @@ function toLowerCase({ value }: { value: unknown }): unknown {
  * The profile picture has its own endpoints (`AvatarService`).
  */
 export class UpdateProfileDto {
-  @ApiPropertyOptional({ description: 'Unique handle: 3-30 lowercase letters, digits, "_" or "."' })
+  @ApiPropertyOptional({
+    description: 'Unique handle: 3-30 lowercase letters, digits, "_" or "."',
+  })
   @ValidateIf((dto: UpdateProfileDto) => dto.username !== undefined)
   @Transform(toLowerCase)
   @Matches(USERNAME_PATTERN, {
-    message: 'Username must be 3-30 characters: lowercase letters, numbers, "_" or "."',
+    message:
+      'Username must be 3-30 characters: lowercase letters, numbers, "_" or "."',
   })
   username?: string;
 
-  @ApiPropertyOptional({ description: 'The name shown to other people. Does not have to be unique.' })
+  @ApiPropertyOptional({
+    description: 'The name shown to other people. Does not have to be unique.',
+  })
   @IsOptional()
   @Transform(trimToNull)
   @IsString()

@@ -41,6 +41,9 @@ export class AccountContentService {
    * cached about it, so the change shows at once instead of when the caches expire.
    */
   async visibilityChanged(userId: string): Promise<void> {
-    await Promise.all([this.users.publicViewChanged(userId), this.chat.forgetPublicKey(userId)]);
+    await Promise.all([
+      this.users.publicViewChanged(userId),
+      this.chat.forgetPublicKey(userId),
+    ]);
   }
 }

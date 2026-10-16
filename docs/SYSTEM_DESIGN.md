@@ -209,6 +209,45 @@ flowchart LR
 - No pagination and no limit on the map query: a wide box returns everything with all images.
 - The owner's **email and phone are included** for anyone, signed in or not.
 
+## 8a. Search: places, listings and people
+
+```mermaid
+flowchart LR
+    C["App (guest or user)"] -->|"1 GET /public/search?q (after a 500 ms pause in typing)"| G["API Gateway"]
+    G -->|"2"| U["User service"]
+    U -->|"3a suggestions (cached 1 h)"| P["Google Places API (New)"]
+    U -->|"3b listings by title/description,<br/>publishers by name/username"| DB[("properties, users")]
+    U -->|"4 places + properties + people"| C
+    C -->|"5 GET /public/search/places/:placeId"| G
+    U -->|"6 viewport (cached 24 h)"| P
+    U -->|"7 published listings inside it, nearest first"| C
+    C -->|"8 GET /public/search/people/:userId"| G
+```
+
+| Endpoint | Query | Answer | Errors |
+|---|---|---|---|
+| `GET /public/search` | `q` (1-200 chars; matched on its first 80, lowercased), `session`?, `lang`? (`en`/`km`), `lat`?, `lng`? | `{ places: [{placeId, primaryText, secondaryText}], properties: [map listing], people: [{id, name, username, avatarUrl, listingCount}] }`; empty lists for a text under 2 characters | 400, 429 |
+| `GET /public/search/places/:placeId` | `session`?, `lang`? | `{ place: {placeId, name, address, center, viewport}, properties: [map listing] }`, at most 100 | 400, 404 unknown place, 429, 503 no key or provider down |
+| `GET /public/search/people/:userId` | | `{ person, properties }`, newest first, at most 100 | 400, 404, 429 |
+
+- Public, like the map: a token is optional and only changes how the rate limit counts (per account instead of per address): 120 searches a minute.
+- A listing matches when its title or description contains every word of the text, in any order; a person when their name or username does. Only published listings, and only people with at least one, can be found: search is no directory of accounts. A person result never includes email or phone.
+- Places come from Google, called by the server so its key (`GOOGLE_PLACES_API_KEY`) is never in the app. The app makes one `session` token per search, so the suggestions and the place picked are billed as one session. Without a key, or when Google fails, search still answers listings and people.
+- A place's viewport is grown to at least ~500 m, so a single address still finds the listings around it.
+- Listing results share the map's cache version: publishing or hiding a listing outdates them at once. Trigram indexes (migration `11_search_indexes`) keep the `ILIKE '%word%'` queries off full table scans.
+- A person result carries `memberSince`. `GET /public/search/people/:userId` is the profile page, opened from search or by tapping the other person in a chat. It answers for any active account (404 if missing or deactivated), but only search finds people, and only publishers. It carries `email` and `phone` only for publishers, whose listings already show them; someone who has published nothing keeps them private. Result lists never include contact details, so search cannot be used to collect them in bulk. The page has Follow (does nothing yet), Chat and View on map.
+
+**Search history** (signed-in only, token required; migration `12_search_history`):
+
+| Endpoint | Body | Answer | Errors |
+|---|---|---|---|
+| `GET /search/history` | | `[{id, query, searchedAt}]`, newest first, at most 20, last 14 days only | 401 |
+| `POST /search/history` | `{query}` (2-80 chars after trimming) | the entry; the same text again (case and spacing aside) keeps its id and moves to the top | 400, 401, 429 (60 a minute) |
+| `DELETE /search/history/:id` | | 204 | 400, 401, 404 (missing or someone else's) |
+
+- The app saves a search when it is finished (a result picked, or the search key pressed), never per keystroke, and loads the list each time the search page opens, so every device shows the same history.
+- Entries older than 14 days are never returned, and are deleted (for everyone) whenever someone saves a search; each account keeps at most its 50 newest. Deleting the account deletes its history.
+
 ## 9. Save a property (like, favorite, view, contact owner)
 
 ```mermaid

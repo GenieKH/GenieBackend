@@ -7,6 +7,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma.module';
 import { PropertiesModule } from './properties/properties.module';
 import { RedisModule } from './redis/redis.module';
+import { SearchModule } from './search/search.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { UsersModule } from './users/users.module';
     PaymentsModule,
     UsersModule,
     ChatModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService, JwtStrategy],

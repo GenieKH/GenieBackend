@@ -9,7 +9,7 @@ import { createServiceProxy } from './service-proxy';
 /** Routes forwarded to a service, each as `/x` and `/x/...`. */
 const AUTH_PREFIXES = ['/auth'];
 const PUBLIC_USER_PREFIXES = ['/public'];
-const PROTECTED_USER_PREFIXES = ['/properties', '/payments', '/users', '/chat'];
+const PROTECTED_USER_PREFIXES = ['/properties', '/payments', '/users', '/chat', '/search'];
 
 /** Called by the payment provider, so it cannot carry a user JWT. */
 const PAYMENT_WEBHOOK = { path: '/payments/webhook', method: RequestMethod.POST };

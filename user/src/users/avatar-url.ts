@@ -15,5 +15,7 @@ export function isGooglePhotoUrl(url: string): boolean {
   } catch {
     return false;
   }
-  return photo.protocol === 'https:' && photo.hostname.endsWith(GOOGLE_PHOTO_HOST);
+  return (
+    photo.protocol === 'https:' && photo.hostname.endsWith(GOOGLE_PHOTO_HOST)
+  );
 }

@@ -19,8 +19,10 @@ const VERSION_KEY = 'properties:public:version';
 
 /** The smallest box on the grid that contains `bounds`. */
 export function widenToGrid(bounds: MapBounds): MapBounds {
-  const down = (value: number) => Math.floor(value / GRID_DEGREES) / (1 / GRID_DEGREES);
-  const up = (value: number) => Math.ceil(value / GRID_DEGREES) / (1 / GRID_DEGREES);
+  const down = (value: number) =>
+    Math.floor(value / GRID_DEGREES) / (1 / GRID_DEGREES);
+  const up = (value: number) =>
+    Math.ceil(value / GRID_DEGREES) / (1 / GRID_DEGREES);
   return {
     minLat: down(bounds.minLat),
     maxLat: up(bounds.maxLat),
@@ -39,14 +41,32 @@ export class PublicPropertyCache {
 
   /** Map results for a box already widened with `widenToGrid`. */
   async map<T>(box: MapBounds, load: () => Promise<T>): Promise<T> {
-    // The version is part of the key, so one `changed` call outdates every box at once.
+    return this.listings(
+      `map:${box.minLat}:${box.maxLat}:${box.minLng}:${box.maxLng}`,
+      load,
+    );
+  }
+
+  /**
+   * Any other list of published listings, named by what selects it (a search
+   * text, an owner). Outdated together with the map by `changed`.
+   */
+  async listings<T>(name: string, load: () => Promise<T>): Promise<T> {
+    // The version is part of the key, so one `changed` call outdates every list at once.
     const version = (await this.cache.get<number>(VERSION_KEY)) ?? 0;
-    const key = `properties:map:v${version}:${box.minLat}:${box.maxLat}:${box.minLng}:${box.maxLng}`;
-    return this.cache.remember(key, MAP_TTL_SECONDS, load);
+    return this.cache.remember(
+      `properties:list:v${version}:${name}`,
+      MAP_TTL_SECONDS,
+      load,
+    );
   }
 
   detail<T>(propertyId: string, load: () => Promise<T>): Promise<T> {
-    return this.cache.remember(this.detailKey(propertyId), DETAIL_TTL_SECONDS, load);
+    return this.cache.remember(
+      this.detailKey(propertyId),
+      DETAIL_TTL_SECONDS,
+      load,
+    );
   }
 
   /**
@@ -55,7 +75,10 @@ export class PublicPropertyCache {
    * data instead of waiting for the expiry.
    */
   async changed(propertyId: string): Promise<void> {
-    await Promise.all([this.cache.delete(this.detailKey(propertyId)), this.cache.increment(VERSION_KEY)]);
+    await Promise.all([
+      this.cache.delete(this.detailKey(propertyId)),
+      this.cache.increment(VERSION_KEY),
+    ]);
   }
 
   private detailKey(propertyId: string): string {

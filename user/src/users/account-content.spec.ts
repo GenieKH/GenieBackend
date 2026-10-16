@@ -24,65 +24,102 @@ describe('AvatarService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     userTable.findUnique.mockResolvedValue({ avatarUrl: null });
-    storage.createSignedUploadUrl.mockResolvedValue('https://storage.test/upload?token=t');
-    storage.createSignedDownloadUrl.mockResolvedValue('https://storage.test/signed');
+    storage.createSignedUploadUrl.mockResolvedValue(
+      'https://storage.test/upload?token=t',
+    );
+    storage.createSignedDownloadUrl.mockResolvedValue(
+      'https://storage.test/signed',
+    );
     users.getProfile.mockResolvedValue({ id: ME });
-    avatars = new AvatarService({ user: userTable } as never, storage as never, users as never);
+    avatars = new AvatarService(
+      { user: userTable } as never,
+      storage as never,
+      users as never,
+    );
   });
 
   it("hands out an upload location inside the user's own folder", async () => {
     const upload = await avatars.createUpload(ME);
 
     expect(upload.path).toMatch(new RegExp(`^${ME}/[0-9a-f-]{36}$`));
-    expect(storage.createSignedUploadUrl).toHaveBeenCalledWith('avatars', upload.path);
+    expect(storage.createSignedUploadUrl).toHaveBeenCalledWith(
+      'avatars',
+      upload.path,
+    );
   });
 
   it('uses an uploaded picture, and tells everyone who shows the user', async () => {
     await avatars.useUpload(ME, `${ME}/${FILE}`);
 
-    expect(userTable.update).toHaveBeenCalledWith({ where: { id: ME }, data: { avatarUrl: `${PUBLIC}/${ME}/${FILE}` } });
+    expect(userTable.update).toHaveBeenCalledWith({
+      where: { id: ME },
+      data: { avatarUrl: `${PUBLIC}/${ME}/${FILE}` },
+    });
     expect(users.publicViewChanged).toHaveBeenCalledWith(ME);
   });
 
   it.each([
     ["a picture in someone else's folder", `${SOMEONE_ELSE}/${FILE}`],
-    ['a path that climbs out of the folder', `${ME}/../${SOMEONE_ELSE}/${FILE}`],
+    [
+      'a path that climbs out of the folder',
+      `${ME}/../${SOMEONE_ELSE}/${FILE}`,
+    ],
     ['a URL', 'https://evil.example/a.png'],
   ])('refuses %s', async (_case, path) => {
-    await expect(avatars.useUpload(ME, path)).rejects.toThrow(BadRequestException);
+    await expect(avatars.useUpload(ME, path)).rejects.toThrow(
+      BadRequestException,
+    );
     expect(userTable.update).not.toHaveBeenCalled();
   });
 
   it('refuses a picture that was never uploaded', async () => {
     storage.createSignedDownloadUrl.mockResolvedValue(null);
 
-    await expect(avatars.useUpload(ME, `${ME}/${FILE}`)).rejects.toThrow('not uploaded');
+    await expect(avatars.useUpload(ME, `${ME}/${FILE}`)).rejects.toThrow(
+      'not uploaded',
+    );
   });
 
   it('deletes the picture it replaces, which nobody can see any more', async () => {
-    userTable.findUnique.mockResolvedValue({ avatarUrl: `${PUBLIC}/${ME}/old-picture` });
+    userTable.findUnique.mockResolvedValue({
+      avatarUrl: `${PUBLIC}/${ME}/old-picture`,
+    });
 
-    await avatars.useGooglePhoto(ME, 'https://lh3.googleusercontent.com/a/photo');
+    await avatars.useGooglePhoto(
+      ME,
+      'https://lh3.googleusercontent.com/a/photo',
+    );
 
-    expect(storage.removeFiles).toHaveBeenCalledWith('avatars', [`${ME}/old-picture`]);
+    expect(storage.removeFiles).toHaveBeenCalledWith('avatars', [
+      `${ME}/old-picture`,
+    ]);
   });
 
   it('leaves a Google photo alone when it is replaced: it is not ours to delete', async () => {
-    userTable.findUnique.mockResolvedValue({ avatarUrl: 'https://lh3.googleusercontent.com/a/photo' });
+    userTable.findUnique.mockResolvedValue({
+      avatarUrl: 'https://lh3.googleusercontent.com/a/photo',
+    });
 
     await avatars.remove(ME);
 
-    expect(userTable.update).toHaveBeenCalledWith({ where: { id: ME }, data: { avatarUrl: null } });
+    expect(userTable.update).toHaveBeenCalledWith({
+      where: { id: ME },
+      data: { avatarUrl: null },
+    });
     expect(storage.removeFiles).not.toHaveBeenCalled();
   });
 
   it('syncs only with a real Google photo', async () => {
-    await expect(avatars.useGooglePhoto(ME, 'https://evil.example/tracker.png')).rejects.toThrow(BadRequestException);
+    await expect(
+      avatars.useGooglePhoto(ME, 'https://evil.example/tracker.png'),
+    ).rejects.toThrow(BadRequestException);
     expect(userTable.update).not.toHaveBeenCalled();
   });
 
   it('still changes the picture when the old file cannot be deleted', async () => {
-    userTable.findUnique.mockResolvedValue({ avatarUrl: `${PUBLIC}/${ME}/old-picture` });
+    userTable.findUnique.mockResolvedValue({
+      avatarUrl: `${PUBLIC}/${ME}/old-picture`,
+    });
     storage.removeFiles.mockRejectedValue(new Error('storage down'));
 
     await expect(avatars.remove(ME)).resolves.toEqual({ id: ME });
@@ -140,7 +177,10 @@ describe('SupabaseService.removeFolder', () => {
         for (const path of files) {
           if (!path.startsWith(`${folder}/`)) continue;
           const [name, ...deeper] = path.slice(folder.length + 1).split('/');
-          names.set(name, { name, id: deeper.length === 0 ? `id-${name}` : null });
+          names.set(name, {
+            name,
+            id: deeper.length === 0 ? `id-${name}` : null,
+          });
         }
         return { data: [...names.values()], error: null };
       },
@@ -152,7 +192,9 @@ describe('SupabaseService.removeFolder', () => {
     process.env.SUPABASE_URL = 'http://localhost:54321';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
     const service = new SupabaseService();
-    (service as unknown as { supabase: unknown }).supabase = { storage: { from: () => bucket } };
+    (service as unknown as { supabase: unknown }).supabase = {
+      storage: { from: () => bucket },
+    };
     return { service, files };
   }
 
@@ -184,7 +226,12 @@ describe('SupabaseService.ensureBucket', () => {
     process.env.SUPABASE_URL = 'http://localhost:54321';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
     const storage = {
-      listBuckets: jest.fn().mockResolvedValue({ data: existing.map((name) => ({ name })), error: null }),
+      listBuckets: jest
+        .fn()
+        .mockResolvedValue({
+          data: existing.map((name) => ({ name })),
+          error: null,
+        }),
       createBucket: jest.fn().mockResolvedValue({ error: null }),
       updateBucket: jest.fn().mockResolvedValue({ error: null }),
     };
@@ -217,6 +264,8 @@ describe('SupabaseService.ensureBucket', () => {
     const { service, storage } = serviceWith(['avatars']);
     storage.updateBucket.mockResolvedValue({ error: new Error('forbidden') });
 
-    await expect(service.ensureBucket('avatars', limits)).rejects.toThrow('forbidden');
+    await expect(service.ensureBucket('avatars', limits)).rejects.toThrow(
+      'forbidden',
+    );
   });
 });

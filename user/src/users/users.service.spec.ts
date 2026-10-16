@@ -22,15 +22,26 @@ describe('UpdateProfileDto', () => {
     expect(dto.username).toBe('sokha_99.kh');
   });
 
-  it.each(['ab', 'has space', 'សុខា', 'a'.repeat(31), '', null])('refuses the username %p', async (username) => {
-    expect((await parse({ username })).invalid).toEqual(['username']);
-  });
+  it.each(['ab', 'has space', 'សុខា', 'a'.repeat(31), '', null])(
+    'refuses the username %p',
+    async (username) => {
+      expect((await parse({ username })).invalid).toEqual(['username']);
+    },
+  );
 
   it('lets any two people share a name, and clears a field sent empty', async () => {
-    const { dto, invalid } = await parse({ name: '  Sokha Chan ', firstName: '   ', lastName: null });
+    const { dto, invalid } = await parse({
+      name: '  Sokha Chan ',
+      firstName: '   ',
+      lastName: null,
+    });
 
     expect(invalid).toEqual([]);
-    expect(dto).toMatchObject({ name: 'Sokha Chan', firstName: null, lastName: null });
+    expect(dto).toMatchObject({
+      name: 'Sokha Chan',
+      firstName: null,
+      lastName: null,
+    });
   });
 
   it('accepts only the three known values for sex', async () => {
@@ -54,25 +65,43 @@ describe('UsersService', () => {
   const publicProperties = { changed: jest.fn() };
   const cache = {
     delete: jest.fn(),
-    remember: jest.fn((_key: string, _ttl: number, load: () => Promise<unknown>) => load()),
+    remember: jest.fn(
+      (_key: string, _ttl: number, load: () => Promise<unknown>) => load(),
+    ),
   };
   let service: UsersService;
 
-  const uniqueViolation = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+  const uniqueViolation = Object.assign(new Error('Unique constraint failed'), {
+    code: 'P2002',
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.property.findMany.mockResolvedValue([]);
-    service = new UsersService(prisma as never, cache as never, publicProperties as never);
+    service = new UsersService(
+      prisma as never,
+      cache as never,
+      publicProperties as never,
+    );
   });
 
   it('saves the changed fields and drops the cached public profile', async () => {
-    prisma.user.update.mockResolvedValue({ id: ME, username: 'sokha', name: 'Sokha' });
+    prisma.user.update.mockResolvedValue({
+      id: ME,
+      username: 'sokha',
+      name: 'Sokha',
+    });
 
-    const profile = await service.updateProfile(ME, { username: 'sokha', name: 'Sokha' });
+    const profile = await service.updateProfile(ME, {
+      username: 'sokha',
+      name: 'Sokha',
+    });
 
     expect(prisma.user.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: ME }, data: { username: 'sokha', name: 'Sokha' } }),
+      expect.objectContaining({
+        where: { id: ME },
+        data: { username: 'sokha', name: 'Sokha' },
+      }),
     );
     expect(cache.delete).toHaveBeenCalledWith(`users:public-profile:${ME}`);
     expect(profile).toMatchObject({ username: 'sokha' });
@@ -81,12 +110,21 @@ describe('UsersService', () => {
   it('shows a changed name or picture to other people at once, on listings too', async () => {
     prisma.user.update.mockResolvedValue({ id: ME, name: 'New Name' });
     // Published listings carry their owner's name and picture, and are cached.
-    prisma.property.findMany.mockResolvedValue([{ id: 'listing-1' }, { id: 'listing-2' }]);
+    prisma.property.findMany.mockResolvedValue([
+      { id: 'listing-1' },
+      { id: 'listing-2' },
+    ]);
 
     await service.updateProfile(ME, { name: 'New Name' });
 
-    expect(prisma.property.findMany.mock.calls[0][0].where).toEqual({ userId: ME, status: 'Active' });
-    expect(publicProperties.changed.mock.calls).toEqual([['listing-1'], ['listing-2']]);
+    expect(prisma.property.findMany.mock.calls[0][0].where).toEqual({
+      userId: ME,
+      status: 'Active',
+    });
+    expect(publicProperties.changed.mock.calls).toEqual([
+      ['listing-1'],
+      ['listing-2'],
+    ]);
     expect(cache.delete).toHaveBeenCalledWith(`users:public-profile:${ME}`);
   });
 
@@ -100,53 +138,82 @@ describe('UsersService', () => {
         reason: null,
       });
       // Compared the way it would be saved: lowercase, no surrounding spaces.
-      expect(prisma.user.findUnique).toHaveBeenCalledWith({ where: { username: 'sokha_99' }, select: { id: true } });
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { username: 'sokha_99' },
+        select: { id: true },
+      });
     });
 
     it('is taken when another account has it', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: SOMEONE_ELSE });
 
-      await expect(service.checkUsername(ME, 'dara')).resolves.toMatchObject({ available: false, reason: 'taken' });
+      await expect(service.checkUsername(ME, 'dara')).resolves.toMatchObject({
+        available: false,
+        reason: 'taken',
+      });
     });
 
-    it('is still available when it is the caller\'s own, so an unchanged field is not an error', async () => {
+    it("is still available when it is the caller's own, so an unchanged field is not an error", async () => {
       prisma.user.findUnique.mockResolvedValue({ id: ME });
 
-      await expect(service.checkUsername(ME, 'sokha')).resolves.toMatchObject({ available: true, reason: null });
+      await expect(service.checkUsername(ME, 'sokha')).resolves.toMatchObject({
+        available: true,
+        reason: null,
+      });
     });
 
-    it.each(['ab', 'has space', 'សុខា', 'x'.repeat(31), ''])('rejects %p without asking the database', async (input) => {
-      await expect(service.checkUsername(ME, input)).resolves.toMatchObject({ available: false, reason: 'invalid' });
-      expect(prisma.user.findUnique).not.toHaveBeenCalled();
-    });
+    it.each(['ab', 'has space', 'សុខា', 'x'.repeat(31), ''])(
+      'rejects %p without asking the database',
+      async (input) => {
+        await expect(service.checkUsername(ME, input)).resolves.toMatchObject({
+          available: false,
+          reason: 'invalid',
+        });
+        expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      },
+    );
   });
 
   it('says the username is taken when someone else has it', async () => {
     prisma.user.update.mockRejectedValue(uniqueViolation);
     prisma.user.findUnique.mockResolvedValue({ id: SOMEONE_ELSE });
 
-    await expect(service.updateProfile(ME, { username: 'sokha' })).rejects.toThrow(
-      new ConflictException('Username is already taken'),
-    );
+    await expect(
+      service.updateProfile(ME, { username: 'sokha' }),
+    ).rejects.toThrow(new ConflictException('Username is already taken'));
   });
 
   it('blames the phone number when the username was free', async () => {
     prisma.user.update.mockRejectedValue(uniqueViolation);
     prisma.user.findUnique.mockResolvedValue(null);
 
-    await expect(service.updateProfile(ME, { username: 'sokha', phone: '012345678' })).rejects.toThrow(
-      new ConflictException('Phone number is already taken'),
-    );
+    await expect(
+      service.updateProfile(ME, { username: 'sokha', phone: '012345678' }),
+    ).rejects.toThrow(new ConflictException('Phone number is already taken'));
   });
 
   describe('what the profile says about signing in', () => {
-    const row = { id: ME, hasPassword: false, firebaseUid: null as string | null, avatarUrl: null as string | null };
+    const row = {
+      id: ME,
+      hasPassword: false,
+      firebaseUid: null as string | null,
+      avatarUrl: null as string | null,
+    };
 
     it('a Google account has no password until its owner creates one', async () => {
-      prisma.user.findUnique.mockResolvedValue({ ...row, firebaseUid: 'google-1' });
-      expect(await service.getProfile(ME)).toMatchObject({ hasPassword: false });
+      prisma.user.findUnique.mockResolvedValue({
+        ...row,
+        firebaseUid: 'google-1',
+      });
+      expect(await service.getProfile(ME)).toMatchObject({
+        hasPassword: false,
+      });
 
-      prisma.user.findUnique.mockResolvedValue({ ...row, firebaseUid: 'google-1', hasPassword: true });
+      prisma.user.findUnique.mockResolvedValue({
+        ...row,
+        firebaseUid: 'google-1',
+        hasPassword: true,
+      });
       expect(await service.getProfile(ME)).toMatchObject({ hasPassword: true });
     });
 
@@ -157,20 +224,34 @@ describe('UsersService', () => {
     });
 
     it('says whether the picture is synced from Google', async () => {
-      prisma.user.findUnique.mockResolvedValue({ ...row, avatarUrl: 'https://lh3.googleusercontent.com/a/photo' });
-      expect(await service.getProfile(ME)).toMatchObject({ avatarFromGoogle: true });
+      prisma.user.findUnique.mockResolvedValue({
+        ...row,
+        avatarUrl: 'https://lh3.googleusercontent.com/a/photo',
+      });
+      expect(await service.getProfile(ME)).toMatchObject({
+        avatarFromGoogle: true,
+      });
 
-      prisma.user.findUnique.mockResolvedValue({ ...row, avatarUrl: 'https://storage.test/avatars/me/1' });
-      expect(await service.getProfile(ME)).toMatchObject({ avatarFromGoogle: false });
+      prisma.user.findUnique.mockResolvedValue({
+        ...row,
+        avatarUrl: 'https://storage.test/avatars/me/1',
+      });
+      expect(await service.getProfile(ME)).toMatchObject({
+        avatarFromGoogle: false,
+      });
     });
   });
 
   it('hides a deactivated account from other people', async () => {
     prisma.user.findFirst.mockResolvedValue(null);
 
-    await expect(service.getPublicProfile(SOMEONE_ELSE)).rejects.toThrow(NotFoundException);
+    await expect(service.getPublicProfile(SOMEONE_ELSE)).rejects.toThrow(
+      NotFoundException,
+    );
     expect(prisma.user.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: SOMEONE_ELSE, deactivatedAt: null } }),
+      expect.objectContaining({
+        where: { id: SOMEONE_ELSE, deactivatedAt: null },
+      }),
     );
   });
 });

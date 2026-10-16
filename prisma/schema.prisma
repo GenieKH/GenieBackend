@@ -80,6 +80,7 @@ model User {
   lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(6)
 
   keyBackup       ChatKeyBackup?
+  searchHistory   SearchHistoryEntry[]
   messagesSent    Message[] @relation("MessagesSent")
   messagesReceived Message[] @relation("MessagesReceived")
 
@@ -258,4 +259,24 @@ model Message {
   @@index([recipientId, readAt])
   @@index([senderId, recipientId, createdAt])
   @@map("messages")
+}
+
+/// A text the user searched on the home screen. Shown on every device they
+/// sign in on, and forgotten after 14 days. Searching the same text again
+/// moves its entry to the top instead of adding another.
+model SearchHistoryEntry {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  /// As the user typed it (trimmed), for display.
+  query           String
+  /// Lowercase, single-spaced: what makes two searches "the same".
+  normalizedQuery String   @map("normalized_query")
+  searchedAt      DateTime @default(now()) @map("searched_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, normalizedQuery])
+  @@index([userId, searchedAt(sort: Desc)])
+  @@index([searchedAt])
+  @@map("search_history")
 }

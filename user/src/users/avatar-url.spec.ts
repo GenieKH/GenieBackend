@@ -2,7 +2,9 @@ import { isGooglePhotoUrl } from './avatar-url';
 
 describe('isGooglePhotoUrl', () => {
   it('accepts a Google profile photo', () => {
-    expect(isGooglePhotoUrl('https://lh3.googleusercontent.com/a/photo=s96-c')).toBe(true);
+    expect(
+      isGooglePhotoUrl('https://lh3.googleusercontent.com/a/photo=s96-c'),
+    ).toBe(true);
   });
 
   it.each([

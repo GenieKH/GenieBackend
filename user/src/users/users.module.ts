@@ -4,6 +4,7 @@ import { PropertiesModule } from '../properties/properties.module';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { AccountContentService } from './account-content.service';
 import { AvatarService } from './avatar.service';
+import { PeopleSearchService } from './people-search.service';
 import { InternalAccountsController } from './internal-accounts.controller';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
@@ -16,6 +17,13 @@ import { UsersService } from './users.service';
 @Module({
   imports: [SupabaseModule, PropertiesModule, ChatModule],
   controllers: [UsersController, InternalAccountsController],
-  providers: [UsersService, AvatarService, AccountContentService],
+  providers: [
+    UsersService,
+    AvatarService,
+    AccountContentService,
+    PeopleSearchService,
+  ],
+  // Search finds the people who post listings through this.
+  exports: [PeopleSearchService],
 })
 export class UsersModule {}

@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { PublicPropertyCache } from '../properties/services/public-property-cache.service';
 import { JsonCache } from '../redis/json-cache.service';
@@ -90,16 +94,20 @@ export class UsersService {
    * A deactivated account is hidden, as if it did not exist.
    */
   getPublicProfile(userId: string) {
-    return this.cache.remember(publicProfileKey(userId), PUBLIC_PROFILE_TTL_SECONDS, async () => {
-      const user = await this.prisma.user.findFirst({
-        where: { id: userId, deactivatedAt: null },
-        select: PUBLIC_PROFILE_SELECT,
-      });
-      if (!user) {
-        throw new NotFoundException('User not found');
-      }
-      return user;
-    });
+    return this.cache.remember(
+      publicProfileKey(userId),
+      PUBLIC_PROFILE_TTL_SECONDS,
+      async () => {
+        const user = await this.prisma.user.findFirst({
+          where: { id: userId, deactivatedAt: null },
+          select: PUBLIC_PROFILE_SELECT,
+        });
+        if (!user) {
+          throw new NotFoundException('User not found');
+        }
+        return user;
+      },
+    );
   }
 
   /**
@@ -110,13 +118,19 @@ export class UsersService {
    * decides: two people can ask about the same free name, and only the first
    * save wins (the unique index refuses the second with a 409).
    */
-  async checkUsername(userId: string, input: string): Promise<UsernameAvailability> {
+  async checkUsername(
+    userId: string,
+    input: string,
+  ): Promise<UsernameAvailability> {
     const username = input.trim().toLowerCase();
     if (!USERNAME_PATTERN.test(username)) {
       return { username, available: false, reason: 'invalid' };
     }
 
-    const owner = await this.prisma.user.findUnique({ where: { username }, select: { id: true } });
+    const owner = await this.prisma.user.findUnique({
+      where: { username },
+      select: { id: true },
+    });
     const taken = owner !== null && owner.id !== userId;
     return { username, available: !taken, reason: taken ? 'taken' : null };
   }
@@ -156,9 +170,15 @@ export class UsersService {
   }
 
   /** Username and phone are both unique; says which of the two someone else already has. */
-  private async takenFieldMessage(userId: string, dto: UpdateProfileDto): Promise<string> {
+  private async takenFieldMessage(
+    userId: string,
+    dto: UpdateProfileDto,
+  ): Promise<string> {
     if (dto.username) {
-      const owner = await this.prisma.user.findUnique({ where: { username: dto.username }, select: { id: true } });
+      const owner = await this.prisma.user.findUnique({
+        where: { username: dto.username },
+        select: { id: true },
+      });
       if (owner && owner.id !== userId) return 'Username is already taken';
     }
     return 'Phone number is already taken';

@@ -1,4 +1,13 @@
-import { Controller, Delete, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { InternalCallGuard } from '../auth/internal-call.guard';
 import { AccountContentService } from './account-content.service';
@@ -16,7 +25,9 @@ export class InternalAccountsController {
   /** The account is being deleted: remove its files, and what is cached about it. */
   @Delete('files')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async eraseFiles(@Param('userId', ParseUUIDPipe) userId: string): Promise<void> {
+  async eraseFiles(
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ): Promise<void> {
     await this.content.eraseFiles(userId);
     await this.content.visibilityChanged(userId);
   }
@@ -24,7 +35,9 @@ export class InternalAccountsController {
   /** The account was deactivated or came back. */
   @Post('visibility-changed')
   @HttpCode(HttpStatus.NO_CONTENT)
-  visibilityChanged(@Param('userId', ParseUUIDPipe) userId: string): Promise<void> {
+  visibilityChanged(
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ): Promise<void> {
     return this.content.visibilityChanged(userId);
   }
 }

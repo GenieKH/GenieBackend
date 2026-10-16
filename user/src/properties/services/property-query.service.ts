@@ -1,32 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
-import { OWNER_SUMMARY_SELECT, PROPERTY_WITH_RELATIONS } from '../property-includes';
-import { MapBounds, PublicPropertyCache, widenToGrid } from './public-property-cache.service';
-
-/** What the map shows of a listing. The same for every visitor, so it can be cached. */
-const MAP_SELECT = {
-  id: true,
-  title: true,
-  description: true,
-  price: true,
-  lat: true,
-  lng: true,
-  propertyType: true,
-  boundaryPoints: true,
-  createdAt: true,
-  status: true,
-  bedrooms: true,
-  bathrooms: true,
-  landSize: true,
-  buildingSize: true,
-  unitSize: true,
-  images: { orderBy: { order: 'asc' } },
-  user: { select: OWNER_SUMMARY_SELECT },
-  _count: { select: { favorites: true, contacts: true } },
-} as const;
-
-/** What strangers may see: published listings of accounts that are not deactivated. */
-const PUBLISHED = { status: 'Active', user: { deactivatedAt: null } } as const;
+import {
+  MAP_SELECT,
+  PROPERTY_WITH_RELATIONS,
+  PUBLISHED,
+} from '../property-includes';
+import {
+  MapBounds,
+  PublicPropertyCache,
+  widenToGrid,
+} from './public-property-cache.service';
 
 /** Read-only property lookups. */
 @Injectable()
@@ -103,10 +86,16 @@ export class PropertyQueryService {
       userId,
       properties.map((property) => property.id),
     );
-    return properties.map((property) => ({ ...property, isVisited: visited.has(property.id) }));
+    return properties.map((property) => ({
+      ...property,
+      isVisited: visited.has(property.id),
+    }));
   }
 
-  private async visitedAmong(userId: string | undefined, propertyIds: string[]): Promise<Set<string>> {
+  private async visitedAmong(
+    userId: string | undefined,
+    propertyIds: string[],
+  ): Promise<Set<string>> {
     if (!userId || propertyIds.length === 0) return new Set();
 
     const views = await this.prisma.propertyView.findMany({

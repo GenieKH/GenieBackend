@@ -8,6 +8,7 @@ import { PropertyEngagementService } from './services/property-engagement.servic
 import { PropertyImageService } from './services/property-image.service';
 import { PropertyLifecycleService } from './services/property-lifecycle.service';
 import { PropertyQueryService } from './services/property-query.service';
+import { PropertySearchService } from './services/property-search.service';
 import { PublicPropertyCache } from './services/public-property-cache.service';
 
 @Module({
@@ -17,12 +18,19 @@ import { PublicPropertyCache } from './services/public-property-cache.service';
     PropertyStatusService,
     PublicPropertyCache,
     PropertyQueryService,
+    PropertySearchService,
     PropertyLifecycleService,
     PropertyImageService,
     PropertyEngagementService,
     GuestSessionService,
   ],
   // Other modules (e.g. payments) use properties only through these services.
-  exports: [PropertyQueryService, PropertyStatusService, PropertyImageService, PublicPropertyCache],
+  exports: [
+    PropertyQueryService,
+    PropertySearchService,
+    PropertyStatusService,
+    PropertyImageService,
+    PublicPropertyCache,
+  ],
 })
 export class PropertiesModule {}

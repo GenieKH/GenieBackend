@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma.service';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -31,16 +36,24 @@ export class AvatarService implements OnModuleInit {
 
   async onModuleInit() {
     try {
-      await this.storage.ensureBucket(BUCKET, { public: true, fileSizeLimit: MAX_AVATAR_BYTES });
+      await this.storage.ensureBucket(BUCKET, {
+        public: true,
+        fileSizeLimit: MAX_AVATAR_BYTES,
+      });
     } catch (error) {
-      this.logger.error(`Could not prepare the ${BUCKET} bucket: ${(error as Error).message}`);
+      this.logger.error(
+        `Could not prepare the ${BUCKET} bucket: ${(error as Error).message}`,
+      );
     }
   }
 
   /** One place to upload one picture to. It is not shown until `useUpload` confirms it. */
   async createUpload(userId: string) {
     const path = `${userId}/${randomUUID()}`;
-    return { path, uploadUrl: await this.storage.createSignedUploadUrl(BUCKET, path) };
+    return {
+      path,
+      uploadUrl: await this.storage.createSignedUploadUrl(BUCKET, path),
+    };
   }
 
   /** Makes a picture uploaded to `path` the profile picture. */
@@ -49,7 +62,13 @@ export class AvatarService implements OnModuleInit {
     if (owner?.toLowerCase() !== userId.toLowerCase()) {
       throw new BadRequestException('Unknown picture');
     }
-    if (!(await this.storage.createSignedDownloadUrl(BUCKET, path, EXISTENCE_CHECK_SECONDS))) {
+    if (
+      !(await this.storage.createSignedDownloadUrl(
+        BUCKET,
+        path,
+        EXISTENCE_CHECK_SECONDS,
+      ))
+    ) {
       throw new BadRequestException('The picture was not uploaded');
     }
     return this.replace(userId, this.storage.publicUrl(BUCKET, path));
@@ -78,8 +97,14 @@ export class AvatarService implements OnModuleInit {
   }
 
   private async replace(userId: string, avatarUrl: string | null) {
-    const previous = await this.prisma.user.findUnique({ where: { id: userId }, select: { avatarUrl: true } });
-    await this.prisma.user.update({ where: { id: userId }, data: { avatarUrl } });
+    const previous = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl },
+    });
     await this.users.publicViewChanged(userId);
 
     await this.removeUploadedFile(userId, previous?.avatarUrl);
@@ -87,14 +112,21 @@ export class AvatarService implements OnModuleInit {
   }
 
   /** The picture that was just replaced is of no use to anyone. A leftover file is not worth failing for. */
-  private async removeUploadedFile(userId: string, url: string | null | undefined): Promise<void> {
+  private async removeUploadedFile(
+    userId: string,
+    url: string | null | undefined,
+  ): Promise<void> {
     const folder = this.storage.publicUrl(BUCKET, `${userId}/`);
     if (!url?.startsWith(folder)) return;
 
     try {
-      await this.storage.removeFiles(BUCKET, [`${userId}/${url.slice(folder.length)}`]);
+      await this.storage.removeFiles(BUCKET, [
+        `${userId}/${url.slice(folder.length)}`,
+      ]);
     } catch (error) {
-      this.logger.warn(`Old avatar of ${userId} was not removed: ${(error as Error).message}`);
+      this.logger.warn(
+        `Old avatar of ${userId} was not removed: ${(error as Error).message}`,
+      );
     }
   }
 }

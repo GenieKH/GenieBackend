@@ -86,8 +86,9 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request a password reset OTP via email' })
   @ApiResponse({ status: 200, description: 'OTP sent if email exists' })
-  async forgotPassword(@Body() dto: ForgotPasswordDto) {
-    await this.limits.resetRequests.consumeOrReject(accountKey(dto.email));
+  @ApiResponse({ status: 429, description: 'Too many reset requests for this address or from this caller' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto, @Client() client: ClientContext) {
+    await this.countResetRequest(dto.email, client.ipAddress);
     return this.passwordReset.requestReset(dto.email);
   }
 
@@ -107,6 +108,19 @@ export class AuthController {
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.countOtpAttempt(dto.email);
     return this.passwordReset.resetPassword(dto.email, dto.otp, dto.newPassword);
+  }
+
+  /**
+   * Counted before the account is looked up, so the limits answer the same
+   * for unknown addresses and do not reveal which ones exist. The caller is
+   * counted first: a refused flood does not use up a victim's own allowance.
+   */
+  private async countResetRequest(email: string, clientIp: string | null): Promise<void> {
+    if (clientIp) await this.limits.resetRequestsPerClient.consumeOrReject(clientIp, 'in an hour');
+    const account = accountKey(email);
+    await this.limits.resetCooldown.consumeOrReject(account, 'in a minute');
+    await this.limits.resetRequests.consumeOrReject(account);
+    await this.limits.resetRequestsPerDay.consumeOrReject(account, 'tomorrow');
   }
 
   private async countOtpAttempt(email: string): Promise<void> {

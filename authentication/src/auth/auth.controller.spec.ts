@@ -147,10 +147,61 @@ describe('AuthController attempt limits', () => {
     expect(await tooMany(() => controller.verifyOtp({ email: 'dara@example.com', otp: '000000' }))).toBe(false);
   });
 
-  it('sends at most 3 reset emails per address in the window', async () => {
-    for (let i = 0; i < 3; i++) await controller.forgotPassword({ email: 'dara@example.com' });
+  describe('reset emails', () => {
+    const forgot = (email: string, ipAddress: string | null = null) =>
+      controller.forgotPassword({ email }, { ...client, ipAddress });
 
-    expect(await tooMany(() => controller.forgotPassword({ email: 'dara@example.com' }))).toBe(true);
-    expect(passwordReset.requestReset).toHaveBeenCalledTimes(3);
+    beforeEach(() => {
+      jest.useFakeTimers({ now: new Date('2026-01-01T00:00:00Z') });
+      controller = newController();
+    });
+
+    it('sends one per address a minute', async () => {
+      await forgot('dara@example.com');
+
+      expect(await tooMany(() => forgot('DARA@example.com'))).toBe(true);
+      jest.advanceTimersByTime(MINUTE + 1000);
+      expect(await tooMany(() => forgot('dara@example.com'))).toBe(false);
+      expect(passwordReset.requestReset).toHaveBeenCalledTimes(2);
+    });
+
+    it('sends at most 3 per address in the window', async () => {
+      for (let i = 0; i < 3; i++) {
+        await forgot('dara@example.com');
+        jest.advanceTimersByTime(MINUTE + 1000);
+      }
+
+      expect(await tooMany(() => forgot('dara@example.com'))).toBe(true);
+      expect(passwordReset.requestReset).toHaveBeenCalledTimes(3);
+    });
+
+    it('sends at most 6 per address in a day', async () => {
+      for (let window = 0; window < 2; window++) {
+        for (let i = 0; i < 3; i++) {
+          await forgot('dara@example.com');
+          jest.advanceTimersByTime(MINUTE + 1000);
+        }
+        jest.advanceTimersByTime(16 * MINUTE);
+      }
+
+      // A fresh 15-minute window, but the day's emails are used up.
+      expect(await tooMany(() => forgot('dara@example.com'))).toBe(true);
+      expect(passwordReset.requestReset).toHaveBeenCalledTimes(6);
+    });
+
+    it('takes at most 10 requests an hour from one caller, whatever the addresses', async () => {
+      for (let i = 0; i < 10; i++) await forgot(`person${i}@example.com`, '203.0.113.7');
+
+      expect(await tooMany(() => forgot('someone-else@example.com', '203.0.113.7'))).toBe(true);
+      expect(await tooMany(() => forgot('someone-else@example.com', '198.51.100.2'))).toBe(false);
+      expect(passwordReset.requestReset).toHaveBeenCalledTimes(11);
+    });
+
+    it('does not use up the address allowance when the caller is refused', async () => {
+      for (let i = 0; i < 10; i++) await forgot(`person${i}@example.com`, '203.0.113.7');
+
+      expect(await tooMany(() => forgot('dara@example.com', '203.0.113.7'))).toBe(true);
+      expect(await tooMany(() => forgot('dara@example.com', '198.51.100.2'))).toBe(false);
+    });
   });
 });

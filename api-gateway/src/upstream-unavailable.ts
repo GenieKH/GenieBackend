@@ -1,4 +1,7 @@
+import { Logger } from '@nestjs/common';
 import type { ServerResponse } from 'http';
+
+const logger = new Logger('ServiceProxy');
 
 /** Errors that mean the service took too long, as opposed to not being there at all. */
 const TIMEOUT_CODES = new Set(['ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET']);
@@ -10,6 +13,9 @@ const TIMEOUT_CODES = new Set(['ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET']);
  * other services are not affected.
  */
 export function respondUnavailable(service: string, error: NodeJS.ErrnoException, res: ServerResponse | unknown) {
+  // The reason (ECONNREFUSED: nothing listens there, ENOTFOUND: wrong host name, ETIMEDOUT...) is what an operator needs.
+  logger.error(`The ${service} service could not be reached: ${error.code ?? ''} ${error.message} (${(error as { address?: string }).address ?? ''}:${(error as { port?: number }).port ?? ''})`);
+
   if (!res || typeof (res as ServerResponse).writeHead !== 'function') {
     // A WebSocket upgrade: there is no HTTP response to write, so close the socket.
     (res as { destroy?: () => void } | undefined)?.destroy?.();

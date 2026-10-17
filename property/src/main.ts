@@ -4,7 +4,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { RejectNullBytesPipe } from '@genie/shared';
+import { describeJwtPublicKey, RejectNullBytesPipe } from '@genie/shared';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -22,5 +22,6 @@ async function bootstrap() {
   const host = process.env.HOST || '0.0.0.0';
   await app.listen(port, host);
   Logger.log(`Listening on ${host}:${port}`, 'Bootstrap');
+  Logger.log(describeJwtPublicKey(), 'Bootstrap');
 }
 bootstrap();

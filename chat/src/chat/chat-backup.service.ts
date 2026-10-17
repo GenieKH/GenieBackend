@@ -36,15 +36,19 @@ export interface NewKeyBackup {
   verifier: string;
 }
 
-/** What may accompany a new backup. */
-export interface SaveBackupOptions {
-  /** Proof of the PIN of the backup being replaced. Required when there is one... */
+/** How the owner shows an existing backup is theirs to replace or remove. */
+export interface BackupOwnerProof {
+  /** Proof of the PIN of the backup. Required when there is one... */
   currentVerifier?: string;
   /**
    * ...unless the owner proved their account password instead: the way back
    * in for someone who forgot the PIN. A locked backup does not stop it.
    */
   provenByPassword?: boolean;
+}
+
+/** What may accompany a new backup. */
+export interface SaveBackupOptions extends BackupOwnerProof {
   /** Resetting keys: the new public key, stored together with its backup. */
   identityPublicKey?: string;
 }
@@ -115,6 +119,29 @@ export class ChatBackupService {
   }
 
   /**
+   * Turns the backup PIN off, which is the owner's choice: the PIN is optional.
+   * Removes the backup, and one from before PIN tries were counted, for the
+   * same proof as replacing it. The public key stays: chat goes on with the
+   * same keys, and from then on a new device makes new ones instead of
+   * restoring these.
+   */
+  async remove(userId: string, proof: BackupOwnerProof = {}) {
+    const seal = this.requireSeal();
+    if (!proof.provenByPassword) {
+      await this.requireCurrentPin(seal, userId, proof.currentVerifier);
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.chatKeyBackup.deleteMany({ where: { userId } }),
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { backupBlob: null, backupSalt: null, backupNonce: null },
+      }),
+    ]);
+    return { success: true };
+  }
+
+  /**
    * What a device needs before asking for the PIN: only the salt. A backup made
    * before PIN attempts were counted is still returned whole, so the app can
    * open it once and save it again in the protected form.
@@ -150,7 +177,7 @@ export class ChatBackupService {
     const existing = await this.prisma.chatKeyBackup.findUnique({ where: { userId }, select: { userId: true } });
     if (!existing) return;
     if (!currentVerifier) {
-      throw new ForbiddenException('The current PIN is required to replace the chat key backup');
+      throw new ForbiddenException('The current PIN is required to replace or remove the chat key backup');
     }
 
     const outcome = await this.prisma.$transaction((tx) => this.attempt(tx, seal, userId, currentVerifier));

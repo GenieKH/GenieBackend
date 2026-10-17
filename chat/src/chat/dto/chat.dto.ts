@@ -33,8 +33,22 @@ export class SetPublicKeyDto {
   identityPublicKey: string;
 }
 
+/** How the owner shows an existing backup is theirs to replace or remove. */
+export class BackupOwnerProofDto {
+  /** Proof of the PIN of the backup this one replaces. Required when there is one... */
+  @IsOptional()
+  @Matches(BACKUP_VERIFIER)
+  currentBackupVerifier?: string;
+
+  /** ...or, for a forgotten PIN, the token from `POST /auth/account/password-proof`. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_PROOF_TOKEN_LENGTH)
+  passwordProofToken?: string;
+}
+
 /** The client-encrypted key backup. The server never sees the plain keys or the PIN. */
-export class SetBackupDto {
+export class SetBackupDto extends BackupOwnerProofDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(MAX_BACKUP_FIELD_LENGTH)
@@ -53,17 +67,6 @@ export class SetBackupDto {
   /** Made from the PIN on the device. Sent again later to prove the PIN. */
   @Matches(BACKUP_VERIFIER)
   backupVerifier: string;
-
-  /** Proof of the PIN of the backup this one replaces. Required when there is one... */
-  @IsOptional()
-  @Matches(BACKUP_VERIFIER)
-  currentBackupVerifier?: string;
-
-  /** ...or, for a forgotten PIN, the token from `POST /auth/account/password-proof`. */
-  @IsOptional()
-  @IsString()
-  @MaxLength(MAX_PROOF_TOKEN_LENGTH)
-  passwordProofToken?: string;
 }
 
 /** "Reset keys": a new key pair and its backup, replacing the old ones together. */

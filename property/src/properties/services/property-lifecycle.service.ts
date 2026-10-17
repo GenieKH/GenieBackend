@@ -77,12 +77,13 @@ export class PropertyLifecycleService {
   /** Saves the drawn boundary and re-centres the pin on it. */
   async updateBoundary(userId: string, id: string, dto: BoundaryDto) {
     const { status } = await this.query.findOwned(userId, id);
-    const center = boundaryCentroid(dto.boundaryPoints);
+    const boundaryPoints = dto.boundaryPoints.map(({ lat, lng }) => ({ lat, lng }));
+    const center = boundaryCentroid(boundaryPoints);
 
     const property = await this.prisma.property.update({
       where: { id },
       data: {
-        boundaryPoints: dto.boundaryPoints,
+        boundaryPoints,
         ...(center && { lat: center.lat, lng: center.lng }),
       },
     });

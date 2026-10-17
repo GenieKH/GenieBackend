@@ -44,9 +44,17 @@ describe('AuthMiddleware', () => {
     expect(req.headers['x-user-id']).toBe('user-1');
   });
 
+  it('accepts the scheme in any letter case', async () => {
+    const { req, next } = await run({ authorization: `bearer ${sign()}` });
+
+    expect(req.headers['x-user-id']).toBe('user-1');
+    expect(next).toHaveBeenCalled();
+  });
+
   it('rejects a missing or malformed Authorization header', async () => {
     await expect(run({})).rejects.toThrow(UnauthorizedException);
     await expect(run({ authorization: 'Basic abc' })).rejects.toThrow(UnauthorizedException);
+    await expect(run({ authorization: 'Bearer' })).rejects.toThrow(UnauthorizedException);
   });
 
   it('rejects an expired token', async () => {

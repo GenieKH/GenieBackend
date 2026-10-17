@@ -17,6 +17,12 @@ async function bootstrap() {
   app.enableCors(buildCorsOptions());
   app.enableShutdownHooks();
 
+  await app.init();
+  const server = app.getHttpServer();
+  for (const proxy of app.get(AppModule).websocketProxies) {
+    server.on('upgrade', proxy.upgrade!);
+  }
+
   const port = process.env.PORT || 4000;
   await app.listen(port, '0.0.0.0');
 }

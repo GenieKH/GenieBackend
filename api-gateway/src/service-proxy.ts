@@ -12,6 +12,9 @@ const CLIENT_IP_HEADER = 'x-client-ip';
 /** A service that accepts the connection but never answers must not hold a client forever. */
 const SERVICE_TIMEOUT_MS = 30_000;
 
+/** A proxy that can take over an HTTP server's `upgrade` event. */
+export type WebSocketProxy = ReturnType<typeof createProxyMiddleware>;
+
 /**
  * Builds a reverse proxy to one of the internal services.
  *

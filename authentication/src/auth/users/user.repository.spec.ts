@@ -57,3 +57,42 @@ describe('UserRepository.create', () => {
     expect(insert).toHaveBeenCalledTimes(5);
   });
 });
+
+describe('UserRepository email handling', () => {
+  /** A query builder that answers like Supabase's: `eq` and `ilike` each end in a chain that resolves to a row. */
+  function repositoryFinding(byExact: unknown, byIgnoringCase: unknown) {
+    const eq = jest.fn();
+    const ilike = jest.fn();
+    const chain = (result: unknown) => ({ limit: () => ({ maybeSingle: async () => ({ data: result, error: null }) }) });
+    eq.mockReturnValue(chain(byExact));
+    ilike.mockReturnValue(chain(byIgnoringCase));
+    const insert = jest.fn((_rows: unknown[]) => ({ select: () => ({ single: async () => ({ data: { id: 'u1' }, error: null }) }) }));
+    const repository = new UserRepository({ from: () => ({ select: () => ({ eq, ilike }), insert }) } as never);
+    return { repository, eq, ilike, insert };
+  }
+
+  it('looks an email up in lowercase, ignoring surrounding spaces', async () => {
+    const { repository, eq, ilike } = repositoryFinding({ id: 'u1' }, null);
+
+    await expect(repository.findByEmail('  Foo@Gmail.COM ')).resolves.toEqual({ id: 'u1' });
+
+    expect(eq).toHaveBeenCalledWith('email', 'foo@gmail.com');
+    expect(ilike).not.toHaveBeenCalled();
+  });
+
+  it('finds an older account that still has capitals, escaping the wildcards in the address', async () => {
+    const { repository, ilike } = repositoryFinding(null, { id: 'old' });
+
+    await expect(repository.findByEmail('a\_b\%c@x.com')).resolves.toEqual({ id: 'old' });
+
+    expect(ilike).toHaveBeenCalledWith('email', 'a\\_b\\%c@x.com');
+  });
+
+  it('stores a new account\'s email in lowercase', async () => {
+    const { repository, insert } = repositoryFinding(null, null);
+
+    await repository.create({ email: ' Foo@Gmail.com ', password_hash: 'h' });
+
+    expect(insert).toHaveBeenCalledWith([{ email: 'foo@gmail.com', password_hash: 'h' }]);
+  });
+});

@@ -48,8 +48,9 @@ export class AuthMiddleware implements NestMiddleware {
     }
   }
 
+  /** The scheme name is case-insensitive (RFC 7235), so `bearer` works like `Bearer`. */
   private readBearerToken(req: Request): string | null {
     const header = req.headers['authorization'];
-    return header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
+    return header?.match(/^Bearer +(\S+)$/i)?.[1] ?? null;
   }
 }

@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
@@ -18,6 +18,8 @@ async function bootstrap() {
   // Internal service: it is only reached through the api-gateway, so no CORS.
   const port = process.env.PORT || 4003;
   // HOST=:: for private networks that only resolve to IPv6 (older Railway environments).
-  await app.listen(port, process.env.HOST || '0.0.0.0');
+  const host = process.env.HOST || '0.0.0.0';
+  await app.listen(port, host);
+  Logger.log(`Listening on ${host}:${port}`, 'Bootstrap');
 }
 bootstrap();

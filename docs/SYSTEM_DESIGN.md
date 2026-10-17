@@ -287,20 +287,28 @@ flowchart LR
 
 ---
 
-## 10. Chat: first use (create keys and PIN)
+## 10. Chat: first use (create keys; the backup PIN is optional)
 
 ```mermaid
 flowchart LR
-    C["App"] -->|"1 generate identity key pair<br/>(libsodium, on device)"| C
-    C -->|"2 ask for 6-digit PIN<br/>(weak PINs refused)"| C
-    C -->|"3 Argon2id(PIN, salt) =<br/>encryption key + verifier"| C
-    C -->|"4 POST /chat/backup<br/>encrypted private key + verifier"| G["API Gateway"]
-    G --> U["User service"]
-    U -->|"5 seal with server secret,<br/>store"| DB[("chat_key_backups")]
-    C -->|"6 POST /chat/keys<br/>public key"| G
+    C["App, at sign-in"] -->|"1 generate identity key pair<br/>(libsodium, on device)"| C
+    C -->|"2 POST /chat/keys<br/>public key"| G["API Gateway"]
+    G --> U["Chat service"]
     U --> DB2[("users.identity_public_key")]
 ```
 
+```mermaid
+flowchart LR
+    C["App, Security > Set up backup PIN<br/>(optional)"] -->|"1 ask for 6-digit PIN<br/>(weak PINs refused)"| C
+    C -->|"2 Argon2id(PIN, salt) =<br/>encryption key + verifier"| C
+    C -->|"3 POST /chat/backup<br/>encrypted private key + verifier"| G["API Gateway"]
+    G --> U["Chat service"]
+    U -->|"4 seal with server secret,<br/>store"| DB[("chat_key_backups")]
+```
+
+- Messages are always end-to-end encrypted. Keys are made without asking anything as soon as someone signs in, so they can be messaged before they ever open a chat.
+- Without a backup PIN the private key exists only on the device. A new device makes new keys (`POST /chat/keys` replaces the public key while there is no backup); earlier messages cannot be read there. A device whose key was replaced this way does not replace it back on its own: the app asks the user first, so two devices do not keep replacing each other's key.
+- With a backup PIN the key is backed up, and the public key can then only be replaced with the PIN or the account password (`POST /chat/keys` answers `409`).
 - The private key never leaves the device unencrypted.
 - The server stores the key encrypted twice: by the PIN-derived key (device) and by `CHAT_BACKUP_SECRET` (server). The PIN proof is stored only as a keyed hash.
 
@@ -373,9 +381,11 @@ flowchart LR
 
 | Situation | What happens |
 |---|---|
+| New phone, no PIN | New keys made at sign-in; old history not readable there. Contacts see a "key changed" warning |
 | New phone, knows PIN | Steps above; keys restored, old history readable |
 | Change PIN | Unlock with the old PIN, re-encrypt, save again. History stays readable |
-| **Forgot PIN** | **No recovery.** "Reset keys": new key pair, new PIN, public key replaced. Old messages become unreadable. Contacts see a "key changed" warning |
+| Turn PIN off | `POST /chat/backup/remove` with the PIN proof (or a password proof). Same keys; a new phone then makes new ones |
+| **Forgot PIN** | Account password proves the owner (`passwordProofToken`); then a new PIN, or the PIN turned off. A device that still has the keys keeps the history; otherwise new keys are made and old messages become unreadable |
 | Someone guesses | Locked after 5 wrong tries; count is stored in the database so restarts do not reset it |
 | Old-format backup | Returned whole once, opened with the PIN, then re-saved in the protected format |
 

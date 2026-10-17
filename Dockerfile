@@ -29,8 +29,10 @@ RUN npm run build
 # --- Runtime stage: production dependencies and one service's compiled output ---
 FROM node:22-alpine
 ARG SERVICE
-RUN test -n "$SERVICE" || (echo "Set the SERVICE build argument (authentication, user, property, chat, payment or api-gateway)." >&2 && exit 1)
-ENV NODE_ENV=production SERVICE=$SERVICE
+# On Railway the service name is the fallback, so a service named "chat" builds chat.
+ARG RAILWAY_SERVICE_NAME
+ENV NODE_ENV=production SERVICE=${SERVICE:-$RAILWAY_SERVICE_NAME}
+RUN test -n "$SERVICE" || (echo "Set the SERVICE variable (authentication, user, property, chat, payment or api-gateway)." >&2 && exit 1)
 WORKDIR /app
 
 # Every manifest, because the lockfile describes all workspaces; only this

@@ -27,6 +27,12 @@ jobs:
       - name: Test
         run: npm test
 
+      # Stops on known critical vulnerabilities in what runs in production.
+      # Not on "high" yet: braces (via http-proxy-middleware) is rated high
+      # and has no fixed release; only our own route patterns ever reach it.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
+
       - name: Validate Prisma schema
         run: npx prisma validate
         env:

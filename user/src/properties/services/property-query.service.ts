@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import {
   MAP_SELECT,
@@ -7,11 +7,15 @@ import {
 } from '../property-includes';
 import {
   MapBounds,
+  MapFilter,
   PublicPropertyCache,
   widenToGrid,
 } from './public-property-cache.service';
 
 /** Read-only property lookups. */
+/** The most listings one map search returns: the newest ones in the area. */
+export const MAP_RESULT_LIMIT = 500;
+
 @Injectable()
 export class PropertyQueryService {
   constructor(
@@ -67,18 +71,26 @@ export class PropertyQueryService {
   /**
    * Published properties in (slightly more than) the map viewport, flagged
    * `isVisited` for `userId`. The list is shared by everyone looking at that
-   * area; only the flag is looked up per user.
+   * area and `filter`; only the flag is looked up per user.
    */
-  async searchMap(bounds: MapBounds, userId?: string) {
+  async searchMap(bounds: MapBounds, userId?: string, filter: MapFilter = {}) {
+    if (bounds.minLat > bounds.maxLat || bounds.minLng > bounds.maxLng) {
+      throw new BadRequestException('The map bounds are the wrong way round');
+    }
     const box = widenToGrid(bounds);
-    const properties = await this.publicCache.map(box, () =>
+    const properties = await this.publicCache.map(box, filter, () =>
       this.prisma.property.findMany({
         where: {
           ...PUBLISHED,
+          ...(filter.propertyType && { propertyType: filter.propertyType }),
+          ...(filter.listingType && { listingType: filter.listingType }),
           lat: { gte: box.minLat, lte: box.maxLat },
           lng: { gte: box.minLng, lte: box.maxLng },
         },
         select: MAP_SELECT,
+        // A zoomed-out map would otherwise receive every listing there is.
+        orderBy: { createdAt: 'desc' },
+        take: MAP_RESULT_LIMIT,
       }),
     );
 

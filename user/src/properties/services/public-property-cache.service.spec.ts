@@ -1,7 +1,11 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { FakeRedis, fakeCache } from '../../../test/fake-redis';
 import { PropertyLifecycleService } from './property-lifecycle.service';
-import { PropertyQueryService } from './property-query.service';
+import { MapBoundsQuery } from '../dto/map-bounds.query';
+import { MapSearchQuery } from '../dto/map-search.query';
+import { MAP_RESULT_LIMIT, PropertyQueryService } from './property-query.service';
 import { PublicPropertyCache, widenToGrid } from './public-property-cache.service';
 
 const VIEWPORT = { minLat: 11.5512, maxLat: 11.5688, minLng: 104.9101, maxLng: 104.9299 };
@@ -50,6 +54,7 @@ describe('public property cache', () => {
       query,
       { canPublish: () => true, canMarkSold: () => true, canRelist: () => true } as never,
       publicCache,
+      { locationChanged: jest.fn(), keywordsChanged: jest.fn() } as never,
     );
     propertyTable.findMany.mockResolvedValue([listing]);
     propertyTable.findFirst.mockResolvedValue(listing);
@@ -76,6 +81,56 @@ describe('public property cache', () => {
         lat: { gte: 11.55, lte: 11.57 },
         lng: { gte: 104.91, lte: 104.93 },
       });
+    });
+
+    it('returns at most the newest listings, however far the map is zoomed out', async () => {
+      await query.searchMap({ minLat: -60, maxLat: 70, minLng: -170, maxLng: 170 });
+
+      const args = propertyTable.findMany.mock.calls[0][0];
+      expect(args.take).toBe(MAP_RESULT_LIMIT);
+      expect(args.orderBy).toEqual({ createdAt: 'desc' });
+    });
+
+    it('refuses bounds that are the wrong way round', async () => {
+      await expect(query.searchMap({ ...VIEWPORT, minLat: 12, maxLat: 11 })).rejects.toThrow(BadRequestException);
+      expect(propertyTable.findMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a latitude past the pole', { minLat: -91 }],
+      ['a longitude past the date line', { maxLng: 181 }],
+      ['a value that is not a number', { minLat: 'abc' }],
+    ])('rejects %s before any search', async (_case, change) => {
+      const query = plainToInstance(MapBoundsQuery, { ...VIEWPORT, ...change });
+      expect(await validate(query)).not.toHaveLength(0);
+    });
+
+    it('narrows the search to the filter pills, keeping the box', async () => {
+      await query.searchMap(VIEWPORT, undefined, { propertyType: 'House', listingType: 'Rent' });
+
+      expect(propertyTable.findMany.mock.calls[0][0].where).toMatchObject({
+        status: 'Active',
+        propertyType: 'House',
+        listingType: 'Rent',
+        lat: { gte: 11.55, lte: 11.57 },
+      });
+    });
+
+    it('keeps one shared answer per filter, so a filtered map never shows unfiltered results', async () => {
+      await query.searchMap(VIEWPORT);
+      await query.searchMap(VIEWPORT, undefined, { propertyType: 'Land' });
+      await query.searchMap(VIEWPORT, undefined, { listingType: 'Sale' });
+      await query.searchMap(VIEWPORT, undefined, { propertyType: 'Land' });
+
+      expect(propertyTable.findMany).toHaveBeenCalledTimes(3);
+    });
+
+    it.each([
+      ['an unknown property type', { propertyType: 'Castle' }],
+      ['an unknown listing type', { listingType: 'Auction' }],
+    ])('rejects %s in the map filter', async (_case, change) => {
+      const search = plainToInstance(MapSearchQuery, { ...VIEWPORT, ...change });
+      expect(await validate(search)).not.toHaveLength(0);
     });
 
     it('looks up "visited" per user and never stores it in the shared answer', async () => {
@@ -137,6 +192,14 @@ describe('public property cache', () => {
       propertyTable.findFirst.mockResolvedValue(listing);
       await expect(query.findPublic('p-1')).resolves.toBeDefined();
     });
+  });
+
+  it('checks an edited price against the discount already on the listing', async () => {
+    propertyTable.findFirst.mockResolvedValue({ ...listing, price: '100000', discountType: 'amount', discountValue: '20000' });
+
+    await expect(lifecycle.update('owner', 'p-1', { price: 15000 })).rejects.toThrow('smaller than the price');
+    await expect(lifecycle.update('owner', 'p-1', { price: 15000, discountType: null, discountValue: null })).resolves.toBeDefined();
+    await expect(lifecycle.update('owner', 'p-1', { discountType: 'percent', discountValue: 10 })).resolves.toBeDefined();
   });
 
   it('leaves the shared cache alone while a draft is being edited', async () => {

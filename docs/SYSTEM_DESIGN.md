@@ -175,6 +175,17 @@ flowchart LR
 - Photos never pass through our servers; they go straight to Supabase.
 - Confirm only accepts file names this server issued.
 
+| Endpoint | Body | Answer | Errors |
+| --- | --- | --- | --- |
+| `POST /properties` | `title`, `price`, `propertyType` (one of `property-options.ts`), then any of: `listingType` (`Sale`/`Rent`/`To Let`), `titleType`, `description`, `contactPhone`, sizes, the type's details (floors, parking, furnishing, condo, Borey and business fields), `keywords` (codes such as `road_access`, no repeats), `status` | the listing with `images`, `keywords: [{keyword}]` and owner | 400, 401 |
+| `PATCH /properties/:id` | any field above except `status`, the type included; left out = unchanged, `null` = cleared (never for title, price, type); `keywords` replaces the whole list | the listing as saved, as above | 400, 401, 404 (missing or someone else's) |
+
+- Every detail is its own column on `properties` (migration 14). A listing keeps only the details of its type (`property-type-fields.ts`): the rest are cleared on create and on every edit, so a listing whose type changed keeps nothing from its old type.
+- Keywords live in `property_keywords`, one row per listing and code, checked against the `keywords` table. A new keyword is a new row there plus a label in the app.
+- A Borey project's price is its starting (lowest unit) price.
+- **Discount** (migration 16): optional `discountType` (`percent` | `amount`, USD) + `discountValue`, both or neither; a percentage must be below 100 and an amount below the price, checked on create and on every edit against the price the listing ends up with (400 otherwise), and by a database CHECK. `price` stays the asking price; the app shows the price less the discount, with the asking price crossed out. The map list carries both fields.
+- **Nearby markets, hospitals, schools** (migration 15): when a listing tagged `near_market`, `near_hospital` or `near_school` gets a location (pin or boundary), or an edit changes which of those it carries, the server looks up the nearest 3 of each within 5 km (Google Places Nearby Search, ranked by distance) and their road distance and drive time (Google Routes, one route matrix, typical traffic). This runs after the save answers, so a slow or failing provider never fails the save; failures are logged. Results go to `property_nearby_places` and come back with every full listing as `nearbyPlaces: [{category, rank, name, lat, lng, straightMeters, roadMeters, driveSeconds}]` plus `nearbySearchedAt` (null = never looked up; set with no places = nothing within 5 km). Viewing a listing never calls Google. Needs `GOOGLE_PLACES_API_KEY` with **both** the Places API (New) and the Routes API enabled; without a key nothing is looked up. Cost per lookup: up to 3 Nearby Search (Pro) calls + 1 route matrix of up to 9 elements.
+
 ## 7. Publish (listing fee)
 
 ```mermaid
@@ -205,7 +216,8 @@ flowchart LR
     C -->|"6 POST /public/properties/guest-session"| G
 ```
 
-- The list is cached for 30 s per ~1 km grid box and cleared the moment a published listing changes; `isVisited` is looked up per user.
+- Optional filters (the pills under the search bar): `propertyType` and `listingType`, exact values from `property-options.ts` (400 otherwise). Served by the `(status, property_type, lat, lng)` and `(status, listing_type, lat, lng)` indexes.
+- The list is cached for 30 s per ~1 km grid box and filter, and cleared the moment a published listing changes; `isVisited` is looked up per user.
 - No pagination and no limit on the map query: a wide box returns everything with all images.
 - The owner's **email and phone are included** for anyone, signed in or not.
 

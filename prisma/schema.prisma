@@ -104,6 +104,35 @@ model Property {
   buildingSize     Decimal?             @map("building_size") @db.Decimal(10, 2)
   unitSize         Decimal?             @map("unit_size") @db.Decimal(10, 2)
   totalProjectArea Decimal?             @map("total_project_area") @db.Decimal(10, 2)
+  /// 'percent' or 'amount' (USD off `price`); null for no discount.
+  discountType     String?              @map("discount_type")
+  discountValue    Decimal?             @map("discount_value") @db.Decimal(12, 2)
+  /// Sale, Rent or To Let (see property-options.ts).
+  listingType      String?              @map("listing_type")
+  titleType        String?              @map("title_type")
+  contactPhone     String?              @map("contact_phone")
+  /// Floors of a house or building; total floors of the tower for a condo.
+  floors           Int?
+  /// The floor a condo unit is on.
+  floorNumber      Int?                 @map("floor_number")
+  totalUnits       Int?                 @map("total_units")
+  hasParking       Boolean?             @map("has_parking")
+  hasBalcony       Boolean?             @map("has_balcony")
+  furnishing       String?
+  buildingType     String?              @map("building_type")
+  completionStatus String?              @map("completion_status")
+  viewType         String?              @map("view_type")
+  maintenanceFee   Decimal?             @map("maintenance_fee") @db.Decimal(12, 2)
+  developerName    String?              @map("developer_name")
+  projectName      String?              @map("project_name")
+  projectType      String?              @map("project_type")
+  monthlyRent      Decimal?             @map("monthly_rent") @db.Decimal(12, 2)
+  leaseRemainingMonths Int?             @map("lease_remaining_months")
+  equipmentIncluded String?             @map("equipment_included")
+  reasonForSelling String?              @map("reason_for_selling")
+  /// When the markets, hospitals and schools around the listing were last
+  /// looked up; null while never looked up (see PropertyNearbyPlace).
+  nearbySearchedAt DateTime?            @map("nearby_searched_at") @db.Timestamptz(6)
   lat              Float?
   lng              Float?
   boundaryPoints   Json?                @map("boundary_points")
@@ -114,13 +143,59 @@ model Property {
   contacts         PropertyContact[]
   favorites        PropertyFavorite[]
   images           PropertyImage[]
+  keywords         PropertyKeyword[]
   likes            PropertyLike[]
+  nearbyPlaces     PropertyNearbyPlace[]
   views            PropertyView[]
 
   @@index([userId])
   @@index([status])
   @@index([lat, lng])
+  @@index([status, lat, lng])
+  @@index([status, propertyType, lat, lng])
+  @@index([status, listingType, lat, lng])
   @@map("properties")
+}
+
+/// The features a listing can be tagged with ("road_access", ...). Seeded by
+/// migration 14; the codes are what the app sends and translates.
+model Keyword {
+  code       String            @id
+  properties PropertyKeyword[]
+
+  @@map("keywords")
+}
+
+/// The nearest markets, hospitals or schools of a listing tagged near_market,
+/// near_hospital or near_school, found by the map provider when the listing
+/// was placed. `rank` 0 is the closest by road.
+model PropertyNearbyPlace {
+  propertyId     String   @map("property_id") @db.Uuid
+  category       String
+  rank           Int
+  name           String
+  providerPlaceId String  @map("provider_place_id")
+  lat            Float
+  lng            Float
+  straightMeters Int      @map("straight_meters")
+  /// Null when the provider found no road to it.
+  roadMeters     Int?     @map("road_meters")
+  driveSeconds   Int?     @map("drive_seconds")
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, category, rank])
+  @@map("property_nearby_places")
+}
+
+model PropertyKeyword {
+  propertyId String   @map("property_id") @db.Uuid
+  keyword    String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  keywordRef Keyword  @relation(fields: [keyword], references: [code])
+
+  @@id([propertyId, keyword])
+  @@index([keyword, propertyId])
+  @@map("property_keywords")
 }
 
 model PropertyImage {
@@ -154,6 +229,7 @@ model PropertyFavorite {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, propertyId])
+  @@index([propertyId])
   @@map("property_favorites")
 }
 
@@ -258,6 +334,7 @@ model Message {
   @@index([recipientId, createdAt])
   @@index([recipientId, readAt])
   @@index([senderId, recipientId, createdAt])
+  @@index([recipientId, senderId])
   @@map("messages")
 }
 

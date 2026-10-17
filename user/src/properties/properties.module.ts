@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { SupabaseModule } from '../supabase/supabase.module';
+import { GoogleNearbyPlaceProvider, GoogleRouteDistanceProvider } from './nearby/google-nearby.providers';
+import { NearbyPlaceProvider, RouteDistanceProvider } from './nearby/nearby-providers';
+import { PropertyNearbyService } from './nearby/property-nearby.service';
 import { PropertiesController } from './properties.controller';
 import { PropertyStatusService } from './property-status.service';
 import { PublicPropertiesController } from './public-properties.controller';
@@ -23,6 +26,9 @@ import { PublicPropertyCache } from './services/public-property-cache.service';
     PropertyImageService,
     PropertyEngagementService,
     GuestSessionService,
+    PropertyNearbyService,
+    { provide: NearbyPlaceProvider, useClass: GoogleNearbyPlaceProvider },
+    { provide: RouteDistanceProvider, useClass: GoogleRouteDistanceProvider },
   ],
   // Other modules (e.g. payments) use properties only through these services.
   exports: [

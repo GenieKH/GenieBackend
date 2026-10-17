@@ -32,5 +32,10 @@
     "@prisma/client": "^7.9.1",
     "pg": "^8.23.0",
     "prisma": "^7.9.1"
+  },
+  "overrides": {
+    "@nestjs/swagger": {
+      "js-yaml": "5.5.0"
+    }
   }
 }

@@ -21,23 +21,29 @@ export class PasswordResetService {
     @Inject(OtpEmailService) private readonly mailer: OtpEmailService,
   ) {}
 
+  /**
+   * Answers at once, the same way and after the same work whether or not the
+   * account exists, so the reply (or how long it takes) never tells. The
+   * code is stored and emailed afterwards.
+   */
   async requestReset(email: string): Promise<{ message: string }> {
-    const user = await this.users.findByEmail(email);
-    if (!user) {
-      // Same answer whether or not the account exists.
-      return { message: REQUEST_ACCEPTED };
-    }
-
     const otp = this.generateOtp();
-    await this.otps.invalidateAllFor(email);
-    await this.otps.create(email, await bcrypt.hash(otp, BCRYPT_ROUNDS), this.otpExpiry());
+    const otpHash = await bcrypt.hash(otp, BCRYPT_ROUNDS);
+    const user = await this.users.findByEmail(email);
 
-    // Don't make the HTTP response wait for the mail provider.
-    this.mailer.sendOtp(email, otp).catch((err) => {
-      this.logger.error(`Failed to dispatch OTP email: ${err?.message}`);
-    });
-
+    if (user) {
+      this.issueCode(email, otp, otpHash).catch((err) => {
+        this.logger.error(`Failed to issue OTP: ${err?.message}`);
+      });
+    }
     return { message: REQUEST_ACCEPTED };
+  }
+
+  /** Replaces any earlier code for the email with this one, then emails it. */
+  private async issueCode(email: string, otp: string, otpHash: string): Promise<void> {
+    await this.otps.invalidateAllFor(email);
+    await this.otps.create(email, otpHash, this.otpExpiry());
+    await this.mailer.sendOtp(email, otp);
   }
 
   async verifyOtp(email: string, otp: string): Promise<{ message: string; verified: boolean }> {
@@ -48,7 +54,9 @@ export class PasswordResetService {
   async resetPassword(email: string, otp: string, newPassword: string): Promise<{ message: string }> {
     const record = await this.findMatchingOtp(email, otp);
     const user = await this.users.findByEmail(email);
-    if (!user) {
+    // Used up before the password changes: of two resets sent at once with
+    // the same code, only the first one gets here.
+    if (!user || !(await this.otps.claim(record.id))) {
       throw new BadRequestException('Invalid or expired verification code');
     }
 
@@ -56,7 +64,6 @@ export class PasswordResetService {
       password_hash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS),
       has_password: true,
     });
-    await this.otps.markUsed(record.id);
 
     // Force every device to log in again with the new password.
     await this.sessions.endAllSessions(user.id);

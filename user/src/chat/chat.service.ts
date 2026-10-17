@@ -147,25 +147,61 @@ export class ChatService {
    * first. Only the last message of each conversation leaves the database.
    * Messages to oneself (possible in old versions) are not a conversation,
    * and a conversation with a deactivated account is not listed.
+   *
+   * The work grows with the number of people, not of messages: the partners
+   * are found by jumping from one to the next in the indexes (a "skip
+   * scan"), then each conversation's last message is one index lookup per
+   * direction. Needs the (recipient_id, sender_id) index of migration 13 to
+   * jump through received messages; without it the answer is the same, only
+   * slower.
    */
   async getConversations(userId: string): Promise<Conversation[]> {
     const lastMessages = await this.prisma.$queryRaw<LastMessageRow[]>`
-      SELECT DISTINCT ON (partner_id)
-        partner_id AS "partnerId",
-        id,
-        sender_id AS "senderId",
-        ciphertext,
-        nonce,
-        created_at AS "createdAt",
-        read_at AS "readAt"
-      FROM (
-        SELECT m.*,
-          CASE WHEN m.sender_id = ${userId}::uuid THEN m.recipient_id ELSE m.sender_id END AS partner_id
-        FROM messages m
-        WHERE (m.sender_id = ${userId}::uuid OR m.recipient_id = ${userId}::uuid)
-          AND m.sender_id <> m.recipient_id
-      ) conversation
-      ORDER BY partner_id, created_at DESC`;
+      WITH RECURSIVE sent AS (
+        (SELECT recipient_id AS id FROM messages WHERE sender_id = ${userId}::uuid ORDER BY recipient_id LIMIT 1)
+        UNION ALL
+        SELECT (
+          SELECT recipient_id FROM messages
+          WHERE sender_id = ${userId}::uuid AND recipient_id > sent.id
+          ORDER BY recipient_id LIMIT 1
+        )
+        FROM sent WHERE sent.id IS NOT NULL
+      ), received AS (
+        (SELECT sender_id AS id FROM messages WHERE recipient_id = ${userId}::uuid ORDER BY sender_id LIMIT 1)
+        UNION ALL
+        SELECT (
+          SELECT sender_id FROM messages
+          WHERE recipient_id = ${userId}::uuid AND sender_id > received.id
+          ORDER BY sender_id LIMIT 1
+        )
+        FROM received WHERE received.id IS NOT NULL
+      ), partners AS (
+        SELECT id AS partner_id FROM sent WHERE id IS NOT NULL AND id <> ${userId}::uuid
+        UNION
+        SELECT id FROM received WHERE id IS NOT NULL AND id <> ${userId}::uuid
+      )
+      SELECT
+        p.partner_id AS "partnerId",
+        last.id,
+        last.sender_id AS "senderId",
+        last.ciphertext,
+        last.nonce,
+        last.created_at AS "createdAt",
+        last.read_at AS "readAt"
+      FROM partners p
+      CROSS JOIN LATERAL (
+        SELECT * FROM (
+          (SELECT id, sender_id, ciphertext, nonce, created_at, read_at FROM messages
+            WHERE sender_id = ${userId}::uuid AND recipient_id = p.partner_id
+            ORDER BY created_at DESC LIMIT 1)
+          UNION ALL
+          (SELECT id, sender_id, ciphertext, nonce, created_at, read_at FROM messages
+            WHERE sender_id = p.partner_id AND recipient_id = ${userId}::uuid
+            ORDER BY created_at DESC LIMIT 1)
+        ) both_directions
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) last`;
     if (lastMessages.length === 0) return [];
 
     const [partners, unread] = await Promise.all([

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma.service';
-import { SupabaseService } from '../supabase/supabase.service';
+import { PUBLIC_IMAGE_TYPES, SupabaseService } from '../supabase/supabase.service';
 import { isGooglePhotoUrl } from './avatar-url';
 import { UsersService } from './users.service';
 
@@ -39,6 +39,7 @@ export class AvatarService implements OnModuleInit {
       await this.storage.ensureBucket(BUCKET, {
         public: true,
         fileSizeLimit: MAX_AVATAR_BYTES,
+        allowedMimeTypes: PUBLIC_IMAGE_TYPES,
       });
     } catch (error) {
       this.logger.error(

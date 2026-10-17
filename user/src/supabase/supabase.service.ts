@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { randomUUID } from 'crypto';
 
 /**
  * Listing photos are compressed to under 4 MB on the phone (the app's
@@ -7,6 +8,22 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
  * so a client that skips compression still cannot upload a large file.
  */
 const PROPERTY_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * What a public bucket may hold. The app re-encodes every picture as a JPEG;
+ * anything else (HTML, SVG, a program) would be served from our storage
+ * domain to whoever opens the link.
+ */
+export const PUBLIC_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+/** `<user>/<listing>/<uuid>-<name>`: how listing photos are named now. */
+const FOLDER_FILE_NAME = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]{36}-[a-zA-Z0-9._-]+$/;
+
+/** `<time>-<random>-<name>`: photos uploaded before they had folders. */
+const LEGACY_FILE_NAME = /^\d+-\d+-[a-zA-Z0-9._-]+$/;
+
+/** Longest part of the original name kept in a stored name. */
+const MAX_NAME_PART = 80;
 
 /** The most entries storage lists or deletes in one call. */
 const LIST_PAGE_SIZE = 1000;
@@ -32,7 +49,11 @@ export class SupabaseService implements OnModuleInit {
 
   async onModuleInit() {
     try {
-      await this.ensureBucket(this.bucketName, { public: true, fileSizeLimit: PROPERTY_IMAGE_MAX_BYTES });
+      await this.ensureBucket(this.bucketName, {
+        public: true,
+        fileSizeLimit: PROPERTY_IMAGE_MAX_BYTES,
+        allowedMimeTypes: PUBLIC_IMAGE_TYPES,
+      });
     } catch (error) {
       this.logger.error('Error initializing Supabase storage buckets', error);
     }
@@ -43,7 +64,7 @@ export class SupabaseService implements OnModuleInit {
    * the limits it was made with, so they are applied to it again: a limit
    * added later must reach buckets that were created before it.
    */
-  async ensureBucket(name: string, options: { public: boolean; fileSizeLimit?: number }) {
+  async ensureBucket(name: string, options: { public: boolean; fileSizeLimit?: number; allowedMimeTypes?: string[] }) {
     const { data: buckets, error } = await this.supabase.storage.listBuckets();
     if (error) throw error;
 
@@ -116,36 +137,40 @@ export class SupabaseService implements OnModuleInit {
   }
 
   /**
-   * True for a name `createPresignedUrls` could have handed out. Anything else
-   * (a path, a URL, another bucket) must not be turned into a public link.
+   * True for a name `createPresignedUrls` hands out, or handed out before
+   * photos had folders. Anything else (a URL, a path that climbs out of a
+   * folder, another bucket) must never become a public link or be deleted.
    */
   isUploadedFileName(fileName: string): boolean {
-    return /^\d+-\d+-[a-zA-Z0-9._-]+$/.test(fileName);
+    return FOLDER_FILE_NAME.test(fileName) || LEGACY_FILE_NAME.test(fileName);
   }
 
-  async createPresignedUrls(fileNames: string[]): Promise<{ fileName: string; signedUrl: string }[]> {
-    const results: { fileName: string; signedUrl: string }[] = [];
-    for (const originalName of fileNames) {
-      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-      const filename = `${uniqueSuffix}-${originalName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+  /** True for a photo stored before photos had folders: it carries no owner. */
+  isLegacyFileName(fileName: string): boolean {
+    return LEGACY_FILE_NAME.test(fileName);
+  }
 
-      const { data, error } = await this.supabase.storage
-        .from(this.bucketName)
-        .createSignedUploadUrl(filename);
+  /**
+   * One upload URL per name, in the same order, each for a new unique file
+   * inside `folder`. The original name is only kept as a readable suffix.
+   */
+  createPresignedUrls(folder: string, fileNames: string[]): Promise<{ fileName: string; signedUrl: string }[]> {
+    return Promise.all(
+      fileNames.map(async (originalName) => {
+        const readable = originalName.replace(/[^a-zA-Z0-9.-]/g, '_').slice(-MAX_NAME_PART);
+        const fileName = `${folder}/${randomUUID()}-${readable || 'image'}`;
+        const signedUrl = await this.createSignedUploadUrl(this.bucketName, fileName);
+        return { fileName, signedUrl };
+      }),
+    );
+  }
 
-      if (error) {
-        this.logger.error(`Failed to create presigned URL for ${filename}`, error);
-        throw error;
-      }
-
-      if (data && data.signedUrl) {
-        results.push({
-          fileName: filename,
-          signedUrl: data.signedUrl,
-        });
-      }
-    }
-    return results;
+  /** The name a listing photo was stored under, from its public URL. Null for any other URL. */
+  uploadedFileNameOf(url: string): string | null {
+    const prefix = this.getPublicUrl('');
+    if (!url.startsWith(prefix)) return null;
+    const fileName = decodeURIComponent(url.slice(prefix.length));
+    return this.isUploadedFileName(fileName) ? fileName : null;
   }
 
   getPublicUrl(fileName: string): string {

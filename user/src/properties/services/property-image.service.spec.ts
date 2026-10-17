@@ -1,0 +1,125 @@
+import { BadRequestException } from '@nestjs/common';
+import { SupabaseService } from '../../supabase/supabase.service';
+import { MAX_PROPERTY_IMAGES, PropertyImageService } from './property-image.service';
+
+const ME = '11111111-1111-4111-8111-111111111111';
+const SOMEONE_ELSE = '22222222-2222-4222-8222-222222222222';
+const LISTING = '33333333-3333-4333-8333-333333333333';
+const OTHER_LISTING = '44444444-4444-4444-8444-444444444444';
+const FILE = '55555555-5555-4555-8555-555555555555';
+const PUBLIC = 'https://storage.test/storage/v1/object/public/property-images/';
+
+describe('PropertyImageService', () => {
+  const imageTable = { createMany: jest.fn(), findMany: jest.fn() };
+  const query = { findOwned: jest.fn() };
+  const publicCache = { changed: jest.fn() };
+  const client = {
+    storage: {
+      from: () => ({
+        getPublicUrl: (path: string) => ({ data: { publicUrl: `${PUBLIC}${path}` } }),
+        createSignedUploadUrl: async (path: string) => ({ data: { signedUrl: `https://upload.test/${path}` } }),
+        remove: jest.fn(async () => ({ error: null })),
+      }),
+    },
+  };
+  let storage: SupabaseService;
+  let images: PropertyImageService;
+  let removed: string[];
+
+  function listing(imageUrls: string[] = [], status = 'Draft') {
+    return { id: LISTING, status, images: imageUrls.map((url, i) => ({ url, order: i + 1 })) };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.SUPABASE_URL = 'https://storage.test';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
+    storage = new SupabaseService();
+    (storage as unknown as { supabase: unknown }).supabase = client;
+    removed = [];
+    jest.spyOn(storage, 'removeFiles').mockImplementation(async (_bucket, paths) => {
+      removed.push(...paths);
+    });
+    query.findOwned.mockResolvedValue(listing());
+    imageTable.findMany.mockResolvedValue([]);
+    images = new PropertyImageService(
+      { propertyImage: imageTable } as never,
+      query as never,
+      storage,
+      publicCache as never,
+    );
+  });
+
+  describe('upload URLs', () => {
+    it("names each file inside the listing's own folder, in the order asked", async () => {
+      const urls = await images.createUploadUrls(ME, LISTING, ['front door.jpg', 'garden.jpg']);
+
+      expect(urls).toHaveLength(2);
+      expect(urls[0].fileName).toMatch(new RegExp(`^${ME}/${LISTING}/[0-9a-f-]{36}-front_door\\.jpg$`));
+      expect(urls[1].fileName).toMatch(/-garden\.jpg$/);
+      expect(urls.every((url) => storage.isUploadedFileName(url.fileName))).toBe(true);
+    });
+
+    it(`refuses to go past ${MAX_PROPERTY_IMAGES} photos`, async () => {
+      query.findOwned.mockResolvedValue(listing(Array.from({ length: 29 }, (_, i) => `${PUBLIC}${i}`)));
+
+      await expect(images.createUploadUrls(ME, LISTING, ['a.jpg', 'b.jpg'])).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('confirming uploads', () => {
+    const own = `${ME}/${LISTING}/${FILE}-front.jpg`;
+
+    it('attaches files from its own folder', async () => {
+      await images.confirmUploads(ME, LISTING, [own]);
+
+      expect(imageTable.createMany).toHaveBeenCalledWith({
+        data: [{ propertyId: LISTING, url: `${PUBLIC}${own}`, order: 1 }],
+      });
+    });
+
+    it.each([
+      ["another user's photo", `${SOMEONE_ELSE}/${OTHER_LISTING}/${FILE}-x.jpg`],
+      ['a photo of another of my listings', `${ME}/${OTHER_LISTING}/${FILE}-x.jpg`],
+      ['a photo from before folders existed', '1700000000000-123456789-x.jpg'],
+      ['a path that climbs out of the folder', `${ME}/${LISTING}/../${SOMEONE_ELSE}/x.jpg`],
+      ['a URL', 'https://evil.example/x.jpg'],
+    ])('refuses %s', async (_case, fileName) => {
+      await expect(images.confirmUploads(ME, LISTING, [fileName])).rejects.toThrow(BadRequestException);
+      expect(imageTable.createMany).not.toHaveBeenCalled();
+    });
+
+    it('does not attach the same file twice', async () => {
+      query.findOwned.mockResolvedValue(listing([`${PUBLIC}${own}`]));
+
+      await images.confirmUploads(ME, LISTING, [own, own]);
+
+      expect(imageTable.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleting an account', () => {
+    it("deletes its own photos but never one another user's listing also shows", async () => {
+      const mine = `${ME}/${LISTING}/${FILE}-mine.jpg`;
+      const oldMine = '1700000000000-111-mine.jpg';
+      // Attached to my listing from someone else's before folders existed.
+      const theirs = '1700000000000-222-theirs.jpg';
+      imageTable.findMany
+        .mockResolvedValueOnce([mine, oldMine, theirs].map((name) => ({ url: `${PUBLIC}${name}` })))
+        .mockResolvedValueOnce([{ url: `${PUBLIC}${theirs}` }]);
+
+      await images.removeAllOwnedBy(ME);
+
+      expect(removed).toEqual([mine, oldMine]);
+    });
+
+    it("never deletes a file in another user's folder", async () => {
+      const inTheirFolder = `${SOMEONE_ELSE}/${OTHER_LISTING}/${FILE}-x.jpg`;
+      imageTable.findMany.mockResolvedValueOnce([{ url: `${PUBLIC}${inTheirFolder}` }]).mockResolvedValueOnce([]);
+
+      await images.removeAllOwnedBy(ME);
+
+      expect(removed).toEqual([]);
+    });
+  });
+});

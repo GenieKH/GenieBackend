@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuard
 import { ApiTags } from '@nestjs/swagger';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { GuestSessionDto } from './dto/guest-session.dto';
-import { MapBoundsQuery } from './dto/map-bounds.query';
+import { MapSearchQuery } from './dto/map-search.query';
 import { GuestSessionService } from './services/guest-session.service';
 import { PropertyQueryService } from './services/property-query.service';
 
@@ -17,8 +17,9 @@ export class PublicPropertiesController {
 
   @Get('map')
   @UseGuards(OptionalJwtAuthGuard)
-  searchMap(@Req() req: { user?: { userId: string } | null }, @Query() bounds: MapBoundsQuery) {
-    return this.query.searchMap(bounds, req.user?.userId);
+  searchMap(@Req() req: { user?: { userId: string } | null }, @Query() search: MapSearchQuery) {
+    const { propertyType, listingType, ...bounds } = search;
+    return this.query.searchMap(bounds, req.user?.userId, { propertyType, listingType });
   }
 
   @Post('guest-session')

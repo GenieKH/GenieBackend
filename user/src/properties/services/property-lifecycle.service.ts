@@ -2,13 +2,20 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { boundaryCentroid } from '../boundary-centroid';
 import { BoundaryDto } from '../dto/boundary.dto';
+import { PropertyNearbyService } from '../nearby/property-nearby.service';
+import { assertValidDiscount } from '../property-discount';
 import { CreatePropertyDto } from '../dto/create-property.dto';
 import { PinDto } from '../dto/pin.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { PROPERTY_WITH_RELATIONS } from '../property-includes';
+import { toCreateData, toUpdateData } from '../property-write-data';
 import { PropertyStatusService } from '../property-status.service';
 import { PropertyQueryService } from './property-query.service';
 import { PublicPropertyCache } from './public-property-cache.service';
+
+/** The keyword codes of a property read with PROPERTY_WITH_RELATIONS. */
+const keywordCodes = (property: { keywords?: { keyword: string }[] }) =>
+  (property.keywords ?? []).map((k) => k.keyword);
 
 /** The only status the public can see. */
 const PUBLIC_STATUS = 'Active';
@@ -21,12 +28,13 @@ export class PropertyLifecycleService {
     private readonly query: PropertyQueryService,
     private readonly status: PropertyStatusService,
     private readonly publicCache: PublicPropertyCache,
+    private readonly nearby: PropertyNearbyService,
   ) {}
 
   async create(userId: string, dto: CreatePropertyDto) {
-    const { status, ...fields } = dto;
+    assertValidDiscount(dto);
     const property = await this.prisma.property.create({
-      data: { ...fields, userId, status: status || 'Draft' },
+      data: toCreateData(userId, dto),
       include: PROPERTY_WITH_RELATIONS,
     });
     await this.refreshPublicView(property.id, property.status);
@@ -34,9 +42,27 @@ export class PropertyLifecycleService {
   }
 
   async update(userId: string, id: string, dto: UpdatePropertyDto) {
-    const { status } = await this.query.findOwned(userId, id);
-    const property = await this.prisma.property.update({ where: { id }, data: dto });
-    await this.refreshPublicView(id, status);
+    const before = await this.query.findOwned(userId, id);
+    // The discount must still fit the price after the edit, whichever changed.
+    assertValidDiscount({
+      price: dto.price ?? Number(before.price),
+      discountType: dto.discountType !== undefined ? dto.discountType : before.discountType,
+      discountValue:
+        dto.discountValue !== undefined
+          ? dto.discountValue
+          : before.discountValue == null
+            ? null
+            : Number(before.discountValue),
+    });
+    const property = await this.prisma.property.update({
+      where: { id },
+      data: toUpdateData(dto, before.propertyType),
+      include: PROPERTY_WITH_RELATIONS,
+    });
+    await this.refreshPublicView(id, before.status);
+    if (dto.keywords) {
+      this.nearby.keywordsChanged(id, keywordCodes(before), dto.keywords);
+    }
     return property;
   }
 
@@ -44,6 +70,7 @@ export class PropertyLifecycleService {
     const { status } = await this.query.findOwned(userId, id);
     const property = await this.prisma.property.update({ where: { id }, data: { lat: pin.lat, lng: pin.lng } });
     await this.refreshPublicView(id, status);
+    this.nearby.locationChanged(id);
     return property;
   }
 
@@ -60,6 +87,7 @@ export class PropertyLifecycleService {
       },
     });
     await this.refreshPublicView(id, status);
+    if (center) this.nearby.locationChanged(id);
     return property;
   }
 

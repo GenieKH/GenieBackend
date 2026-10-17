@@ -8,6 +8,12 @@ export interface MapBounds {
   maxLng: number;
 }
 
+/** What the map filter pills narrow the listings to; unset means any. */
+export interface MapFilter {
+  propertyType?: string;
+  listingType?: string;
+}
+
 /** Entries expire quickly on their own; `changed` removes them at once. */
 const MAP_TTL_SECONDS = 30;
 const DETAIL_TTL_SECONDS = 60;
@@ -39,10 +45,11 @@ export function widenToGrid(bounds: MapBounds): MapBounds {
 export class PublicPropertyCache {
   constructor(private readonly cache: JsonCache) {}
 
-  /** Map results for a box already widened with `widenToGrid`. */
-  async map<T>(box: MapBounds, load: () => Promise<T>): Promise<T> {
+  /** Map results for a box already widened with `widenToGrid`, one entry per filter. */
+  async map<T>(box: MapBounds, filter: MapFilter, load: () => Promise<T>): Promise<T> {
     return this.listings(
-      `map:${box.minLat}:${box.maxLat}:${box.minLng}:${box.maxLng}`,
+      `map:${box.minLat}:${box.maxLat}:${box.minLng}:${box.maxLng}` +
+        `:${filter.propertyType ?? ''}:${filter.listingType ?? ''}`,
       load,
     );
   }

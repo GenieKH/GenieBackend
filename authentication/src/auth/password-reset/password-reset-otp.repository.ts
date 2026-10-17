@@ -60,7 +60,23 @@ export class PasswordResetOtpRepository {
     }
   }
 
-  async markUsed(id: string): Promise<void> {
-    await this.supabase.from('password_reset_otps').update({ used: true }).eq('id', id);
+  /**
+   * Marks the code used, in one step that only succeeds while it is still
+   * unused. False when another request used it first: two resets sent at
+   * once with the same code must not both go through.
+   */
+  async claim(id: string): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from('password_reset_otps')
+      .update({ used: true })
+      .eq('id', id)
+      .eq('used', false)
+      .select('id');
+
+    if (error) {
+      this.logger.error(`Failed to use OTP: ${error.message}`);
+      throw new InternalServerErrorException('Failed to verify code');
+    }
+    return (data?.length ?? 0) > 0;
   }
 }

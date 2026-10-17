@@ -60,9 +60,8 @@ describe('UpdateProfileDto', () => {
 describe('UsersService', () => {
   const prisma = {
     user: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
-    property: { findMany: jest.fn() },
   };
-  const publicProperties = { changed: jest.fn() };
+  const properties = { notifyVisibilityChanged: jest.fn() };
   const cache = {
     delete: jest.fn(),
     remember: jest.fn(
@@ -77,11 +76,10 @@ describe('UsersService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma.property.findMany.mockResolvedValue([]);
     service = new UsersService(
       prisma as never,
       cache as never,
-      publicProperties as never,
+      properties as never,
     );
   });
 
@@ -109,22 +107,11 @@ describe('UsersService', () => {
 
   it('shows a changed name or picture to other people at once, on listings too', async () => {
     prisma.user.update.mockResolvedValue({ id: ME, name: 'New Name' });
-    // Published listings carry their owner's name and picture, and are cached.
-    prisma.property.findMany.mockResolvedValue([
-      { id: 'listing-1' },
-      { id: 'listing-2' },
-    ]);
 
     await service.updateProfile(ME, { name: 'New Name' });
 
-    expect(prisma.property.findMany.mock.calls[0][0].where).toEqual({
-      userId: ME,
-      status: 'Active',
-    });
-    expect(publicProperties.changed.mock.calls).toEqual([
-      ['listing-1'],
-      ['listing-2'],
-    ]);
+    // Published listings carry their owner's name and picture, and belong to the property service.
+    expect(properties.notifyVisibilityChanged).toHaveBeenCalledWith(ME);
     expect(cache.delete).toHaveBeenCalledWith(`users:public-profile:${ME}`);
   });
 

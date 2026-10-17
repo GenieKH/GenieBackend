@@ -17,6 +17,7 @@ async function bootstrap() {
 
   // Internal service: it is only reached through the api-gateway, so no CORS.
   const port = process.env.PORT || 4001;
-  await app.listen(port, '0.0.0.0');
+  // HOST=:: for private networks that only resolve to IPv6 (older Railway environments).
+  await app.listen(port, process.env.HOST || '0.0.0.0');
 }
 bootstrap();

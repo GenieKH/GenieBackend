@@ -13,8 +13,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CurrentUserId } from '../auth/current-user-id.decorator';
-import { RateLimit, RateLimits } from '../redis/rate-limits.service';
+import { CurrentUserId, RateLimit, RateLimits } from '@genie/shared';
 import { AvatarService } from './avatar.service';
 import { UseAvatarUploadDto, UseGooglePhotoDto } from './dto/avatar.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';

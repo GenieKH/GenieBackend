@@ -1,5 +1,6 @@
 import { fixRequestBody, createProxyMiddleware } from 'http-proxy-middleware';
 import type { IncomingMessage } from 'http';
+import { respondUnavailable } from './upstream-unavailable';
 
 /**
  * Headers the gateway writes for the internal services. A client can send the
@@ -7,6 +8,9 @@ import type { IncomingMessage } from 'http';
  */
 const USER_ID_HEADER = 'x-user-id';
 const CLIENT_IP_HEADER = 'x-client-ip';
+
+/** A service that accepts the connection but never answers must not hold a client forever. */
+const SERVICE_TIMEOUT_MS = 30_000;
 
 /**
  * Builds a reverse proxy to one of the internal services.
@@ -19,12 +23,20 @@ const CLIENT_IP_HEADER = 'x-client-ip';
  * `x-client-ip` is the caller's address as this gateway sees it. The services
  * only ever see the gateway's own address, and need the real one to show
  * where a device signed in from.
+ *
+ * `websocket` is for the one service that holds WebSocket connections (chat):
+ * every proxy with it set would take over upgrade requests, so it is explicit.
  */
-export function createServiceProxy(target: string, options: { authenticated: boolean }) {
+export function createServiceProxy(
+  service: string,
+  target: string,
+  options: { authenticated: boolean; websocket?: boolean },
+) {
   return createProxyMiddleware({
     target,
     changeOrigin: true,
-    ws: options.authenticated,
+    ws: options.websocket === true,
+    proxyTimeout: SERVICE_TIMEOUT_MS,
     on: {
       proxyReq: (proxyReq, req: IncomingMessage) => {
         if (!options.authenticated) {
@@ -39,6 +51,7 @@ export function createServiceProxy(target: string, options: { authenticated: boo
         // Re-send the already-parsed body, otherwise the upstream request hangs.
         fixRequestBody(proxyReq, req as never);
       },
+      error: (error, _req, res) => respondUnavailable(service, error as NodeJS.ErrnoException, res),
     },
   });
 }

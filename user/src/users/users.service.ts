@@ -1,13 +1,13 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
-import { PublicPropertyCache } from '../properties/services/public-property-cache.service';
-import { JsonCache } from '../redis/json-cache.service';
+import { JsonCache, PrismaService } from '@genie/shared';
 import { isGooglePhotoUrl } from './avatar-url';
 import { UpdateProfileDto, USERNAME_PATTERN } from './dto/update-profile.dto';
+import { PROPERTY_CONTENT, RemoteAccountContent } from './remote-account-content';
 
 /** The columns the owner's own profile is built from. Never the password hash. */
 const PROFILE_SELECT = {
@@ -75,7 +75,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: JsonCache,
-    private readonly publicProperties: PublicPropertyCache,
+    @Inject(PROPERTY_CONTENT) private readonly properties: RemoteAccountContent,
   ) {}
 
   async getProfile(userId: string) {
@@ -139,16 +139,14 @@ export class UsersService {
    * Call when what others see of the user changed (name, picture, or whether
    * the account is hidden), so they see it at once instead of when the caches
    * expire. Two things are cached: the public profile, and the user's
-   * published listings, which carry the owner's name and picture.
+   * published listings, which carry the owner's name and picture. The listings
+   * belong to the property service, which is asked to drop them; if it cannot
+   * be reached they expire on their own within a minute.
    */
   async publicViewChanged(userId: string): Promise<void> {
-    const listings = await this.prisma.property.findMany({
-      where: { userId, status: 'Active' },
-      select: { id: true },
-    });
     await Promise.all([
       this.cache.delete(publicProfileKey(userId)),
-      ...listings.map((listing) => this.publicProperties.changed(listing.id)),
+      this.properties.notifyVisibilityChanged(userId),
     ]);
   }
 

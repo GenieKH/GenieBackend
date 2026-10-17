@@ -1,6 +1,11 @@
 # Genie: System Design
 
 Reads the code as of 2026-10-12 (branch `feature/e2e`, uncommitted work included).
+
+> **Update 2026-10-17:** the user service was split. `property` (listings, search), `chat`, `payment` and `user`
+> (profile) now run as separate services; where this document says "User service", read the service for that
+> feature. The current layout, the calls between services and the deployment are in `README.md` and
+> `docs/RAILWAY.md`. The diagrams below are otherwise still accurate for what each feature does.
 Diagrams are Mermaid: they render on GitHub and in VS Code with the "Markdown Preview Mermaid Support" extension.
 Step numbers in each diagram match the numbered list under it, like the like-service picture.
 
@@ -16,10 +21,10 @@ Rule: the app reaches the backend only through the API Gateway. The only direct 
 flowchart LR
     App["Flutter app<br/>(Android)"]
 
-    subgraph Railway["One Railway container (start.sh)"]
+    subgraph Railway["Railway: one service each (see docs/RAILWAY.md)"]
         GW["API Gateway :4000<br/>helmet, CORS, rate limit,<br/>JWT check, proxy"]
         AUTH["Authentication :4001"]
-        USER["User service :4002<br/>properties, payments,<br/>profile, chat REST + WebSocket"]
+        USER["user :4002 profile<br/>property :4003 listings, search<br/>chat :4004 REST + WebSocket<br/>payment :4005"]
         REDIS[("Redis<br/>cache, limits,<br/>chat relay")]
     end
 
@@ -35,7 +40,7 @@ flowchart LR
 
     App -->|"HTTPS + WebSocket"| GW
     GW -->|"/auth/*"| AUTH
-    GW -->|"/public /properties /users /chat /payments"| USER
+    GW -->|"/public /properties /search /users /chat /payments"| USER
     AUTH --> PG
     USER --> PG
     USER -->|"cache, limits, socket adapter"| REDIS
@@ -58,7 +63,7 @@ flowchart LR
 | Supabase Postgres | All data | One database, shared by local dev and production |
 | Supabase Storage | Property photos (public bucket), chat files (private bucket) | Clients upload and download directly with signed URLs |
 
-Trust model: the auth and user services believe the `x-user-id` header. They must never be reachable except through the gateway (true on Railway: only port 4000 is published).
+Trust model: the internal services believe the `x-user-id` header. They must never be reachable except through the gateway (true on Railway: only port 4000 is published).
 
 ---
 

@@ -4,19 +4,39 @@ Backend for the Genie property marketplace (NestJS monorepo, PostgreSQL via Supa
 
 ## Services
 
-| Service | Port | Responsibility |
-|---|---|---|
-| `api-gateway` | 4000 | Only public entry point. Rate limiting, CORS, security headers, JWT check, reverse proxy. |
-| `authentication` | 4001 | Register, login, Google (Firebase) login, token refresh, password reset. |
-| `user` | 4002 | Properties, profile, chat (REST + WebSocket), payments. |
+| Service | Port | Responsibility | If it is down |
+|---|---|---|---|
+| `api-gateway` | 4000 | Only public entry point. Rate limiting, CORS, security headers, JWT check, reverse proxy. | Everything is unreachable |
+| `authentication` | 4001 | Register, login, Google (Firebase) login, token refresh, sessions, password reset, account lifecycle. | No login, register or refresh; signed-in users keep working until their 15-minute token expires |
+| `user` | 4002 | Profile, profile picture, username check; fans account hide/erase out to the other services. | Profile screens only |
+| `property` | 4003 | Listings, photos, likes/favourites/views, nearby places, and the home screen's search. | Browsing, listings and search |
+| `chat` | 4004 | Messages (REST + WebSocket), presence, key backups, attachments. | Messaging only |
+| `payment` | 4005 | Starts a payment, settles it from the provider's webhook. | Publishing a listing only |
 
-Only the gateway is exposed. The other two trust the `x-user-id` header the gateway sets after
-verifying the JWT, so they must never be reachable from the internet.
+`shared` is a library, not a service: the database client, Redis, storage, token checks and the
+service-to-service call helpers every service needs.
+
+Only the gateway is exposed. The other services trust the `x-user-id` header the gateway sets
+after verifying the JWT, so they must never be reachable from the internet. A service that is down
+makes the gateway answer `503` for its own paths, naming the service; nothing else is affected.
 
 ```
 Flutter app ──► api-gateway ──► authentication   (/auth/*)
-                            └─► user             (/public/*, /properties/*, /users/*, /chat/*, /payments/*)
+                            ├─► property         (/public/*, /properties/*, /search/*)
+                            ├─► user             (/users/*)
+                            ├─► chat             (/chat/*, WebSocket)
+                            └─► payment          (/payments/*)
+
+user ──► property, chat       account erased / hidden: remove files, clear caches
+payment ──► property          publish a listing, release it after a failed payment
+authentication ──► user       account deactivated / deleted
 ```
+
+Services call each other only through `/internal` routes, which the gateway never forwards. The
+calls from `user` and `payment` are signed with `INTERNAL_SERVICE_SECRET` (HS256, one minute each);
+the call from `authentication` carries a one-minute RS256 token naming the account. All services
+share one Postgres database for now; each owns its tables and no service writes another's
+(`payment` asks `property` to change a listing's status).
 
 ### Code layout (per service: feature first, then layer)
 
@@ -29,12 +49,13 @@ authentication/src/auth/
   password-reset/  forgot / verify / reset
   mail/            sending email: the reset code, the new sign-in alert
   users/           the only place that touches the `users` table
-user/src/
-  properties/      services/ (query, lifecycle, images, engagement, guest sessions)
-  payments/        checkout, webhook, provider adapter
-  chat/            REST, WebSocket gateway, E2EE message storage
-  users/           profile, profile picture, hiding and erasing an account's content
-  auth/            who is calling: user id, signed tokens, signed-out sessions
+user/src/users/    profile, profile picture, hiding and erasing an account's content
+property/src/
+  properties/      services/ (query, lifecycle, publication, images, engagement, guest sessions), internal/
+  search/          places, listings and people, search history
+chat/src/chat/     REST, WebSocket gateway, E2EE message storage, attachments
+payment/src/payments/  checkout, webhook, provider adapter, client for the property service
+shared/src/        prisma, redis, supabase, auth (who is calling), internal (service calls, health)
 ```
 
 Rule of thumb: controllers only validate and delegate, services hold business rules,
@@ -46,22 +67,22 @@ repositories (or Prisma/Supabase calls) hold persistence.
 cp .env.example .env            # then fill in the values
 npm ci
 node scripts/generate-jwt-keys.js   # paste the output into .env
-npx prisma generate
-npm run start:auth & npm run start:user & npm run start:gateway
+npm run build                   # prisma generate + shared + every service
+npm run start:auth & npm run start:user & npm run start:property &   npm run start:chat & npm run start:payment & npm run start:gateway
 ```
 
-### With Docker (one container, everything included)
+### With Docker (one container per service)
 
 ```bash
-docker compose up -d --build      # build + start (needs a filled-in .env)
-docker compose logs -f            # follow logs
-docker compose down               # stop
+docker compose up -d --build      # build + start (needs a filled-in .env, incl. INTERNAL_SERVICE_SECRET)
+docker compose logs -f chat       # follow one service's logs
+docker compose restart chat       # restart one service; the rest keep running
+docker compose down --remove-orphans   # stop (and remove the old single-container setup)
 ```
 
-One container runs Redis, authentication (:4001), user (:4002) and the api-gateway (:4000).
-Only port 4000 is published. If any process dies the container exits and Docker restarts it
-(`restart: unless-stopped`), so everything comes back whenever Docker Desktop opens.
-To use an external Redis instead, set `REDIS_URL` in `.env` to a non-local address.
+Redis, six services, one image definition (`Dockerfile`, chosen with `--build-arg SERVICE=...`).
+Only port 4000 is published. Each container restarts by itself (`restart: unless-stopped`).
+Deploying to Railway: see [docs/RAILWAY.md](docs/RAILWAY.md).
 
 ### Redis: cache, limits, chat between instances
 
@@ -252,7 +273,7 @@ expired"); after 10 wrong tries in 15 minutes the answer is `429`.
 confirmed by a fresh Google sign-in; "forgot password" by email does the same.
 
 **Password proof.** `POST /auth/account/password-proof` `{password}` → a token valid for
-5 minutes that says the password was just typed. The user service accepts it where only the
+5 minutes that says the password was just typed. The chat service accepts it where only the
 password can vouch for the owner (a forgotten chat PIN, below). It is not an access token.
 
 **Deactivate** sets `users.deactivated_at` and signs every device out. From that moment the
@@ -260,8 +281,9 @@ account is hidden from everyone else: its public profile and chat key answer `40
 leave the map, the listing pages and other people's saved lists, and its conversations leave
 their chat lists. Nothing is deleted; signing in again brings it all back at once.
 
-**Delete** removes every trace, in this order: the account is hidden; the user service deletes
-its files from storage (listing photos, chat attachments in both directions, profile pictures);
+**Delete** removes every trace, in this order: the account is hidden; the user service has the
+property, chat and user services delete its files from storage (listing photos, chat attachments in
+both directions, profile pictures);
 its sessions end; its Google sign-in record in Firebase and its password-reset codes are removed;
 the `users` row is deleted, and the database deletes everything that hangs off it (listings,
 favourites, contact requests it sent, chat messages and keys, payment records). If the files
@@ -353,7 +375,7 @@ instances that share one Redis.
 
 ## Payments (mock)
 
-The provider adapter (`user/src/payments/aba-payway.provider.ts`) is a mock; no real gateway is
+The provider adapter (`payment/src/payments/aba-payway.provider.ts`) is a mock; no real gateway is
 integrated yet. The flow around it is production-shaped:
 
 - only the owner can start checkout, and only from a publishable status;
@@ -362,6 +384,16 @@ integrated yet. The flow around it is production-shaped:
 - a transaction is settled once; repeated or racing webhooks are ignored;
 - on failure the property goes back to `Draft`.
 
+The payment and the listing live in different services, so the flow is a short saga instead of one
+database transaction (the listing's status is only ever changed by the property service):
+
+1. checkout asks property to check the owner and status and park the listing as `Pending`, then
+   records the transaction; if recording fails the listing is put back to its previous status;
+2. the webhook switches the transaction `Pending` → final (only one webhook can win), then tells
+   property to publish (`Active`) or release (`Draft`) the listing;
+3. if property cannot be told, the switch is undone and the webhook answers `503`, so the provider
+   sends it again. A paid listing is never left unpublished behind a transaction that looks settled.
+
 ## Security notes
 
 - Secrets live only in environment variables (see `.env.example`). Never commit `.env`.
@@ -369,7 +401,10 @@ integrated yet. The flow around it is production-shaped:
   newer token means it was stolen: all of the user's sessions are revoked. A token of a session
   that was signed out is simply refused.
 - A signed-out session's access token is refused at once (see "Sessions, password and account").
-- Every token is signed with the same key and says what it is in `typ` (`access`, `refresh`,
+- Calls between services are signed with `INTERNAL_SERVICE_SECRET` (HS256, 60 s, `typ=service`, the
+  sender named in `iss`); each `/internal` route accepts only the senders it lists, and the gateway never
+  forwards `/internal`.
+- Every user token is signed with the same key and says what it is in `typ` (`access`, `refresh`,
   `password-proof`, `internal`); each place that accepts a token accepts exactly one kind.
 - Self-registration always creates role `user`.
 - Password-reset codes are generated with a CSPRNG and stored hashed.
@@ -378,7 +413,7 @@ integrated yet. The flow around it is production-shaped:
 
 Files never pass through the gateway or the services: the app asks for a signed upload URL and
 sends the file straight to Supabase storage. What keeps a large file out is therefore the bucket's
-size limit, applied by the user service when it starts (and to buckets that already existed, which
+size limit, applied by the service that owns the bucket (user: `avatars`, property: `property-images`, chat: `chat-attachments`) when it starts (and to buckets that already existed, which
 keep the limits they were made with otherwise).
 
 | Bucket | Holds | Limit | What the app sends |
@@ -389,5 +424,5 @@ keep the limits they were made with otherwise).
 
 The app compresses every picture before upload (see its README), so the limits are a safety net
 for a client that does not. Changing a limit means changing the constant next to the code that
-owns the bucket and restarting the user service. The server cannot compress chat files: they are
+owns the bucket and restarting that service. The server cannot compress chat files: they are
 encrypted on the sender's device and the server never sees them readable.

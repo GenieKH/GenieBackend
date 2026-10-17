@@ -1,50 +1,64 @@
-# --- Build stage: full install + compile every service ---
+# One image definition for every service. Pick the service with the SERVICE
+# build argument (docker-compose passes it; on Railway set a SERVICE variable):
+#
+#   authentication | user | property | chat | payment | api-gateway
+#
+#   docker build --build-arg SERVICE=property -t genie-property .
+
+# --- Build stage: full install + compile everything ---
+# SERVICE is not used here, so this stage is built once and cached for all services.
 FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Dependency manifests first, so `npm ci` is cached until a package.json changes.
 COPY package.json package-lock.json ./
-COPY api-gateway/package.json api-gateway/
+COPY shared/package.json shared/
 COPY authentication/package.json authentication/
 COPY user/package.json user/
+COPY property/package.json property/
+COPY chat/package.json chat/
+COPY payment/package.json payment/
+COPY api-gateway/package.json api-gateway/
 # Retries ride out a dropped connection to the npm registry (ECONNRESET).
 RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
 COPY . .
-# Generates the Prisma client, then builds api-gateway, authentication and user.
+# Generates the Prisma client, builds shared first, then every service.
 RUN npm run build
 
-# --- Runtime stage: production dependencies and compiled output only ---
+# --- Runtime stage: production dependencies and one service's compiled output ---
 FROM node:22-alpine
-ENV NODE_ENV=production
+ARG SERVICE
+RUN test -n "$SERVICE" || (echo "Set the SERVICE build argument (authentication, user, property, chat, payment or api-gateway)." >&2 && exit 1)
+ENV NODE_ENV=production SERVICE=$SERVICE
 WORKDIR /app
 
-# Redis runs inside this same container (see start.sh).
-RUN apk add --no-cache redis
-
+# Every manifest, because the lockfile describes all workspaces; only this
+# service's (and shared's) dependencies are installed.
 COPY package.json package-lock.json ./
-COPY api-gateway/package.json api-gateway/
+COPY shared/package.json shared/
 COPY authentication/package.json authentication/
 COPY user/package.json user/
-RUN npm ci --omit=dev --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
+COPY property/package.json property/
+COPY chat/package.json chat/
+COPY payment/package.json payment/
+COPY api-gateway/package.json api-gateway/
+RUN npm ci --omit=dev --include-workspace-root --workspace=shared --workspace=$SERVICE \
+    --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
 # The generated client lives in node_modules, so it is regenerated here.
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 RUN npx prisma generate
 
-COPY --from=builder /app/api-gateway/dist ./api-gateway/dist
-COPY --from=builder /app/authentication/dist ./authentication/dist
-COPY --from=builder /app/user/dist ./user/dist
-COPY start.sh ./
-RUN chmod +x start.sh && chown -R node:node /app
-
-# Never run as root.
+COPY --from=builder /app/shared/dist ./shared/dist
+COPY --from=builder /app/$SERVICE/dist ./$SERVICE/dist
+# Never run as root. Nothing under /app is written to at runtime, so root-owned files are fine.
 USER node
 
+# Each service listens on PORT (Railway sets it); the defaults are in each main.ts.
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:4000/health || exit 1
+  CMD wget -qO- "http://127.0.0.1:${PORT:-4000}/health" || exit 1
 
-# Starts Redis + the 3 services in this one container; exits if any of them dies.
-CMD ["./start.sh"]
+CMD ["sh", "-c", "exec node ${SERVICE}/dist/main.js"]

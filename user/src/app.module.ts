@@ -1,26 +1,10 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { JwtStrategy } from './auth/jwt.strategy';
-import { ChatModule } from './chat/chat.module';
-import { PaymentsModule } from './payments/payments.module';
-import { PrismaModule } from './prisma.module';
-import { PropertiesModule } from './properties/properties.module';
-import { RedisModule } from './redis/redis.module';
-import { SearchModule } from './search/search.module';
+import { HealthController, PrismaModule, RedisModule } from '@genie/shared';
 import { UsersModule } from './users/users.module';
 
+/** The user service: profiles and what happens to an account's content. */
 @Module({
-  imports: [
-    RedisModule,
-    PrismaModule,
-    PropertiesModule,
-    PaymentsModule,
-    UsersModule,
-    ChatModule,
-    SearchModule,
-  ],
-  controllers: [AppController],
-  providers: [AppService, JwtStrategy],
+  imports: [RedisModule, PrismaModule, UsersModule],
+  controllers: [HealthController],
 })
 export class AppModule {}

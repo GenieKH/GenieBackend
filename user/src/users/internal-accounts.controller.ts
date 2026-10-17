@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { InternalCallGuard } from '../auth/internal-call.guard';
+import { InternalCallGuard } from './internal-call.guard';
 import { AccountContentService } from './account-content.service';
 
 /**

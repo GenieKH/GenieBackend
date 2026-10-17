@@ -1,14 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { ChatAttachmentService } from '../chat/chat-attachment.service';
-import { ChatService } from '../chat/chat.service';
-import { PropertyImageService } from '../properties/services/property-image.service';
+import { Inject, Injectable } from '@nestjs/common';
 import { AvatarService } from './avatar.service';
+import { CHAT_CONTENT, PROPERTY_CONTENT, RemoteAccountContent } from './remote-account-content';
 import { UsersService } from './users.service';
 
 /**
- * What this service keeps for an account outside its database rows, acted on
+ * What the platform keeps for an account outside its database rows, acted on
  * when the authentication service hides, restores or deletes the account
- * (`InternalAccountsController`).
+ * (`InternalAccountsController`). The profile picture is this service's own;
+ * listing photos and chat files belong to the property and chat services,
+ * which are asked to remove theirs.
  *
  * A feature that starts storing files for users must add them to `eraseFiles`,
  * or deleting an account will leave them behind.
@@ -18,20 +18,20 @@ export class AccountContentService {
   constructor(
     private readonly users: UsersService,
     private readonly avatars: AvatarService,
-    private readonly propertyImages: PropertyImageService,
-    private readonly chat: ChatService,
-    private readonly chatAttachments: ChatAttachmentService,
+    @Inject(PROPERTY_CONTENT) private readonly properties: RemoteAccountContent,
+    @Inject(CHAT_CONTENT) private readonly chat: RemoteAccountContent,
   ) {}
 
   /**
    * Deletes every file the account uploaded: listing photos, chat attachments
    * (both directions of its conversations) and profile pictures. The rows
    * themselves go when the authentication service deletes the account.
+   * Fails if any of them could not be erased.
    */
   async eraseFiles(userId: string): Promise<void> {
     await Promise.all([
-      this.propertyImages.removeAllOwnedBy(userId),
-      this.chatAttachments.removeAllOf(userId),
+      this.properties.eraseFiles(userId),
+      this.chat.eraseFiles(userId),
       this.avatars.removeAllOf(userId),
     ]);
   }
@@ -43,7 +43,7 @@ export class AccountContentService {
   async visibilityChanged(userId: string): Promise<void> {
     await Promise.all([
       this.users.publicViewChanged(userId),
-      this.chat.forgetPublicKey(userId),
+      this.chat.notifyVisibilityChanged(userId),
     ]);
   }
 }

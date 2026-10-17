@@ -1,16 +1,83 @@
-# One container runs everything: Redis, authentication, user and api-gateway.
+# One container per service, so a service that crashes or is redeployed only
+# takes down its own routes. Every service is built from the same Dockerfile.
 #
 #   docker compose up -d --build     build and start
-#   docker compose logs -f           follow the logs
+#   docker compose logs -f chat      follow one service's logs
+#   docker compose restart chat      restart one service, the others keep running
 #   docker compose down              stop and remove
 #
-# `restart: unless-stopped` brings it back automatically whenever Docker starts.
+# If you used the older single-container setup, remove its container first:
+#   docker compose down --remove-orphans
+#
+# `restart: unless-stopped` brings each service back by itself, on its own.
+# Only the gateway publishes a port; the rest are reachable by name inside the
+# compose network. Service-to-service calls are signed with INTERNAL_SERVICE_SECRET.
+
+x-service: &service
+  restart: unless-stopped
+  env_file:
+    - .env
+  environment: &shared-environment
+    REDIS_URL: redis://redis:6379
+    AUTH_SERVICE_URL: http://authentication:4001
+    USER_SERVICE_URL: http://user:4002
+    PROPERTY_SERVICE_URL: http://property:4003
+    CHAT_SERVICE_URL: http://chat:4004
+    PAYMENT_SERVICE_URL: http://payment:4005
+    INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in .env (32+ characters)}
+
 services:
-  genie:
-    build: .
-    container_name: Genie
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Capped, and the least recently used keys go first. Nothing here is the only copy of anything.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  authentication:
+    <<: *service
+    build: { context: ., args: { SERVICE: authentication } }
+    environment:
+      <<: *shared-environment
+      PORT: "4001"
+
+  user:
+    <<: *service
+    build: { context: ., args: { SERVICE: user } }
+    environment:
+      <<: *shared-environment
+      PORT: "4002"
+
+  property:
+    <<: *service
+    build: { context: ., args: { SERVICE: property } }
+    environment:
+      <<: *shared-environment
+      PORT: "4003"
+
+  chat:
+    <<: *service
+    build: { context: ., args: { SERVICE: chat } }
+    environment:
+      <<: *shared-environment
+      PORT: "4004"
+
+  payment:
+    <<: *service
+    build: { context: ., args: { SERVICE: payment } }
+    environment:
+      <<: *shared-environment
+      PORT: "4005"
+
+  api-gateway:
+    <<: *service
+    build: { context: ., args: { SERVICE: api-gateway } }
     ports:
       - "4000:4000"
-    env_file:
-      - .env
-    restart: unless-stopped
+    environment:
+      <<: *shared-environment
+      PORT: "4000"

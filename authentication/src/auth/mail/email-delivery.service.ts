@@ -101,7 +101,9 @@ export class EmailDeliveryService {
         body: JSON.stringify(body),
       });
       if (response.ok) return true;
-      this.logger.warn(`${provider} responded with status ${response.status}`);
+      // The provider's own reason (bad key, unauthorised IP, unverified sender) is what tells an operator what to fix.
+      const reason = (await response.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200);
+      this.logger.warn(`${provider} responded with status ${response.status}${reason ? `: ${reason}` : ''}`);
     } catch (error) {
       this.logger.warn(`${provider} request failed: ${(error as Error).message}`);
     }

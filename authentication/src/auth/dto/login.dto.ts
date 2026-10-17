@@ -1,11 +1,14 @@
-import { IsEmail, IsNotEmpty, IsString, ValidateIf } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsEmail, IsNotEmpty, IsString, MaxLength, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { normalizeEmailInput } from './normalize-email';
 
 export class LoginDto {
   @ApiPropertyOptional({ description: 'User email address', example: 'user@example.com' })
   @ValidateIf(o => !o.phone)
   @IsEmail({}, { message: 'Must be a valid email if phone is not provided' })
   @IsNotEmpty()
+  @Transform(normalizeEmailInput)
   email?: string;
 
   @ApiPropertyOptional({ description: 'User phone number', example: '+1234567890' })
@@ -17,5 +20,6 @@ export class LoginDto {
   @ApiProperty({ description: 'User password', example: 'strongpassword123' })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(200)
   password!: string;
 }

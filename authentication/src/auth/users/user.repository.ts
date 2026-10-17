@@ -39,6 +39,16 @@ const USERNAME_INDEX = 'users_username_key';
  */
 const MAX_CREATE_ATTEMPTS = 5;
 
+/** The form an email is stored and looked up in. */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/** `%` and `_` are wildcards in a LIKE pattern, and both occur in real email addresses. */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
 /** All reads and writes of the `users` table for the auth module. */
 @Injectable()
 export class UserRepository {
@@ -50,8 +60,13 @@ export class UserRepository {
     return this.findOneBy('id', id);
   }
 
-  findByEmail(email: string): Promise<UserRecord | null> {
-    return this.findOneBy('email', email);
+  /**
+   * Emails are stored in lowercase, so `Foo@Gmail.com` and `foo@gmail.com` are one account.
+   * An account made before that rule may still hold capitals, so a miss is retried ignoring case.
+   */
+  async findByEmail(email: string): Promise<UserRecord | null> {
+    const normalized = normalizeEmail(email);
+    return (await this.findOneBy('email', normalized)) ?? this.findOneIgnoringCase('email', normalized);
   }
 
   findByPhone(phone: string): Promise<UserRecord | null> {
@@ -70,8 +85,9 @@ export class UserRepository {
    * a new one, instead of failing the sign-up as if the email were in use.
    */
   async create(user: NewUser): Promise<UserRecord> {
+    const row = { ...user, ...(user.email ? { email: normalizeEmail(user.email) } : {}) };
     for (let attempt = 1; ; attempt++) {
-      const { data, error } = await this.supabase.from('users').insert([user]).select().single();
+      const { data, error } = await this.supabase.from('users').insert([row]).select().single();
       if (!error) return data as UserRecord;
 
       if (error.code === UNIQUE_VIOLATION) {
@@ -102,6 +118,21 @@ export class UserRepository {
       this.logger.error(`Failed to delete user ${id}: ${error.message}`);
       throw new InternalServerErrorException('Failed to delete account');
     }
+  }
+
+  private async findOneIgnoringCase(column: string, value: string): Promise<UserRecord | null> {
+    const { data, error } = await this.supabase
+      .from('users')
+      .select('*')
+      .ilike(column, escapeLikePattern(value))
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error(`Failed to look up user by ${column}: ${error.message}`);
+      throw new InternalServerErrorException('Failed to look up user');
+    }
+    return (data as UserRecord | null) ?? null;
   }
 
   private async findOneBy(column: string, value: string): Promise<UserRecord | null> {

@@ -32,6 +32,15 @@ describe('CredentialsAuthService', () => {
       expect(saved.has_password).toBe(true);
     });
 
+    it('refuses an email that an existing account already uses, in any letter case', async () => {
+      users.findByEmail.mockResolvedValue({ id: 'u1', email: 'Foo@Gmail.com' });
+
+      await expect(service.register({ email: 'foo@gmail.com', password: 'password123' })).rejects.toThrow(
+        'Email or phone already exists',
+      );
+      expect(users.create).not.toHaveBeenCalled();
+    });
+
     it('ignores a role sent by the client', async () => {
       await service.register({ email: 'a@b.com', password: 'password123', role: 'admin' } as never);
 

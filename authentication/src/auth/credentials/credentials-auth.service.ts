@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterDto } from '../dto/register.dto';
@@ -17,6 +17,11 @@ export class CredentialsAuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<void> {
+    // The database refuses an exact repeat; this also catches an older account that still has capitals in its email.
+    if (dto.email && (await this.users.findByEmail(dto.email))) {
+      throw new ConflictException('Email or phone already exists');
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
     // Self-registration never grants elevated roles.

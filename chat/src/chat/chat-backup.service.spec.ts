@@ -74,7 +74,7 @@ describe('ChatBackupService', () => {
     $transaction: jest.fn(async (work: unknown) =>
       typeof work === 'function' ? (work as (client: typeof tx) => unknown)(tx) : Promise.all(work as unknown[]),
     ),
-    chatKeyBackup: { upsert: jest.fn(), findUnique: jest.fn() },
+    chatKeyBackup: { upsert: jest.fn(), findUnique: jest.fn(), deleteMany: jest.fn() },
     user: { update: jest.fn(), findUnique: jest.fn() },
   };
   const cache = { delete: jest.fn() };
@@ -255,6 +255,67 @@ describe('ChatBackupService', () => {
         where: { id: ALICE },
         data: { backupBlob: null, backupSalt: null, backupNonce: null },
       });
+    });
+  });
+
+  describe('remove (turning the backup PIN off)', () => {
+    const removeStatus = async (currentVerifier?: string) => {
+      try {
+        await service.remove(ALICE, { currentVerifier });
+        return HttpStatus.OK;
+      } catch (error) {
+        return (error as { getStatus(): number }).getStatus();
+      }
+    };
+
+    describe('of a protected backup', () => {
+      beforeEach(() => prisma.chatKeyBackup.findUnique.mockResolvedValue({ userId: ALICE }));
+
+      it('is refused without proof of the PIN', async () => {
+        expect(await removeStatus()).toBe(HttpStatus.FORBIDDEN);
+        expect(prisma.chatKeyBackup.deleteMany).not.toHaveBeenCalled();
+      });
+
+      it('counts a wrong PIN, and locks like unlocking does', async () => {
+        const statuses: number[] = [];
+        for (let i = 0; i < 5; i++) statuses.push(await removeStatus(WRONG));
+
+        expect(statuses).toEqual([403, 403, 403, 403, 429]);
+        expect(await removeStatus(RIGHT)).toBe(HttpStatus.TOO_MANY_REQUESTS);
+        expect(prisma.chatKeyBackup.deleteMany).not.toHaveBeenCalled();
+      });
+
+      it('removes it, and the older form, for the right PIN', async () => {
+        expect(await removeStatus(RIGHT)).toBe(HttpStatus.OK);
+
+        expect(prisma.chatKeyBackup.deleteMany).toHaveBeenCalledWith({ where: { userId: ALICE } });
+        expect(prisma.user.update).toHaveBeenCalledWith({
+          where: { id: ALICE },
+          data: { backupBlob: null, backupSalt: null, backupNonce: null },
+        });
+      });
+
+      it('keeps the public key: chat goes on with the same keys', async () => {
+        await removeStatus(RIGHT);
+
+        expect(prisma.user.update.mock.calls[0][0].data).not.toHaveProperty('identityPublicKey');
+        expect(cache.delete).not.toHaveBeenCalled();
+      });
+
+      it('is removed for the account password, even while locked', async () => {
+        for (let i = 0; i < 5; i++) await removeStatus(WRONG);
+
+        await service.remove(ALICE, { provenByPassword: true });
+
+        expect(prisma.chatKeyBackup.deleteMany).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('needs no proof for a backup from before PIN tries were counted', async () => {
+      prisma.chatKeyBackup.findUnique.mockResolvedValue(null);
+
+      expect(await removeStatus()).toBe(HttpStatus.OK);
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -13,9 +13,10 @@ import {
 import { CurrentUserId, RateLimit, RateLimits } from '@genie/shared';
 import { requirePasswordProof } from './password-proof';
 import { ChatAttachmentService } from './chat-attachment.service';
-import { ChatBackupService, NewKeyBackup, SaveBackupOptions } from './chat-backup.service';
+import { BackupOwnerProof, ChatBackupService, NewKeyBackup } from './chat-backup.service';
 import { ChatService } from './chat.service';
 import {
+  BackupOwnerProofDto,
   CreateAttachmentDto,
   MessagePageQuery,
   ResetKeysDto,
@@ -72,6 +73,17 @@ export class ChatController {
   @Post('backup')
   setBackup(@CurrentUserId() userId: string, @Body() dto: SetBackupDto) {
     return this.backupService.save(userId, backupOf(dto), ownerProofOf(userId, dto));
+  }
+
+  /**
+   * Turns the backup PIN off: the backup is removed, with the same proof as
+   * replacing it (`403` wrong PIN or password proof, `429` locked). The public
+   * key stays, so chat goes on with the same keys.
+   */
+  @Post('backup/remove')
+  @HttpCode(HttpStatus.OK)
+  removeBackup(@CurrentUserId() userId: string, @Body() dto: BackupOwnerProofDto) {
+    return this.backupService.remove(userId, ownerProofOf(userId, dto));
   }
 
   @Get('backup')
@@ -135,7 +147,7 @@ export class ChatController {
 }
 
 /** How the caller shows the backup is theirs to replace: the account password, else the current PIN. */
-function ownerProofOf(userId: string, dto: SetBackupDto): SaveBackupOptions {
+function ownerProofOf(userId: string, dto: BackupOwnerProofDto): BackupOwnerProof {
   if (dto.passwordProofToken) {
     requirePasswordProof(userId, dto.passwordProofToken);
     return { provenByPassword: true };

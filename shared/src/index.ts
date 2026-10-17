@@ -20,3 +20,5 @@ export { HealthController } from './internal/health.controller';
 export { serviceCallGuard } from './internal/service-call.guard';
 export { ServiceCallError, ServiceClient } from './internal/service-client';
 export { ServiceName, signServiceToken, verifyServiceToken } from './internal/service-token';
+
+export { RejectNullBytesPipe } from './validation/reject-null-bytes.pipe';

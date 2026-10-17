@@ -9,6 +9,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -25,6 +26,10 @@ import {
   TITLE_TYPES,
   VIEW_TYPES,
 } from '../property-options';
+import { MAX_AREA, MAX_COUNT, MAX_MONEY } from './numeric-limits';
+
+/** The statuses a listing can be created with. Later changes go through their own endpoints. */
+const CREATE_STATUSES = ['Draft', 'Active'] as const;
 
 /**
  * A new listing. Every detail is optional here: a draft may be saved half
@@ -44,6 +49,7 @@ export class CreatePropertyDto {
 
   @IsNumber()
   @Min(0)
+  @Max(MAX_MONEY)
   price: number;
 
   @IsIn(PROPERTY_TYPES)
@@ -56,6 +62,7 @@ export class CreatePropertyDto {
 
   @IsNumber()
   @IsOptional()
+  @Max(MAX_MONEY)
   discountValue?: number | null;
 
   @IsIn(LISTING_TYPES)
@@ -74,46 +81,55 @@ export class CreatePropertyDto {
   @IsInt()
   @Min(0)
   @IsOptional()
+  @Max(MAX_COUNT)
   bedrooms?: number;
 
   @IsInt()
   @Min(0)
   @IsOptional()
+  @Max(MAX_COUNT)
   bathrooms?: number;
 
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Max(MAX_AREA)
   landSize?: number;
 
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Max(MAX_AREA)
   buildingSize?: number;
 
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Max(MAX_AREA)
   unitSize?: number;
 
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Max(MAX_AREA)
   totalProjectArea?: number;
 
   @IsInt()
   @Min(0)
   @IsOptional()
+  @Max(MAX_COUNT)
   floors?: number;
 
   @IsInt()
   @Min(0)
   @IsOptional()
+  @Max(MAX_COUNT)
   floorNumber?: number;
 
   @IsInt()
   @Min(0)
   @IsOptional()
+  @Max(MAX_COUNT)
   totalUnits?: number;
 
   @IsBoolean()
@@ -143,6 +159,7 @@ export class CreatePropertyDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Max(MAX_MONEY)
   maintenanceFee?: number;
 
   @IsString()
@@ -162,11 +179,13 @@ export class CreatePropertyDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Max(MAX_MONEY)
   monthlyRent?: number;
 
   @IsInt()
   @Min(0)
   @IsOptional()
+  @Max(MAX_COUNT)
   leaseRemainingMonths?: number;
 
   @IsString()
@@ -187,7 +206,8 @@ export class CreatePropertyDto {
   @IsOptional()
   keywords?: string[];
 
-  @IsString()
+  /** `Active` publishes at once (what the app sends); anything else starts as a draft. */
+  @IsIn(CREATE_STATUSES)
   @IsOptional()
   status?: string;
 }

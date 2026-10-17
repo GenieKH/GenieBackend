@@ -39,7 +39,9 @@ export class AttemptLimiter {
   }
 }
 
+const ONE_MINUTE = 60;
 const FIFTEEN_MINUTES = 15 * 60;
+const ONE_HOUR = 60 * 60;
 const ONE_DAY = 24 * 60 * 60;
 
 /**
@@ -52,8 +54,20 @@ export class AuthAttemptLimits {
   /** Wrong passwords per account before login pauses: stops password guessing. */
   readonly login: AttemptLimiter;
 
+  /** One reset email per address a minute: a tapped-twice "Resend" sends one. */
+  readonly resetCooldown: AttemptLimiter;
+
   /** Reset emails per address: stops inbox flooding and endless fresh codes. */
   readonly resetRequests: AttemptLimiter;
+
+  /** Reset emails per address in a day, so the 15-minute window cannot be repeated all day. */
+  readonly resetRequestsPerDay: AttemptLimiter;
+
+  /**
+   * Reset requests per caller address, known accounts or not: one caller cannot
+   * flood many inboxes or probe a list of addresses.
+   */
+  readonly resetRequestsPerClient: AttemptLimiter;
 
   /** Guesses at a 6-digit reset code per address, across verify and reset. */
   readonly otp: AttemptLimiter;
@@ -70,7 +84,10 @@ export class AuthAttemptLimits {
 
   constructor(@Optional() private readonly redis?: RedisConnection) {
     this.login = this.limit('login', 10, FIFTEEN_MINUTES);
+    this.resetCooldown = this.limit('reset-cooldown', 1, ONE_MINUTE);
     this.resetRequests = this.limit('reset-request', 3, FIFTEEN_MINUTES);
+    this.resetRequestsPerDay = this.limit('reset-request-day', 6, ONE_DAY);
+    this.resetRequestsPerClient = this.limit('reset-request-client', 10, ONE_HOUR);
     this.otp = this.limit('otp', 5, FIFTEEN_MINUTES);
     this.otpPerDay = this.limit('otp-day', 15, ONE_DAY);
     this.identityProof = this.limit('identity-proof', 10, FIFTEEN_MINUTES);

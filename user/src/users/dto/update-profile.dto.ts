@@ -12,6 +12,9 @@ import {
 /** A handle: 3 to 30 lowercase letters, digits, "_" or ".". */
 export const USERNAME_PATTERN = /^[a-z0-9_.]{3,30}$/;
 
+/** Seven to twenty characters: digits, with an optional leading "+" and spaces, dots, dashes or brackets between them. */
+const PHONE_NUMBER = /^\+?[0-9][0-9 ().-]{5,18}[0-9]$/;
+
 /** The values the `users.sex` column accepts. */
 export const SEXES = ['male', 'female', 'other'] as const;
 export type Sex = (typeof SEXES)[number];
@@ -76,5 +79,6 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   @MaxLength(20)
+  @Matches(PHONE_NUMBER, { message: 'Enter a valid phone number, for example +85512345678' })
   phone?: string;
 }

@@ -16,6 +16,9 @@ import {
 /** The most listings one map search returns: the newest ones in the area. */
 export const MAP_RESULT_LIMIT = 500;
 
+/** Statuses a saved listing is hidden in: the owner has not published it, or removed it. */
+const HIDDEN_STATUSES = ['Draft', 'Pending', 'Deleted'];
+
 @Injectable()
 export class PropertyQueryService {
   constructor(
@@ -58,10 +61,13 @@ export class PropertyQueryService {
     });
   }
 
-  /** Saved listings. One whose owner deactivated their account is left out until they return. */
+  /**
+   * Saved listings. One whose owner deactivated their account is left out until they return,
+   * and so is one its owner took back to a draft or deleted since it was saved.
+   */
   async listFavorites(userId: string) {
     const favorites = await this.prisma.propertyFavorite.findMany({
-      where: { userId, property: { user: { deactivatedAt: null } } },
+      where: { userId, property: { user: { deactivatedAt: null }, status: { notIn: HIDDEN_STATUSES } } },
       include: { property: { include: PROPERTY_WITH_RELATIONS } },
       orderBy: { createdAt: 'desc' },
     });

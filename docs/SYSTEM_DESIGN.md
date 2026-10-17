@@ -138,8 +138,12 @@ flowchart LR
     A -->|"7 new password hash,<br/>revoke all sessions"| DB[("users, refresh_tokens")]
 ```
 
-- Always answers "if the email exists, a code was sent" (no probing).
-- Limits per address: 3 emails / 15 min, 5 guesses / 15 min, 15 guesses / day.
+- Always answers "if the email exists, a code was sent" (no probing). A code is stored and emailed only
+  when an account has that email: unknown addresses never reach the email provider.
+- Limits per address: 1 email / minute, 3 emails / 15 min, 6 emails / day; 5 guesses / 15 min, 15 guesses / day.
+- Limit per caller IP: 10 reset requests / hour, known addresses or not. Counted before the per-address
+  limits, so a refused flood does not use up a victim's own allowance. All limits answer `429` the same way
+  for unknown addresses. The app's "Resend" button waits 60 s to match.
 - The email is sent in the background; the HTTP answer does not wait for it.
 
 ---

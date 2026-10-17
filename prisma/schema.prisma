@@ -19,8 +19,20 @@ model RefreshToken {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  /// The sign-in this token belongs to. Each refresh replaces the token and
+  /// copies the fields below to the new row, so the unrevoked row of a session
+  /// describes the device; its `createdAt` is when the device was last used.
+  sessionId        String?   @map("session_id") @db.Uuid
+  sessionStartedAt DateTime? @map("session_started_at") @db.Timestamptz(6)
+  deviceName       String?   @map("device_name")
+  platform         String?
+  ipAddress        String?   @map("ip_address")
+  /// Roughly where `ipAddress` is, e.g. "Phnom Penh, Cambodia".
+  location         String?
+
   @@index([expiresAt], map: "idx_refresh_tokens_expires_at")
   @@index([userId], map: "idx_refresh_tokens_user_id")
+  @@index([sessionId], map: "idx_refresh_tokens_session_id")
   @@map("refresh_tokens")
 }
 
@@ -31,12 +43,26 @@ model User {
   phone         String?              @unique
   email         String?              @unique
   passwordHash  String               @map("password_hash")
+  /// False while `passwordHash` is a value nobody can match: an account made
+  /// by Google sign-in whose owner has not chosen a password yet.
+  hasPassword   Boolean              @default(false) @map("has_password")
   role          String               @default("user")
   createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   firebaseUid   String?              @unique @map("firebase_uid")
   avatarUrl     String?              @map("avatar_url")
-  username      String?
-  payments      PaymentTransaction[]
+  /// The unique handle: lowercase letters, digits, "_" and ".". The database
+  /// gives every new account one. Null only on a row written by a backend
+  /// older than migration 7 that passed an explicit null.
+  username      String?              @unique @default(dbgenerated("('user_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 10))"))
+  /// What people see. Not unique.
+  name          String?
+  firstName     String?              @map("first_name")
+  lastName      String?              @map("last_name")
+  /// 'male', 'female' or 'other' (checked by the database).
+  sex           String?
+  /// Set while the owner has switched the account off; signing in clears it.
+  deactivatedAt DateTime?            @map("deactivated_at") @db.Timestamptz(6)
+  payments     PaymentTransaction[]
   properties    Property[]
   contacts      PropertyContact[]
   favorites     PropertyFavorite[]
@@ -50,7 +76,12 @@ model User {
   backupSalt        String? @map("backup_salt")
   backupNonce       String? @map("backup_nonce")
 
-  messagesSent     Message[] @relation("MessagesSent")
+  /// When the user's last chat connection closed. Null if never connected.
+  lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(6)
+
+  keyBackup       ChatKeyBackup?
+  searchHistory   SearchHistoryEntry[]
+  messagesSent    Message[] @relation("MessagesSent")
   messagesReceived Message[] @relation("MessagesReceived")
 
   @@index([email], map: "idx_users_email", where: raw("(email IS NOT NULL)"))
@@ -73,6 +104,35 @@ model Property {
   buildingSize     Decimal?             @map("building_size") @db.Decimal(10, 2)
   unitSize         Decimal?             @map("unit_size") @db.Decimal(10, 2)
   totalProjectArea Decimal?             @map("total_project_area") @db.Decimal(10, 2)
+  /// 'percent' or 'amount' (USD off `price`); null for no discount.
+  discountType     String?              @map("discount_type")
+  discountValue    Decimal?             @map("discount_value") @db.Decimal(12, 2)
+  /// Sale, Rent or To Let (see property-options.ts).
+  listingType      String?              @map("listing_type")
+  titleType        String?              @map("title_type")
+  contactPhone     String?              @map("contact_phone")
+  /// Floors of a house or building; total floors of the tower for a condo.
+  floors           Int?
+  /// The floor a condo unit is on.
+  floorNumber      Int?                 @map("floor_number")
+  totalUnits       Int?                 @map("total_units")
+  hasParking       Boolean?             @map("has_parking")
+  hasBalcony       Boolean?             @map("has_balcony")
+  furnishing       String?
+  buildingType     String?              @map("building_type")
+  completionStatus String?              @map("completion_status")
+  viewType         String?              @map("view_type")
+  maintenanceFee   Decimal?             @map("maintenance_fee") @db.Decimal(12, 2)
+  developerName    String?              @map("developer_name")
+  projectName      String?              @map("project_name")
+  projectType      String?              @map("project_type")
+  monthlyRent      Decimal?             @map("monthly_rent") @db.Decimal(12, 2)
+  leaseRemainingMonths Int?             @map("lease_remaining_months")
+  equipmentIncluded String?             @map("equipment_included")
+  reasonForSelling String?              @map("reason_for_selling")
+  /// When the markets, hospitals and schools around the listing were last
+  /// looked up; null while never looked up (see PropertyNearbyPlace).
+  nearbySearchedAt DateTime?            @map("nearby_searched_at") @db.Timestamptz(6)
   lat              Float?
   lng              Float?
   boundaryPoints   Json?                @map("boundary_points")
@@ -83,13 +143,59 @@ model Property {
   contacts         PropertyContact[]
   favorites        PropertyFavorite[]
   images           PropertyImage[]
+  keywords         PropertyKeyword[]
   likes            PropertyLike[]
+  nearbyPlaces     PropertyNearbyPlace[]
   views            PropertyView[]
 
   @@index([userId])
   @@index([status])
   @@index([lat, lng])
+  @@index([status, lat, lng])
+  @@index([status, propertyType, lat, lng])
+  @@index([status, listingType, lat, lng])
   @@map("properties")
+}
+
+/// The features a listing can be tagged with ("road_access", ...). Seeded by
+/// migration 14; the codes are what the app sends and translates.
+model Keyword {
+  code       String            @id
+  properties PropertyKeyword[]
+
+  @@map("keywords")
+}
+
+/// The nearest markets, hospitals or schools of a listing tagged near_market,
+/// near_hospital or near_school, found by the map provider when the listing
+/// was placed. `rank` 0 is the closest by road.
+model PropertyNearbyPlace {
+  propertyId     String   @map("property_id") @db.Uuid
+  category       String
+  rank           Int
+  name           String
+  providerPlaceId String  @map("provider_place_id")
+  lat            Float
+  lng            Float
+  straightMeters Int      @map("straight_meters")
+  /// Null when the provider found no road to it.
+  roadMeters     Int?     @map("road_meters")
+  driveSeconds   Int?     @map("drive_seconds")
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, category, rank])
+  @@map("property_nearby_places")
+}
+
+model PropertyKeyword {
+  propertyId String   @map("property_id") @db.Uuid
+  keyword    String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  keywordRef Keyword  @relation(fields: [keyword], references: [code])
+
+  @@id([propertyId, keyword])
+  @@index([keyword, propertyId])
+  @@map("property_keywords")
 }
 
 model PropertyImage {
@@ -123,6 +229,7 @@ model PropertyFavorite {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, propertyId])
+  @@index([propertyId])
   @@map("property_favorites")
 }
 
@@ -147,7 +254,7 @@ model PropertyContact {
   message    String
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  user       User?    @relation(fields: [userId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([propertyId])
   @@index([userId])
@@ -192,6 +299,26 @@ model password_reset_otps {
   @@index([email], map: "idx_password_reset_otps_email")
 }
 
+/// A user's chat key, encrypted on their device with a key made from their PIN.
+/// The server hands it out only after the PIN is proven, and counts wrong tries.
+model ChatKeyBackup {
+  userId String @id @map("user_id") @db.Uuid
+  /// The device's ciphertext, sealed again with CHAT_BACKUP_SECRET.
+  blob   String
+  salt   String
+  nonce  String
+  /// Keyed hash of the PIN proof. Useless without CHAT_BACKUP_SECRET.
+  verifier       String
+  /// Wrong PINs in a row since the last correct one.
+  failedAttempts Int       @default(0) @map("failed_attempts")
+  lockedUntil    DateTime? @map("locked_until") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chat_key_backups")
+}
+
 model Message {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   senderId    String    @map("sender_id") @db.Uuid
@@ -201,10 +328,32 @@ model Message {
   readAt      DateTime? @map("read_at") @db.Timestamptz(6)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  sender    User @relation("MessagesSent", fields: [senderId], references: [id])
-  recipient User @relation("MessagesReceived", fields: [recipientId], references: [id])
+  sender    User @relation("MessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User @relation("MessagesReceived", fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@index([recipientId, createdAt])
   @@index([recipientId, readAt])
+  @@index([senderId, recipientId, createdAt])
+  @@index([recipientId, senderId])
   @@map("messages")
+}
+
+/// A text the user searched on the home screen. Shown on every device they
+/// sign in on, and forgotten after 14 days. Searching the same text again
+/// moves its entry to the top instead of adding another.
+model SearchHistoryEntry {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  /// As the user typed it (trimmed), for display.
+  query           String
+  /// Lowercase, single-spaced: what makes two searches "the same".
+  normalizedQuery String   @map("normalized_query")
+  searchedAt      DateTime @default(now()) @map("searched_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, normalizedQuery])
+  @@index([userId, searchedAt(sort: Desc)])
+  @@index([searchedAt])
+  @@map("search_history")
 }

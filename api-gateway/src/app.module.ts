@@ -1,102 +1,32 @@
-import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
-import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import { APP_GUARD } from '@nestjs/core';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { AppController } from './app.controller';
 import { AuthMiddleware } from './auth.middleware';
+import { createRateLimitMiddleware, createRequestLimiter } from './rate-limit.middleware';
+import { RedisConnection } from './redis-connection';
+import { RevokedSessions } from './revoked-sessions';
+import { createServiceProxy } from './service-proxy';
+import { routesFor, SERVICE_ROUTES, serviceUrlsFromEnv } from './service-routes';
 
-@Module({
-  imports: [
-    ThrottlerModule.forRoot({
-      throttlers: [{
-        ttl: 60000,
-        limit: 300,
-      }],
-      storage: new ThrottlerStorageRedisService(process.env.REDIS_URL || 'redis://localhost:6379'),
-    }),
-  ],
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
-  ],
-})
+@Module({ controllers: [AppController], providers: [RedisConnection, RevokedSessions] })
 export class AppModule implements NestModule {
+  constructor(private readonly redis: RedisConnection) {}
+
   configure(consumer: MiddlewareConsumer) {
-    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:4001';
-    const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:4002';
+    const urls = serviceUrlsFromEnv();
 
-    // 1. Proxies that DO NOT require JWT validation (Auth service)
-    consumer
-      .apply(
-        createProxyMiddleware({
-          target: authServiceUrl,
-          changeOrigin: true,
-          on: {
-            proxyReq: (proxyReq, req: any) => {
-              proxyReq.removeHeader('x-user-id');
-              fixRequestBody(proxyReq, req);
-            },
-          },
-        }),
-      )
-      .forRoutes(
-        { path: '/auth', method: RequestMethod.ALL },
-        { path: '/auth/{*path}', method: RequestMethod.ALL }
-      );
+    // 300 requests a minute per client address, counted before any proxy runs.
+    const rateLimit = createRateLimitMiddleware(createRequestLimiter(this.redis.client, 300, 60));
 
-    // 2. Proxies that DO NOT require JWT validation (Public properties)
-    consumer
-      .apply(
-        createProxyMiddleware({
-          target: userServiceUrl,
-          changeOrigin: true,
-          on: {
-            proxyReq: (proxyReq, req: any) => {
-              proxyReq.removeHeader('x-user-id');
-              fixRequestBody(proxyReq, req);
-            },
-          },
-        }),
-      )
-      .forRoutes(
-        { path: '/public', method: RequestMethod.ALL },
-        { path: '/public/{*path}', method: RequestMethod.ALL }
-      );
+    for (const route of SERVICE_ROUTES) {
+      const proxy = createServiceProxy(route.service, urls[route.service], {
+        authenticated: route.authenticated,
+        websocket: route.websocket,
+      });
+      const middleware = route.authenticated ? [rateLimit, AuthMiddleware, proxy] : [rateLimit, proxy];
+      const forRoutes = [...routesFor(route.prefixes), ...(route.alsoPublic ?? [])];
 
-    // 3. Proxies that REQUIRE JWT validation (User service)
-    // First apply AuthMiddleware to extract x-user-id, then proxy to user service
-    consumer
-      .apply(
-        AuthMiddleware,
-        createProxyMiddleware({
-          target: userServiceUrl,
-          changeOrigin: true,
-          ws: true,
-          on: {
-            proxyReq: (proxyReq, req: any, res) => {
-              // Ensure the x-user-id header is forwarded securely
-              if (req.headers['x-user-id']) {
-                proxyReq.setHeader('x-user-id', req.headers['x-user-id']);
-              }
-              // Fix body parser hanging issue
-              fixRequestBody(proxyReq, req);
-            },
-          },
-        }),
-      )
-      .forRoutes(
-        { path: '/properties', method: RequestMethod.ALL },
-        { path: '/properties/{*path}', method: RequestMethod.ALL },
-        { path: '/payments', method: RequestMethod.ALL },
-        { path: '/payments/{*path}', method: RequestMethod.ALL },
-        { path: '/users', method: RequestMethod.ALL },
-        { path: '/users/{*path}', method: RequestMethod.ALL },
-        { path: '/chat', method: RequestMethod.ALL },
-        { path: '/chat/{*path}', method: RequestMethod.ALL }
-      );
+      const configured = consumer.apply(...middleware);
+      (route.exclude ? configured.exclude(...route.exclude) : configured).forRoutes(...forRoutes);
+    }
   }
 }
-
-

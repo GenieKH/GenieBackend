@@ -1,8 +1,30 @@
 import { Module } from '@nestjs/common';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
 import { JwtModule } from '@nestjs/jwt';
+import { RedisConnection } from '../redis/redis-connection';
+import { AccountController } from './account/account.controller';
+import { AccountService } from './account/account.service';
+import { IdentityProofService } from './account/identity-proof.service';
+import { PasswordProofService } from './account/password-proof.service';
+import { UserContentClient } from './account/user-content.client';
+import { AuthAttemptLimits } from './attempt-limiter';
+import { AuthController } from './auth.controller';
+import { CredentialsAuthService } from './credentials/credentials-auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { EmailDeliveryService } from './mail/email-delivery.service';
+import { OtpEmailService } from './mail/otp-email.service';
+import { PasswordResetOtpRepository } from './password-reset/password-reset-otp.repository';
+import { PasswordResetService } from './password-reset/password-reset.service';
+import { EstablishedDeviceService } from './sessions/established-device.service';
+import { IpLocationProvider, IpWhoIsLocationProvider } from './sessions/ip-location.provider';
+import { RefreshTokenRepository } from './sessions/refresh-token.repository';
+import { RevokedSessionStore } from './sessions/revoked-session.store';
+import { SessionRevocationService } from './sessions/session-revocation.service';
+import { SessionService } from './sessions/session.service';
+import { SessionsController } from './sessions/sessions.controller';
+import { SignInService } from './sessions/sign-in.service';
+import { TokenIssuerService } from './sessions/token-issuer.service';
+import { FirebaseLoginService } from './social/firebase-login.service';
+import { UserRepository } from './users/user.repository';
 
 @Module({
   imports: [
@@ -13,7 +35,30 @@ import { JwtStrategy } from './jwt.strategy';
       verifyOptions: { algorithms: ['RS256'] },
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  controllers: [AuthController, SessionsController, AccountController],
+  providers: [
+    RedisConnection,
+    AuthAttemptLimits,
+    RevokedSessionStore,
+    JwtStrategy,
+    UserRepository,
+    RefreshTokenRepository,
+    PasswordResetOtpRepository,
+    { provide: IpLocationProvider, useClass: IpWhoIsLocationProvider },
+    TokenIssuerService,
+    SessionRevocationService,
+    EstablishedDeviceService,
+    SessionService,
+    IdentityProofService,
+    PasswordProofService,
+    UserContentClient,
+    AccountService,
+    SignInService,
+    CredentialsAuthService,
+    FirebaseLoginService,
+    PasswordResetService,
+    EmailDeliveryService,
+    OtpEmailService,
+  ],
 })
 export class AuthModule {}

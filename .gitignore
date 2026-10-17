@@ -1,14 +1,20 @@
 # Node modules (ignored in all subfolders)
 node_modules/
 
-# Environment variables (ignored in all subfolders)
+# Environment variables (ignored in all subfolders). The template is committed.
 .env
 .env.*
+!.env.example
 
 # Generated files / build output
 **/src/generated/
 **/dist/
 **/build/
+*.tsbuildinfo
+
+# Throwaway scripts and debug artifacts must never be committed
+*.map
+*.log
 
 # OS and Editor files
 .DS_Store

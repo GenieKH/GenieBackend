@@ -1,52 +1,64 @@
-# --- Build Stage ---
-FROM node:22-alpine AS builder
+# One image definition for every service. Pick the service with the SERVICE
+# build argument (docker-compose passes it; on Railway set a SERVICE variable):
+#
+#   authentication | user | property | chat | payment | api-gateway
+#
+#   docker build --build-arg SERVICE=property -t genie-property .
 
+# --- Build stage: full install + compile everything ---
+# SERVICE is not used here, so this stage is built once and cached for all services.
+FROM node:22-alpine AS builder
 WORKDIR /app
 
-# Copy the entire workspace
+# Dependency manifests first, so `npm ci` is cached until a package.json changes.
 COPY package.json package-lock.json ./
-COPY api-gateway/package.json ./api-gateway/
-COPY authentication/package.json ./authentication/
-COPY user/package.json ./user/
+COPY shared/package.json shared/
+COPY authentication/package.json authentication/
+COPY user/package.json user/
+COPY property/package.json property/
+COPY chat/package.json chat/
+COPY payment/package.json payment/
+COPY api-gateway/package.json api-gateway/
+# Retries ride out a dropped connection to the npm registry (ECONNRESET).
+RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
-# Copy prisma schema if it exists in the root or a shared folder to generate client
-# Assuming prisma is in the root or one of the packages. Let's copy everything since it's a monorepo
 COPY . .
-
-# Install dependencies (will install for all workspaces)
-RUN npm install
-
-# Generate Prisma Client (Assumes schema is in prisma/ or shared folder)
-# We run the build script which triggers prisma generate and nest build for all workspaces
+# Generates the Prisma client, builds shared first, then every service.
 RUN npm run build
 
-# --- Production Stage ---
+# --- Runtime stage: production dependencies and one service's compiled output ---
 FROM node:22-alpine
-
+ARG SERVICE
+RUN test -n "$SERVICE" || (echo "Set the SERVICE build argument (authentication, user, property, chat, payment or api-gateway)." >&2 && exit 1)
+ENV NODE_ENV=production SERVICE=$SERVICE
 WORKDIR /app
 
-# Copy package files
+# Every manifest, because the lockfile describes all workspaces; only this
+# service's (and shared's) dependencies are installed.
 COPY package.json package-lock.json ./
-COPY api-gateway/package.json ./api-gateway/
-COPY authentication/package.json ./authentication/
-COPY user/package.json ./user/
+COPY shared/package.json shared/
+COPY authentication/package.json authentication/
+COPY user/package.json user/
+COPY property/package.json property/
+COPY chat/package.json chat/
+COPY payment/package.json payment/
+COPY api-gateway/package.json api-gateway/
+RUN npm ci --omit=dev --include-workspace-root --workspace=shared --workspace=$SERVICE \
+    --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
-# Install only production dependencies
-# RUN npm ci --omit=dev  // For monorepos, sometimes it's easier to just copy the whole node_modules from builder if prisma is involved
-# To ensure prisma client and all workspace links work perfectly, we'll copy the builder's node_modules
-COPY --from=builder /app/node_modules ./node_modules
+# The generated client lives in node_modules, so it is regenerated here.
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+RUN npx prisma generate
 
-# Copy built dist folders
-COPY --from=builder /app/api-gateway/dist ./api-gateway/dist
-COPY --from=builder /app/authentication/dist ./authentication/dist
-COPY --from=builder /app/user/dist ./user/dist
+COPY --from=builder /app/shared/dist ./shared/dist
+COPY --from=builder /app/$SERVICE/dist ./$SERVICE/dist
+# Never run as root. Nothing under /app is written to at runtime, so root-owned files are fine.
+USER node
 
-# Copy the start script
-COPY start.sh ./
-RUN chmod +x start.sh
-
-# Expose API Gateway port
+# Each service listens on PORT (Railway sets it); the defaults are in each main.ts.
 EXPOSE 4000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${PORT:-4000}/health" || exit 1
 
-# Start all 3 services using the shell script
-CMD ["./start.sh"]
+CMD ["sh", "-c", "exec node ${SERVICE}/dist/main.js"]

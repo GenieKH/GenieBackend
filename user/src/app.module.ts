@@ -1,32 +1,10 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
-import { CacheModule } from '@nestjs/cache-manager';
-import { RequestContextMiddleware } from './auth/request-context.middleware';
-import { JwtStrategy } from './auth/jwt.strategy';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { PropertiesModule } from './properties/properties.module';
-import { PaymentsModule } from './payments/payments.module';
+import { Module } from '@nestjs/common';
+import { HealthController, PrismaModule, RedisModule } from '@genie/shared';
 import { UsersModule } from './users/users.module';
-import { ChatModule } from './chat/chat.module';
 
+/** The user service: profiles and what happens to an account's content. */
 @Module({
-  imports: [
-    CacheModule.register({
-      isGlobal: true,
-      store: require('cache-manager-redis-yet').redisStore,
-      url: process.env.REDIS_URL || 'redis://localhost:6379',
-      ttl: 300000, // 5 minutes TTL
-    }),
-    PropertiesModule,
-    PaymentsModule,
-    UsersModule,
-    ChatModule,
-  ],
-  controllers: [AppController],
-  providers: [AppService, JwtStrategy],
+  imports: [RedisModule, PrismaModule, UsersModule],
+  controllers: [HealthController],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestContextMiddleware).forRoutes('*');
-  }
-}
+export class AppModule {}

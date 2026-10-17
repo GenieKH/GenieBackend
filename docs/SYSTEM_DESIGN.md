@@ -1,0 +1,425 @@
+# Genie: System Design
+
+Reads the code as of 2026-10-12 (branch `feature/e2e`, uncommitted work included).
+
+> **Update 2026-10-17:** the user service was split. `property` (listings, search), `chat`, `payment` and `user`
+> (profile) now run as separate services; where this document says "User service", read the service for that
+> feature. The current layout, the calls between services and the deployment are in `README.md` and
+> `docs/RAILWAY.md`. The diagrams below are otherwise still accurate for what each feature does.
+Diagrams are Mermaid: they render on GitHub and in VS Code with the "Markdown Preview Mermaid Support" extension.
+Step numbers in each diagram match the numbered list under it, like the like-service picture.
+
+Legend: solid arrow = request, dashed arrow = background or asynchronous, `[(...)]` = storage.
+
+Rule: the app reaches the backend only through the API Gateway. The only direct connections are signed URLs to Supabase Storage (uploads and downloads) and third-party services.
+
+---
+
+## 0. The whole system
+
+```mermaid
+flowchart LR
+    App["Flutter app<br/>(Android)"]
+
+    subgraph Railway["Railway: one service each (see docs/RAILWAY.md)"]
+        GW["API Gateway :4000<br/>helmet, CORS, rate limit,<br/>JWT check, proxy"]
+        AUTH["Authentication :4001"]
+        USER["user :4002 profile<br/>property :4003 listings, search<br/>chat :4004 REST + WebSocket<br/>payment :4005"]
+        REDIS[("Redis<br/>cache, limits,<br/>chat relay")]
+    end
+
+    subgraph Supabase
+        PG[("Postgres")]
+        STORE[("Storage<br/>property-images (public)<br/>chat-attachments (private)")]
+    end
+
+    FB["Firebase Auth<br/>(Google sign-in)"]
+    MAIL["Email provider<br/>(Brevo / Resend / SMTP)"]
+    PAY["ABA PayWay<br/>(MOCK, not integrated)"]
+    MAPS["Google Maps"]
+
+    App -->|"HTTPS + WebSocket"| GW
+    GW -->|"/auth/*"| AUTH
+    GW -->|"/public /properties /search /users /chat /payments"| USER
+    AUTH --> PG
+    USER --> PG
+    USER -->|"cache, limits, socket adapter"| REDIS
+    GW -->|"request counts"| REDIS
+    AUTH -->|"attempt counts"| REDIS
+    USER --> STORE
+    App -->|"signed URL: upload / download"| STORE
+    AUTH --> FB
+    AUTH -.-> MAIL
+    PAY -.->|"webhook, HMAC signed"| GW
+    App --> MAPS
+```
+
+| Piece | What it does | Notes |
+|---|---|---|
+| API Gateway | Only public entry. Verifies access JWT (RS256, `typ=access`), writes `x-user-id`, proxies | 300 req/min per IP, counted in Redis |
+| Authentication | Register, login, Google login, refresh, logout, password reset | Talks to Postgres through the Supabase client |
+| User service | Everything else | Talks to Postgres through Prisma |
+| Redis | Cache (map, listing page, chat keys, public profile), all rate limits, chat events between instances | Never the only copy: everything falls back to the database or memory. Inside the container today; must be external before a second instance |
+| Supabase Postgres | All data | One database, shared by local dev and production |
+| Supabase Storage | Property photos (public bucket), chat files (private bucket) | Clients upload and download directly with signed URLs |
+
+Trust model: the internal services believe the `x-user-id` header. They must never be reachable except through the gateway (true on Railway: only port 4000 is published).
+
+---
+
+## 1. Register and log in (email or phone)
+
+```mermaid
+flowchart LR
+    C["App"] -->|"1 POST /auth/login"| G["API Gateway"]
+    G -->|"2 rate limit, proxy"| A["Authentication"]
+    A -->|"3 attempt limiter:<br/>10 wrong / 15 min / account"| A
+    A -->|"4 find user, bcrypt compare"| DB[("users")]
+    A -->|"5 store hash of refresh token"| RT[("refresh_tokens")]
+    A -->|"6 access 15 min + refresh 30 days"| C
+    C -->|"7 save both"| SS[("Secure storage<br/>on device")]
+```
+
+1. App posts email or phone plus password.
+2. Gateway counts the request for the client IP and forwards it (no JWT needed on `/auth`).
+3. Per-account counter: 10 wrong passwords pauses that account for 15 minutes. A correct login clears it.
+4. Same error for unknown user and wrong password (no account probing). bcrypt, 10 rounds.
+5. A refresh token row is stored with only a bcrypt hash and a `jti`.
+6. Two RS256 JWTs come back: access (15 min, `typ=access`) and refresh (30 days, `typ=refresh`).
+7. App keeps them in `flutter_secure_storage`.
+
+**Register** is the same path with `POST /auth/register`: password at least 8 characters, role always `user`, email and phone are **not verified**.
+
+## 2. Session: every API call, refresh, logout
+
+```mermaid
+flowchart LR
+    C["App"] -->|"1 any request + Bearer access"| G["API Gateway"]
+    G -->|"2 verify RS256, typ=access,<br/>set x-user-id"| U["User service"]
+    U -->|"3 data"| C
+    C -.->|"4 expired: POST /auth/refresh"| G
+    G -->|"forward"| A["Authentication"]
+    A -->|"5 revoke old token,<br/>issue new pair"| RT[("refresh_tokens")]
+```
+
+- 2: the gateway rejects missing, expired, wrongly signed or refresh-type tokens before anything else runs.
+- 4/5: refresh **rotates**. The old token is revoked atomically. Presenting a revoked token again while its session has a newer one revokes **all** sessions of that user (theft detection); a token of a signed-out session is just refused.
+- Each sign-in is a **session** with a device name, platform, IP address and rough location (`refresh_tokens.session_id` and friends). `GET /auth/sessions` lists them, `DELETE /auth/sessions/:id` signs one device out, `logout-all` every one; logout revokes the caller's own.
+- Changing the password, deactivating and deleting the account (`/auth/change-password`, `/auth/account/*`) ask for the password or a fresh Google sign-in first.
+- Signing a device out is immediate: the session id goes on a 15-minute list in Redis that the gateway, the authentication service and the chat server check before accepting an access token, and the chat server closes that device's connections. Without Redis the old limit applies: the access token works until it expires (at most 15 minutes).
+- A device signed in for less than a day cannot sign other devices out, so a stolen password cannot be used to lock the owner out. The owner is emailed when a second device signs in.
+
+## 3. Sign in with Google
+
+```mermaid
+flowchart LR
+    C["App"] -->|"1 Google sign-in via Firebase SDK"| F["Firebase"]
+    F -->|"2 ID token"| C
+    C -->|"3 POST /auth/firebase-login"| G["API Gateway"]
+    G --> A["Authentication"]
+    A -->|"4 verify ID token"| F
+    A -->|"5 find by uid, else link by verified email, else create"| DB[("users")]
+    A -->|"6 token pair"| C
+```
+
+- Linking only happens through an email Firebase marked verified.
+- Linking to an existing account discards that account's old password and ends its sessions (stops pre-registration takeover).
+
+## 4. Forgot password (email OTP)
+
+```mermaid
+flowchart LR
+    C["App"] -->|"1 POST /auth/forgot-password"| G["API Gateway"] -->|"forward"| A["Authentication"]
+    A -->|"2 6-digit code, bcrypt hash, 10 min"| O[("password_reset_otps")]
+    A -.->|"3 send email"| M["Email provider"]
+    M -.->|"4 code"| U["User's inbox"]
+    C -->|"5 POST /auth/verify-otp"| G
+    C -->|"6 POST /auth/reset-password"| G
+    A -->|"7 new password hash,<br/>revoke all sessions"| DB[("users, refresh_tokens")]
+```
+
+- Always answers "if the email exists, a code was sent" (no probing).
+- Limits per address: 3 emails / 15 min, 5 guesses / 15 min, 15 guesses / day.
+- The email is sent in the background; the HTTP answer does not wait for it.
+
+---
+
+## 5. Profile and public profile
+
+```mermaid
+flowchart LR
+    C["App"] -->|"1 GET / PATCH /users/me"| G["API Gateway"] -->|"2"| U["User service"]
+    U -->|"3 select safe fields"| DB[("users")]
+    C -->|"4 GET /users/:id"| G
+    U -->|"5 username, name, avatar, member since only"| C
+```
+
+- `username` is the unique handle; `name` is what people see and may be shared. Personal information (`firstName`, `lastName`, `sex`) is only ever returned to its owner.
+- A deactivated account is hidden everywhere: no public profile or chat key, no listings on the map or in saved lists, no conversation in other people's chat lists. Signing in again restores it.
+- The profile picture is uploaded to our storage (camera or gallery) or synced from the Google account; no other URL is accepted.
+- Avatar URL must be on our Supabase storage or a Google profile photo.
+- Another user's public profile never includes email, phone or role.
+
+## 6. Post a property (create, photos, pin, boundary)
+
+```mermaid
+flowchart LR
+    C["App"] -->|"1 POST /properties<br/>(status Draft)"| G["API Gateway"]
+    G -->|"2 JWT check"| U["User service"]
+    U -->|"3 insert"| DB[("properties")]
+    C -->|"4 POST /properties/:id/images/presigned-url"| G
+    U -->|"5 signed upload URLs"| C
+    C -->|"6 PUT photo directly"| S[("Storage:<br/>property-images")]
+    C -->|"7 POST .../images/confirm"| G
+    U -->|"8 save public URLs, order"| DB
+    C -->|"9 PATCH :id/pin and :id/boundary"| G
+    U -->|"10 centroid of polygon becomes lat/lng"| DB
+```
+
+- Ownership is checked on every call (`findOwned`: wrong owner looks like 404).
+- Photos never pass through our servers; they go straight to Supabase.
+- Confirm only accepts file names this server issued.
+
+| Endpoint | Body | Answer | Errors |
+| --- | --- | --- | --- |
+| `POST /properties` | `title`, `price`, `propertyType` (one of `property-options.ts`), then any of: `listingType` (`Sale`/`Rent`/`To Let`), `titleType`, `description`, `contactPhone`, sizes, the type's details (floors, parking, furnishing, condo, Borey and business fields), `keywords` (codes such as `road_access`, no repeats), `status` | the listing with `images`, `keywords: [{keyword}]` and owner | 400, 401 |
+| `PATCH /properties/:id` | any field above except `status`, the type included; left out = unchanged, `null` = cleared (never for title, price, type); `keywords` replaces the whole list | the listing as saved, as above | 400, 401, 404 (missing or someone else's) |
+
+- Every detail is its own column on `properties` (migration 14). A listing keeps only the details of its type (`property-type-fields.ts`): the rest are cleared on create and on every edit, so a listing whose type changed keeps nothing from its old type.
+- Keywords live in `property_keywords`, one row per listing and code, checked against the `keywords` table. A new keyword is a new row there plus a label in the app.
+- A Borey project's price is its starting (lowest unit) price.
+- **Discount** (migration 16): optional `discountType` (`percent` | `amount`, USD) + `discountValue`, both or neither; a percentage must be below 100 and an amount below the price, checked on create and on every edit against the price the listing ends up with (400 otherwise), and by a database CHECK. `price` stays the asking price; the app shows the price less the discount, with the asking price crossed out. The map list carries both fields.
+- **Nearby markets, hospitals, schools** (migration 15): when a listing tagged `near_market`, `near_hospital` or `near_school` gets a location (pin or boundary), or an edit changes which of those it carries, the server looks up the nearest 3 of each within 5 km (Google Places Nearby Search, ranked by distance) and their road distance and drive time (Google Routes, one route matrix, typical traffic). This runs after the save answers, so a slow or failing provider never fails the save; failures are logged. Results go to `property_nearby_places` and come back with every full listing as `nearbyPlaces: [{category, rank, name, lat, lng, straightMeters, roadMeters, driveSeconds}]` plus `nearbySearchedAt` (null = never looked up; set with no places = nothing within 5 km). Viewing a listing never calls Google. Needs `GOOGLE_PLACES_API_KEY` with **both** the Places API (New) and the Routes API enabled; without a key nothing is looked up. Cost per lookup: up to 3 Nearby Search (Pro) calls + 1 route matrix of up to 9 elements.
+
+## 7. Publish (listing fee)
+
+```mermaid
+flowchart LR
+    C["App"] -->|"1 POST /payments/checkout"| G["API Gateway"]
+    G --> U["User service"]
+    U -->|"2 owner and status Draft/Expired?"| DB[("properties")]
+    U -->|"3 status Pending + transaction Pending"| DB
+    U -->|"4 checkout URL"| C
+    P["ABA PayWay (mock)"] -.->|"5 webhook + HMAC signature"| G
+    G -->|"6 /payments/webhook (no JWT)"| U
+    U -->|"7 settle once: transaction final,<br/>property Active or back to Draft"| DB
+```
+
+- Fee is a constant (50). Webhook is verified with HMAC-SHA256 and settles a transaction exactly once.
+- **The provider is a mock.** Nothing real charges the user yet.
+- **Payment can be skipped today** (see section 15, item 1).
+
+## 8. Browse the map and view a listing
+
+```mermaid
+flowchart LR
+    C["App (guest or user)"] -->|"1 GET /public/properties/map?bounds"| G["API Gateway"]
+    G -->|"2 rate limit only"| U["User service"]
+    U -->|"3 Active properties in the box,<br/>images, owner summary"| DB[("properties")]
+    U -->|"4 list (+ isVisited if token sent)"| C
+    C -->|"5 GET /public/properties/:id"| G
+    C -->|"6 POST /public/properties/guest-session"| G
+```
+
+- Optional filters (the pills under the search bar): `propertyType` and `listingType`, exact values from `property-options.ts` (400 otherwise). Served by the `(status, property_type, lat, lng)` and `(status, listing_type, lat, lng)` indexes.
+- The list is cached for 30 s per ~1 km grid box and filter, and cleared the moment a published listing changes; `isVisited` is looked up per user.
+- No pagination and no limit on the map query: a wide box returns everything with all images.
+- The owner's **email and phone are included** for anyone, signed in or not.
+
+## 8a. Search: places, listings and people
+
+```mermaid
+flowchart LR
+    C["App (guest or user)"] -->|"1 GET /public/search?q (after a 500 ms pause in typing)"| G["API Gateway"]
+    G -->|"2"| U["User service"]
+    U -->|"3a suggestions (cached 1 h)"| P["Google Places API (New)"]
+    U -->|"3b listings by title/description,<br/>publishers by name/username"| DB[("properties, users")]
+    U -->|"4 places + properties + people"| C
+    C -->|"5 GET /public/search/places/:placeId"| G
+    U -->|"6 viewport (cached 24 h)"| P
+    U -->|"7 published listings inside it, nearest first"| C
+    C -->|"8 GET /public/search/people/:userId"| G
+```
+
+| Endpoint | Query | Answer | Errors |
+|---|---|---|---|
+| `GET /public/search` | `q` (1-200 chars; matched on its first 80, lowercased), `session`?, `lang`? (`en`/`km`), `lat`?, `lng`? | `{ places: [{placeId, primaryText, secondaryText}], properties: [map listing], people: [{id, name, username, avatarUrl, listingCount}] }`; empty lists for a text under 2 characters | 400, 429 |
+| `GET /public/search/places/:placeId` | `session`?, `lang`? | `{ place: {placeId, name, address, center, viewport}, properties: [map listing] }`, at most 100 | 400, 404 unknown place, 429, 503 no key or provider down |
+| `GET /public/search/people/:userId` | | `{ person, properties }`, newest first, at most 100 | 400, 404, 429 |
+
+- Public, like the map: a token is optional and only changes how the rate limit counts (per account instead of per address): 120 searches a minute.
+- A listing matches when its title or description contains every word of the text, in any order; a person when their name or username does. Only published listings, and only people with at least one, can be found: search is no directory of accounts. A person result never includes email or phone.
+- Places come from Google, called by the server so its key (`GOOGLE_PLACES_API_KEY`) is never in the app. The app makes one `session` token per search, so the suggestions and the place picked are billed as one session. Without a key, or when Google fails, search still answers listings and people.
+- A place's viewport is grown to at least ~500 m, so a single address still finds the listings around it.
+- Listing results share the map's cache version: publishing or hiding a listing outdates them at once. Trigram indexes (migration `11_search_indexes`) keep the `ILIKE '%word%'` queries off full table scans.
+- A person result carries `memberSince`. `GET /public/search/people/:userId` is the profile page, opened from search or by tapping the other person in a chat. It answers for any active account (404 if missing or deactivated), but only search finds people, and only publishers. It carries `email` and `phone` only for publishers, whose listings already show them; someone who has published nothing keeps them private. Result lists never include contact details, so search cannot be used to collect them in bulk. The page has Follow (does nothing yet), Chat and View on map.
+
+**Search history** (signed-in only, token required; migration `12_search_history`):
+
+| Endpoint | Body | Answer | Errors |
+|---|---|---|---|
+| `GET /search/history` | | `[{id, query, searchedAt}]`, newest first, at most 20, last 14 days only | 401 |
+| `POST /search/history` | `{query}` (2-80 chars after trimming) | the entry; the same text again (case and spacing aside) keeps its id and moves to the top | 400, 401, 429 (60 a minute) |
+| `DELETE /search/history/:id` | | 204 | 400, 401, 404 (missing or someone else's) |
+
+- The app saves a search when it is finished (a result picked, or the search key pressed), never per keystroke, and loads the list each time the search page opens, so every device shows the same history.
+- Entries older than 14 days are never returned, and are deleted (for everyone) whenever someone saves a search; each account keeps at most its 50 newest. Deleting the account deletes its history.
+
+## 9. Save a property (like, favorite, view, contact owner)
+
+```mermaid
+flowchart LR
+    C["App"] -->|"1 POST /properties/:id/favorite"| G["API Gateway"]
+    G -->|"2 JWT"| U["User service"]
+    U -->|"3 upsert (idempotent)"| DB[("property_favorites")]
+    C -->|"4 GET /properties/my/favorites"| G
+    C -->|"5 POST :id/like, :id/view, :id/contact"| G
+    U -->|"6"| DB2[("likes, views, contacts")]
+```
+
+- Like, favorite and view are upserts: repeating is harmless.
+- Contact stores a message for the owner in the database. **The owner is not notified** (no push, no email).
+- Favorites list is unpaginated.
+
+---
+
+## 10. Chat: first use (create keys and PIN)
+
+```mermaid
+flowchart LR
+    C["App"] -->|"1 generate identity key pair<br/>(libsodium, on device)"| C
+    C -->|"2 ask for 6-digit PIN<br/>(weak PINs refused)"| C
+    C -->|"3 Argon2id(PIN, salt) =<br/>encryption key + verifier"| C
+    C -->|"4 POST /chat/backup<br/>encrypted private key + verifier"| G["API Gateway"]
+    G --> U["User service"]
+    U -->|"5 seal with server secret,<br/>store"| DB[("chat_key_backups")]
+    C -->|"6 POST /chat/keys<br/>public key"| G
+    U --> DB2[("users.identity_public_key")]
+```
+
+- The private key never leaves the device unencrypted.
+- The server stores the key encrypted twice: by the PIN-derived key (device) and by `CHAT_BACKUP_SECRET` (server). The PIN proof is stored only as a keyed hash.
+
+## 11. Chat: send and receive a message
+
+```mermaid
+flowchart LR
+    A["Alice's app"] -->|"1 GET /chat/keys/:bob"| G["API Gateway"]
+    A -->|"2 pin Bob's key (first seen = trusted)"| A
+    A -->|"3 encrypt envelope:<br/>from, to, id, text, file"| A
+    A -->|"4 socket sendMessage"| G
+    G -->|"5 JWT (typ=access), WebSocket proxy"| U["User service<br/>ChatGateway"]
+    U -->|"6 rate limit 30 / 10 s, store ciphertext"| DB[("messages")]
+    U -->|"7 emit newMessage to Bob's room"| B["Bob's app(s)"]
+    U -->|"8 ack"| A
+    B -->|"9 decrypt, verify from/to"| B
+```
+
+- Server stores `ciphertext + nonce` only. Sender and recipient are **inside** the encrypted envelope, so the server cannot swap or replay messages as someone else's.
+- The client picks the message `id`, so a retry never creates a duplicate.
+- Each user has a Socket.IO room: every device of the recipient and the sender's other devices receive it.
+- If the recipient is offline the message waits in the table; they get it when they open the chat. **There is no push notification.**
+- History: `GET /chat/messages/:id?before=` pages of 50. Conversation list: one SQL query (`DISTINCT ON`) plus unread counts.
+
+## 12. Chat: presence (online, last seen)
+
+```mermaid
+flowchart LR
+    A["App"] -->|"1 socket connect"| G["API Gateway"] -->|"forward"| U["ChatGateway"]
+    U -->|"2 first device: online"| P["In-memory presence"]
+    A -->|"3 watchPresence(bob)"| G
+    U -->|"4 presence events"| A
+    U -->|"5 last device disconnects"| DB[("users.last_seen_at")]
+```
+
+- Presence is asked across all instances through Redis (falls back to this instance if Redis does not answer within a second).
+- Any signed-in user can watch any other user's presence.
+
+## 13. Chat: send a picture
+
+```mermaid
+flowchart LR
+    A["Alice's app"] -->|"1 pick, resize 1600px"| A
+    A -->|"2 encrypt with one-time key"| A
+    A -->|"3 POST /chat/attachments"| G["API Gateway"] -->|"forward"| U["User service"]
+    U -->|"4 signed upload URL<br/>path sender/recipient/file"| A
+    A -->|"5 PUT encrypted bytes"| S[("Storage:<br/>chat-attachments, private")]
+    A -->|"6 send message with<br/>path + key + nonce inside envelope"| G
+    B["Bob's app"] -->|"7 GET /chat/attachments/...<br/>sender or recipient only"| G
+    U -->|"8 one-minute signed URL"| B
+    B -->|"9 download, decrypt"| S
+```
+
+- The file key travels only inside the encrypted message.
+- 25 MB limit, 20 upload requests per user per minute.
+- Pictures are images only in the UI; other files show as a name.
+
+## 14. Chat key recovery: new phone, change PIN, forgot PIN
+
+```mermaid
+flowchart LR
+    C["App"] -->|"1 GET /chat/backup<br/>(salt only)"| G["API Gateway"] -->|"forward"| U["User service"]
+    C -->|"2 Argon2id(PIN, salt)"| C
+    C -->|"3 POST /chat/backup/unlock<br/>verifier"| G
+    U -->|"4 row lock, compare keyed hash"| DB[("chat_key_backups")]
+    U -->|"5a right PIN: encrypted key"| C
+    U -->|"5b wrong PIN: 403, count it<br/>5th wrong: lock 15 min, then 30, 60 ... max 24 h"| C
+    C -->|"6 decrypt on device"| C
+```
+
+| Situation | What happens |
+|---|---|
+| New phone, knows PIN | Steps above; keys restored, old history readable |
+| Change PIN | Unlock with the old PIN, re-encrypt, save again. History stays readable |
+| **Forgot PIN** | **No recovery.** "Reset keys": new key pair, new PIN, public key replaced. Old messages become unreadable. Contacts see a "key changed" warning |
+| Someone guesses | Locked after 5 wrong tries; count is stored in the database so restarts do not reset it |
+| Old-format backup | Returned whole once, opened with the PIN, then re-saved in the protected format |
+
+Safety code: both people can compare a number derived from both public keys to detect a swapped key.
+
+---
+
+## 15. Is this ready for the market? Findings, most important first
+
+These come from reading the code, not from load testing.
+
+### Must fix before launch
+
+| # | Finding | Why it matters | Fix |
+|---|---|---|---|
+| 1 | **Listing fee can be skipped.** `POST /properties` accepts `status: "Active"`, and `PATCH /properties/:id/publish` sets Active from Draft with no payment | Paid feature is free; anyone can publish | Ignore `status` on create; make `publish` only reachable through a settled payment (or remove it) |
+| 2 | **Payment is a mock** | No revenue; flow around it is untested against a real provider | Integrate ABA PayWay (or other) behind the existing `PaymentProvider` |
+| 3 | **Owner email and phone returned to anyone** on map and detail, even signed out | Scraping of every seller's contact details | Return contact details only to signed-in users, or only a "contact" action |
+| 4 | **Database password in public git history**, and shared by dev and production | Full database access | Rotate; create a separate staging database |
+| 5 | **Single container runs everything** | One crash or deploy is a full outage; cannot scale one service | Split services, or at least run 2 replicas once state is moved out (see below) |
+| 6 | **No push notifications** | A user does not know a message or contact arrived unless the app is open | Add FCM; notify on new chat message and new contact |
+
+### Fix before real traffic
+
+| # | Finding | Fix |
+|---|---|---|
+| 7 | Map and favorites queries have no limit or pagination, and return all images | Cap results, return one thumbnail, paginate |
+| 8 | ~~Rate limits, login attempts, presence and socket rooms live in process memory~~ **Done:** all in Redis, tested with two instances | Remaining: move Redis out of the container (set `REDIS_URL`) before the second instance |
+| 9 | ~~Redis is deployed and used for nothing~~ **Done:** map, listing page, chat keys and public profile are cached with immediate invalidation | Watch the hit rate before caching more |
+| 10 | Two ways of reaching the same database: Supabase client in auth, Prisma in user | Pick one (Prisma); simpler to test and migrate |
+| 11 | Schema is applied by hand; `_prisma_migrations` only knows `0_init` | Baseline the migration table, run `prisma migrate deploy` in the pipeline |
+| 12 | Email and phone are never verified at registration | Verify email with a code, like password reset |
+| 13 | Access token stays valid up to 15 minutes after logout | Acceptable; shorten if it worries you |
+| 14 | `/health` on the hosted gateway answered 500 / timeout while other routes worked | Investigate before relying on it for uptime checks |
+| 15 | Old messages and attachments are never deleted; expired OTP and revoked token rows stay | Retention policy and a cleanup job |
+| 16 | No monitoring, error tracking or alerting | Add Sentry (app and backend) and an uptime check |
+| 17 | Hosted dependency advisories: 9 left, all need major upgrades and none look reachable | Review with each framework upgrade |
+
+### Product decisions (not bugs)
+
+- Anyone signed in can see anyone's online status and public profile.
+- A user with neither name nor username is shown to chat partners by email or phone.
+- Forgetting the chat PIN loses history forever (the price of end-to-end encryption). Consider telling users clearly at PIN creation.
+- A forgotten chat PIN is recovered with the account password (a Google account creates one first). On a device that still has the keys only the PIN changes; on any other device the keys are reset and earlier history is lost. Whoever knows the account password can therefore reset the chat keys; the other person in each chat is warned that the key changed.
+- Deleting an account deletes everything: its files in storage, its payment records, and its messages in other people's conversations with it.
+- The one-day rule covers everything that takes the account away from its other devices: signing them out, changing the password, deactivating and deleting. A legitimate owner on a brand-new device therefore waits a day for those too, or uses an older device, or resets the password by email. Recovering a forgotten chat PIN with the password is not under the rule.
+- Only one contact path to an owner (chat vs contact form): decide which is the product's main one.
+
+### Not covered
+
+iOS build and settings, Railway and Supabase dashboard configuration, load and latency testing, Google Maps key restrictions, backups and disaster recovery of the database.

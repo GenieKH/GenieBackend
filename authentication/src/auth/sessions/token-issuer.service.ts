@@ -1,0 +1,96 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
+import {
+  ACCESS_TOKEN_TTL_SECONDS,
+  ACCESS_TOKEN_TYPE,
+  BCRYPT_ROUNDS,
+  REFRESH_TOKEN_TTL_DAYS,
+  REFRESH_TOKEN_TYPE,
+} from '../auth.constants';
+import { ClientContext } from './client-context';
+import { IpLocationProvider } from './ip-location.provider';
+import { RefreshTokenRecord, RefreshTokenRepository, SessionDetails } from './refresh-token.repository';
+
+export interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+}
+
+/** Signs a new access/refresh token pair and records the refresh token. */
+@Injectable()
+export class TokenIssuerService {
+  private readonly logger = new Logger(TokenIssuerService.name);
+
+  constructor(
+    @Inject(JwtService) private readonly jwt: JwtService,
+    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(IpLocationProvider) private readonly locations: IpLocationProvider,
+  ) {}
+
+  /**
+   * A sign-in starts a new session. A refresh passes the token it replaces as
+   * `previous`, and the new token continues that token's session.
+   */
+  async issue(userId: string, role: string, client: ClientContext, previous?: RefreshTokenRecord): Promise<TokenPair> {
+    const session = continueOrStartSession(client, previous);
+
+    // `sid` names the session: it marks the asking device in the session list,
+    // and is what a sign-out cuts off (see `RevokedSessionStore`).
+    const accessToken = this.jwt.sign(
+      { sub: userId, role, typ: ACCESS_TOKEN_TYPE, sid: session.id },
+      { expiresIn: ACCESS_TOKEN_TTL_SECONDS },
+    );
+
+    // The jti ties the signed token to its database row so it can be revoked.
+    const jti = randomUUID();
+    const refreshToken = this.jwt.sign(
+      { sub: userId, jti, typ: REFRESH_TOKEN_TYPE },
+      { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` },
+    );
+
+    await this.refreshTokens.insert({
+      id: jti,
+      userId,
+      tokenHash: await bcrypt.hash(refreshToken, BCRYPT_ROUNDS),
+      expiresAt: this.refreshExpiry(),
+      session,
+    });
+    if (session.ipAddress && !session.location) {
+      this.locateInBackground(jti, session.ipAddress);
+    }
+
+    return { accessToken, refreshToken };
+  }
+
+  /** The lookup calls another server, so signing in does not wait for it. */
+  private locateInBackground(tokenId: string, ipAddress: string): void {
+    this.locations
+      .locate(ipAddress)
+      .then((location) => (location ? this.refreshTokens.setLocation(tokenId, location) : undefined))
+      .catch((error: Error) => this.logger.warn(`Session location not saved: ${error.message}`));
+  }
+
+  private refreshExpiry(): Date {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_TTL_DAYS);
+    return expiresAt;
+  }
+}
+
+/**
+ * The session of a new token. What the device says about itself now wins over
+ * what the previous token recorded; the place is kept while the address is the same.
+ */
+export function continueOrStartSession(client: ClientContext, previous?: RefreshTokenRecord): SessionDetails {
+  const ipAddress = client.ipAddress ?? previous?.ip_address ?? null;
+  return {
+    id: previous?.session_id ?? randomUUID(),
+    startedAt: previous?.session_started_at ?? previous?.created_at ?? new Date().toISOString(),
+    deviceName: client.deviceName ?? previous?.device_name ?? null,
+    platform: client.platform ?? previous?.platform ?? null,
+    ipAddress,
+    location: previous && previous.ip_address === ipAddress ? previous.location : null,
+  };
+}

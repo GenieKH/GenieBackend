@@ -1,0 +1,81 @@
+import { Body, Controller, HttpCode, HttpStatus, Inject, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { AuthAttemptLimits } from '../attempt-limiter';
+import { AuthenticatedUser, CurrentUser } from '../decorators/current-user.decorator';
+import { ChangePasswordDto } from '../dto/change-password.dto';
+import { IdentityProofDto } from '../dto/identity-proof.dto';
+import { CreatePasswordDto, PasswordProofDto } from '../dto/password.dto';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { AccountService } from './account.service';
+import { PasswordProofService } from './password-proof.service';
+
+/** Account security for the signed-in user: password, deactivate, delete. */
+@ApiTags('auth')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('auth')
+@ApiResponse({
+  status: 403,
+  description: 'The password (or Google confirmation) is wrong, or `code: DEVICE_TOO_NEW`: signed in less than a day ago',
+})
+@ApiResponse({ status: 429, description: 'Too many wrong tries' })
+export class AccountController {
+  constructor(
+    @Inject(AccountService) private readonly account: AccountService,
+    @Inject(PasswordProofService) private readonly passwordProofs: PasswordProofService,
+    @Inject(AuthAttemptLimits) private readonly limits: AuthAttemptLimits,
+  ) {}
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Set a new password; every other device is signed out' })
+  async changePassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangePasswordDto) {
+    await this.withLimitedTries(user.userId, () =>
+      this.account.changePassword(user, dto.currentPassword, dto.newPassword),
+    );
+    return { message: 'Password changed' };
+  }
+
+  @Post('account/password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Give a Google account a password of its own, confirmed with Google' })
+  async createPassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreatePasswordDto) {
+    await this.withLimitedTries(user.userId, () =>
+      this.account.createPassword(user.userId, dto.idToken, dto.newPassword),
+    );
+    return { message: 'Password created' };
+  }
+
+  @Post('account/password-proof')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'A 5-minute token proving the password, for recovering a forgotten chat PIN' })
+  proveWithPassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: PasswordProofDto) {
+    return this.withLimitedTries(user.userId, () => this.passwordProofs.issue(user.userId, dto.password));
+  }
+
+  @Post('account/deactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Hide the account until its owner signs in again' })
+  async deactivate(@CurrentUser() user: AuthenticatedUser, @Body() dto: IdentityProofDto) {
+    await this.withLimitedTries(user.userId, () => this.account.deactivate(user, dto));
+    return { message: 'Account deactivated' };
+  }
+
+  @Post('account/delete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete the account and everything that belongs to it, for good' })
+  @ApiResponse({ status: 503, description: 'Its files could not be removed; nothing was deleted' })
+  async delete(@CurrentUser() user: AuthenticatedUser, @Body() dto: IdentityProofDto) {
+    await this.withLimitedTries(user.userId, () => this.account.delete(user, dto));
+    return { message: 'Account deleted' };
+  }
+
+  /** Wrong passwords are counted per account, so a signed-in thief cannot guess theirs here. */
+  private async withLimitedTries<T>(userId: string, action: () => Promise<T>): Promise<T> {
+    await this.limits.identityProof.consumeOrReject(userId);
+    const result = await action();
+    // Only failures count: a right answer clears the slate.
+    await this.limits.identityProof.reset(userId);
+    return result;
+  }
+}

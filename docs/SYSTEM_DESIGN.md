@@ -282,6 +282,7 @@ flowchart LR
 ```
 
 - Like, favorite and view are upserts: repeating is harmless.
+- Every listing read carries `_count: { favorites, views, contacts }`. A view is one row per person (`property_views`), so `views` is how many people opened it; the owner opening their own listing is not recorded (migration 19 removed earlier ones). The app records a view when a listing is selected on the map or its detail sheet opens. Counts may lag by the public cache (map 30 s, detail 60 s).
 - Contact stores a message for the owner in the database. **The owner is not notified** (no push, no email).
 - Favorites list is unpaginated.
 

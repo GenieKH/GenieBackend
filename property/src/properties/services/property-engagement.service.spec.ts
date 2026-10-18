@@ -4,7 +4,7 @@ import { PropertyEngagementService } from './property-engagement.service';
 function setup(options: { visible?: boolean; allowContact?: boolean } = {}) {
   const { visible = true, allowContact = true } = options;
   const prisma = {
-    property: { findFirst: jest.fn().mockResolvedValue(visible ? { id: 'p1' } : null) },
+    property: { findFirst: jest.fn().mockResolvedValue(visible ? { userId: 'owner' } : null) },
     propertyLike: { upsert: jest.fn().mockResolvedValue({}), deleteMany: jest.fn() },
     propertyFavorite: { upsert: jest.fn().mockResolvedValue({}), deleteMany: jest.fn() },
     propertyView: { upsert: jest.fn().mockResolvedValue({}) },
@@ -35,6 +35,22 @@ describe('PropertyEngagementService', () => {
     const { service, prisma } = setup();
     await service.like('u', 'p1');
     expect(prisma.property.findFirst.mock.calls[0][0].where).toMatchObject({ id: 'p1', status: 'Active' });
+  });
+
+  it('records one view per person', async () => {
+    const { service, prisma } = setup();
+    await service.logView('u', 'p1');
+    expect(prisma.propertyView.upsert).toHaveBeenCalledWith({
+      where: { userId_propertyId: { userId: 'u', propertyId: 'p1' } },
+      create: { userId: 'u', propertyId: 'p1' },
+      update: {},
+    });
+  });
+
+  it('does not count the owner opening their own listing', async () => {
+    const { service, prisma } = setup();
+    await expect(service.logView('owner', 'p1')).resolves.toEqual({ success: true });
+    expect(prisma.propertyView.upsert).not.toHaveBeenCalled();
   });
 
   it('stores a contact message', async () => {

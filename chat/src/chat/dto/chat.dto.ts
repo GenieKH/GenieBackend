@@ -70,10 +70,13 @@ export class SetBackupDto extends BackupOwnerProofDto {
   @Matches(BACKUP_VERIFIER)
   backupVerifier: string;
 
-  /** Locked with the backup PIN (default) or the account password. */
+  /**
+   * Always the chat PIN. Backups locked with the account password are no
+   * longer made: those that exist are moved to a PIN by the app.
+   */
   @IsOptional()
-  @IsIn(['pin', 'password'])
-  protectedBy?: 'pin' | 'password';
+  @IsIn(['pin'])
+  protectedBy?: 'pin';
 }
 
 /** "Reset keys": a new key pair and its backup, replacing the old ones together. */

@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { JsonCache, PrismaService } from '@genie/shared';
+import { CHAT_PIN_TTL_SECONDS, chatPinCacheKey } from './chat-pin-cache';
 import { ConversationStateService } from './conversation-state.service';
 import { PUBLIC_KEY_TTL_SECONDS, publicKeyCacheKey } from './public-key-cache';
 
@@ -125,6 +126,8 @@ export class ChatService {
       throw new BadRequestException('You cannot message yourself');
     }
 
+    await this.requireChatPin(senderId);
+
     if (!(await this.isVisible(message.recipientId))) {
       throw new NotFoundException('Recipient not found');
     }
@@ -132,6 +135,26 @@ export class ChatService {
     const saved = await this.createOrFindMessage(senderId, message);
     const { sender, ...stored } = saved;
     return { ...stored, senderName: displayName(sender), senderAvatar: sender.avatarUrl || null };
+  }
+
+  /**
+   * Every account protects its chats with a chat PIN before it chats: the app
+   * asks for one right after sign-in, and this stops a build that skips it.
+   * A backup still locked with the account password does not count; nor does
+   * none at all. One from before PIN tries were counted does.
+   */
+  private async requireChatPin(userId: string): Promise<void> {
+    if (await this.cache.get<boolean>(chatPinCacheKey(userId))) return;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { backupBlob: true, keyBackup: { select: { protectedBy: true } } },
+    });
+    const hasPin = user?.keyBackup?.protectedBy === 'pin' || (!user?.keyBackup && !!user?.backupBlob);
+    if (!hasPin) {
+      throw new ForbiddenException('Create your chat PIN before sending messages.');
+    }
+    await this.cache.set(chatPinCacheKey(userId), true, CHAT_PIN_TTL_SECONDS);
   }
 
   private async createOrFindMessage(senderId: string, message: NewMessage) {

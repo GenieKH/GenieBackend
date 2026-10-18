@@ -47,8 +47,13 @@ export class PropertyEngagementService {
     return { success: true };
   }
 
+  /**
+   * One row per person per listing, so the view count is how many people
+   * opened it. The owner opening their own listing is not a view.
+   */
   async logView(userId: string, propertyId: string) {
-    await this.assertVisible(propertyId);
+    const ownerId = await this.visibleOwnerId(propertyId);
+    if (ownerId === userId) return { success: true };
     await this.prisma.propertyView.upsert({
       where: { userId_propertyId: { userId, propertyId } },
       create: { userId, propertyId },
@@ -69,12 +74,18 @@ export class PropertyEngagementService {
 
   /** Strangers can only act on a published listing: a draft or deleted one is "not found" to them. */
   private async assertVisible(propertyId: string): Promise<void> {
+    await this.visibleOwnerId(propertyId);
+  }
+
+  /** The owner of a published listing; 404 when there is none. */
+  private async visibleOwnerId(propertyId: string): Promise<string> {
     const property = await this.prisma.property.findFirst({
       where: { id: propertyId, ...PUBLISHED },
-      select: { id: true },
+      select: { userId: true },
     });
     if (!property) {
       throw new NotFoundException('Property not found or not active');
     }
+    return property.userId;
   }
 }

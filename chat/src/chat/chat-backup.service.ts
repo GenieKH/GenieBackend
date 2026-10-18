@@ -27,6 +27,12 @@ export function lockDurationMs(failedAttempts: number): number {
   return Math.min(FIRST_LOCK_MS * 2 ** (round - 1), LONGEST_LOCK_MS);
 }
 
+/**
+ * What a backup is locked with: the chat PIN every account has, or, for a
+ * backup from the short time chats were locked with it, the account password.
+ */
+export type BackupProtection = 'pin' | 'password';
+
 /** A key backup as a device uploads it. */
 export interface NewKeyBackup {
   blob: string;
@@ -34,9 +40,11 @@ export interface NewKeyBackup {
   nonce: string;
   /** Derived from the PIN on the device; proves the PIN without revealing it. */
   verifier: string;
+  /** Which secret the verifier and blob come from. Defaults to `pin`. */
+  protectedBy?: BackupProtection;
 }
 
-/** How the owner shows an existing backup is theirs to replace or remove. */
+/** How the owner shows an existing backup is theirs to replace. */
 export interface BackupOwnerProof {
   /** Proof of the PIN of the backup. Required when there is one... */
   currentVerifier?: string;
@@ -95,6 +103,7 @@ export class ChatBackupService {
       salt: backup.salt,
       nonce: backup.nonce,
       verifier: seal.verifierTag(userId, backup.verifier),
+      protectedBy: backup.protectedBy ?? 'pin',
       failedAttempts: 0,
       lockedUntil: null,
     };
@@ -119,36 +128,17 @@ export class ChatBackupService {
   }
 
   /**
-   * Turns the backup PIN off, which is the owner's choice: the PIN is optional.
-   * Removes the backup, and one from before PIN tries were counted, for the
-   * same proof as replacing it. The public key stays: chat goes on with the
-   * same keys, and from then on a new device makes new ones instead of
-   * restoring these.
-   */
-  async remove(userId: string, proof: BackupOwnerProof = {}) {
-    const seal = this.requireSeal();
-    if (!proof.provenByPassword) {
-      await this.requireCurrentPin(seal, userId, proof.currentVerifier);
-    }
-
-    await this.prisma.$transaction([
-      this.prisma.chatKeyBackup.deleteMany({ where: { userId } }),
-      this.prisma.user.update({
-        where: { id: userId },
-        data: { backupBlob: null, backupSalt: null, backupNonce: null },
-      }),
-    ]);
-    return { success: true };
-  }
-
-  /**
-   * What a device needs before asking for the PIN: only the salt. A backup made
-   * before PIN attempts were counted is still returned whole, so the app can
-   * open it once and save it again in the protected form.
+   * What a device needs before asking for the PIN: the salt, and whether to
+   * ask for the backup PIN or the account password. A backup made before PIN
+   * attempts were counted is still returned whole, so the app can open it once
+   * and save it again in the protected form.
    */
   async describe(userId: string) {
-    const backup = await this.prisma.chatKeyBackup.findUnique({ where: { userId }, select: { salt: true } });
-    if (backup) return { backupSalt: backup.salt };
+    const backup = await this.prisma.chatKeyBackup.findUnique({
+      where: { userId },
+      select: { salt: true, protectedBy: true },
+    });
+    if (backup) return { backupSalt: backup.salt, protectedBy: backup.protectedBy };
 
     const legacy = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -157,7 +147,12 @@ export class ChatBackupService {
     if (!legacy?.backupBlob || !legacy.backupSalt || !legacy.backupNonce) {
       throw new NotFoundException('No backup found');
     }
-    return { backupSalt: legacy.backupSalt, backupBlob: legacy.backupBlob, backupNonce: legacy.backupNonce };
+    return {
+      backupSalt: legacy.backupSalt,
+      backupBlob: legacy.backupBlob,
+      backupNonce: legacy.backupNonce,
+      protectedBy: 'pin',
+    };
   }
 
   /** Releases the encrypted key for the right PIN proof; every wrong one is counted. */

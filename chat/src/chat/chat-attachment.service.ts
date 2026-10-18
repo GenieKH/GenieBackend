@@ -92,6 +92,12 @@ export class ChatAttachmentService implements OnModuleInit {
     }
   }
 
+  /** Deletes every file the two people sent each other, both ways. */
+  async removeConversation(userId: string, partnerId: string): Promise<void> {
+    await this.storage.removeFolder(BUCKET, `${userId}/${partnerId}`);
+    await this.storage.removeFolder(BUCKET, `${partnerId}/${userId}`);
+  }
+
   private pathOf(location: AttachmentLocation): string {
     return `${location.senderId}/${location.recipientId}/${location.fileId}`;
   }

@@ -14,10 +14,14 @@ import { CurrentUserId, RateLimit, RateLimits } from '@genie/shared';
 import { requirePasswordProof } from './password-proof';
 import { ChatAttachmentService } from './chat-attachment.service';
 import { BackupOwnerProof, ChatBackupService, NewKeyBackup } from './chat-backup.service';
+import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
+import { ConversationStateService } from './conversation-state.service';
 import {
   BackupOwnerProofDto,
+  ConversationListQuery,
   CreateAttachmentDto,
+  DeleteConversationDto,
   MessagePageQuery,
   ResetKeysDto,
   SetBackupDto,
@@ -39,6 +43,8 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly backupService: ChatBackupService,
     private readonly attachmentService: ChatAttachmentService,
+    private readonly conversationStates: ConversationStateService,
+    private readonly gateway: ChatGateway,
     rateLimits: RateLimits,
   ) {
     this.backupRateLimiter = rateLimits.create('chat-backup-lookup', 5, 15 * 60);
@@ -75,17 +81,6 @@ export class ChatController {
     return this.backupService.save(userId, backupOf(dto), ownerProofOf(userId, dto));
   }
 
-  /**
-   * Turns the backup PIN off: the backup is removed, with the same proof as
-   * replacing it (`403` wrong PIN or password proof, `429` locked). The public
-   * key stays, so chat goes on with the same keys.
-   */
-  @Post('backup/remove')
-  @HttpCode(HttpStatus.OK)
-  removeBackup(@CurrentUserId() userId: string, @Body() dto: BackupOwnerProofDto) {
-    return this.backupService.remove(userId, ownerProofOf(userId, dto));
-  }
-
   @Get('backup')
   async getBackup(@CurrentUserId() userId: string) {
     try {
@@ -103,9 +98,44 @@ export class ChatController {
     return this.backupService.unlock(userId, dto.backupVerifier);
   }
 
+  /** The main list by default; `?list=archived` for the archive. */
   @Get('conversations')
-  getConversations(@CurrentUserId() userId: string) {
-    return this.chatService.getConversations(userId);
+  getConversations(@CurrentUserId() userId: string, @Query() query: ConversationListQuery) {
+    return this.chatService.getConversations(userId, query.list ?? 'main');
+  }
+
+  @Post('conversations/:participantId/archive')
+  @HttpCode(HttpStatus.OK)
+  async archiveConversation(@CurrentUserId() userId: string, @Param('participantId', ParseUUIDPipe) participantId: string) {
+    await this.conversationStates.archive(userId, participantId);
+    this.gateway.notifyConversationChanged(userId, participantId, { historyCleared: false });
+    return { success: true };
+  }
+
+  @Post('conversations/:participantId/unarchive')
+  @HttpCode(HttpStatus.OK)
+  async unarchiveConversation(@CurrentUserId() userId: string, @Param('participantId', ParseUUIDPipe) participantId: string) {
+    await this.conversationStates.unarchive(userId, participantId);
+    this.gateway.notifyConversationChanged(userId, participantId, { historyCleared: false });
+    return { success: true };
+  }
+
+  /** For the caller only, or with `forEveryone` for both people, permanently. */
+  @Post('conversations/:participantId/delete')
+  @HttpCode(HttpStatus.OK)
+  async deleteConversation(
+    @CurrentUserId() userId: string,
+    @Param('participantId', ParseUUIDPipe) participantId: string,
+    @Body() dto: DeleteConversationDto,
+  ) {
+    const forEveryone = dto.forEveryone === true;
+    if (forEveryone) {
+      await this.conversationStates.deleteForEveryone(userId, participantId);
+    } else {
+      await this.conversationStates.deleteForMe(userId, participantId);
+    }
+    this.gateway.notifyConversationChanged(userId, participantId, { historyCleared: true, forPartner: forEveryone });
+    return { success: true };
   }
 
   /** The newest page of a conversation, oldest message first. */
@@ -156,5 +186,11 @@ function ownerProofOf(userId: string, dto: BackupOwnerProofDto): BackupOwnerProo
 }
 
 function backupOf(dto: SetBackupDto): NewKeyBackup {
-  return { blob: dto.backupBlob, salt: dto.backupSalt, nonce: dto.backupNonce, verifier: dto.backupVerifier };
+  return {
+    blob: dto.backupBlob,
+    salt: dto.backupSalt,
+    nonce: dto.backupNonce,
+    verifier: dto.backupVerifier,
+    protectedBy: dto.protectedBy,
+  };
 }

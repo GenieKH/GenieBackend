@@ -248,6 +248,14 @@ describe('ChatBackupService', () => {
       expect(seal.matches(ALICE, RIGHT, create.verifier)).toBe(true);
     });
 
+    it('records a new backup as PIN-locked, also in place of one the account password locked', async () => {
+      await service.save(ALICE, { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT });
+      await service.save(ALICE, { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT }, { provenByPassword: true });
+
+      expect(prisma.chatKeyBackup.upsert.mock.calls[0][0].create.protectedBy).toBe('pin');
+      expect(prisma.chatKeyBackup.upsert.mock.calls[1][0].update.protectedBy).toBe('pin');
+    });
+
     it('removes the backup from before PIN tries were counted', async () => {
       await service.save(ALICE, { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT });
 
@@ -258,72 +266,15 @@ describe('ChatBackupService', () => {
     });
   });
 
-  describe('remove (turning the backup PIN off)', () => {
-    const removeStatus = async (currentVerifier?: string) => {
-      try {
-        await service.remove(ALICE, { currentVerifier });
-        return HttpStatus.OK;
-      } catch (error) {
-        return (error as { getStatus(): number }).getStatus();
-      }
-    };
-
-    describe('of a protected backup', () => {
-      beforeEach(() => prisma.chatKeyBackup.findUnique.mockResolvedValue({ userId: ALICE }));
-
-      it('is refused without proof of the PIN', async () => {
-        expect(await removeStatus()).toBe(HttpStatus.FORBIDDEN);
-        expect(prisma.chatKeyBackup.deleteMany).not.toHaveBeenCalled();
-      });
-
-      it('counts a wrong PIN, and locks like unlocking does', async () => {
-        const statuses: number[] = [];
-        for (let i = 0; i < 5; i++) statuses.push(await removeStatus(WRONG));
-
-        expect(statuses).toEqual([403, 403, 403, 403, 429]);
-        expect(await removeStatus(RIGHT)).toBe(HttpStatus.TOO_MANY_REQUESTS);
-        expect(prisma.chatKeyBackup.deleteMany).not.toHaveBeenCalled();
-      });
-
-      it('removes it, and the older form, for the right PIN', async () => {
-        expect(await removeStatus(RIGHT)).toBe(HttpStatus.OK);
-
-        expect(prisma.chatKeyBackup.deleteMany).toHaveBeenCalledWith({ where: { userId: ALICE } });
-        expect(prisma.user.update).toHaveBeenCalledWith({
-          where: { id: ALICE },
-          data: { backupBlob: null, backupSalt: null, backupNonce: null },
-        });
-      });
-
-      it('keeps the public key: chat goes on with the same keys', async () => {
-        await removeStatus(RIGHT);
-
-        expect(prisma.user.update.mock.calls[0][0].data).not.toHaveProperty('identityPublicKey');
-        expect(cache.delete).not.toHaveBeenCalled();
-      });
-
-      it('is removed for the account password, even while locked', async () => {
-        for (let i = 0; i < 5; i++) await removeStatus(WRONG);
-
-        await service.remove(ALICE, { provenByPassword: true });
-
-        expect(prisma.chatKeyBackup.deleteMany).toHaveBeenCalledTimes(1);
-      });
-    });
-
-    it('needs no proof for a backup from before PIN tries were counted', async () => {
-      prisma.chatKeyBackup.findUnique.mockResolvedValue(null);
-
-      expect(await removeStatus()).toBe(HttpStatus.OK);
-      expect(prisma.user.update).toHaveBeenCalledTimes(1);
-    });
+  it('cannot remove a backup: the chat PIN is not optional', () => {
+    expect((service as unknown as Record<string, unknown>).remove).toBeUndefined();
   });
 
   describe('describe', () => {
-    it('reveals only the salt of a protected backup', async () => {
-      prisma.chatKeyBackup.findUnique.mockResolvedValue({ salt: 'salt' });
+    it('reveals only the salt of a protected backup, and what to ask for', async () => {
+      prisma.chatKeyBackup.findUnique.mockResolvedValue({ salt: 'salt', protectedBy: 'password' });
 
-      await expect(service.describe(ALICE)).resolves.toEqual({ backupSalt: 'salt' });
+      await expect(service.describe(ALICE)).resolves.toEqual({ backupSalt: 'salt', protectedBy: 'password' });
       expect(prisma.user.findUnique).not.toHaveBeenCalled();
     });
 
@@ -331,7 +282,12 @@ describe('ChatBackupService', () => {
       prisma.chatKeyBackup.findUnique.mockResolvedValue(null);
       prisma.user.findUnique.mockResolvedValue({ backupBlob: 'b', backupSalt: 's', backupNonce: 'n' });
 
-      await expect(service.describe(ALICE)).resolves.toEqual({ backupSalt: 's', backupBlob: 'b', backupNonce: 'n' });
+      await expect(service.describe(ALICE)).resolves.toEqual({
+        backupSalt: 's',
+        backupBlob: 'b',
+        backupNonce: 'n',
+        protectedBy: 'pin',
+      });
     });
 
     it('reports a user without any backup', async () => {

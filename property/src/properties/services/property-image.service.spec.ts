@@ -11,7 +11,7 @@ const FILE = '55555555-5555-4555-8555-555555555555';
 const PUBLIC = 'https://storage.test/storage/v1/object/public/property-images/';
 
 describe('PropertyImageService', () => {
-  const imageTable = { createMany: jest.fn(), findMany: jest.fn() };
+  const imageTable = { createMany: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() };
   const query = { findOwned: jest.fn() };
   const publicCache = { changed: jest.fn() };
   const client = {
@@ -98,6 +98,66 @@ describe('PropertyImageService', () => {
       await images.confirmUploads(ME, LISTING, [own, own]);
 
       expect(imageTable.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removing photos', () => {
+    const keep = `${PUBLIC}${ME}/${LISTING}/${FILE}-keep.jpg`;
+    const drop = `${PUBLIC}${ME}/${LISTING}/${FILE}-drop.jpg`;
+
+    it('takes the photo off the listing and deletes its file', async () => {
+      query.findOwned.mockResolvedValue(listing([keep, drop]));
+
+      await images.removeImages(ME, LISTING, [drop]);
+
+      expect(imageTable.deleteMany).toHaveBeenCalledWith({ where: { propertyId: LISTING, url: { in: [drop] } } });
+      expect(removed).toEqual([`${ME}/${LISTING}/${FILE}-drop.jpg`]);
+    });
+
+    it('ignores a URL the listing does not show, so removing twice is harmless', async () => {
+      query.findOwned.mockResolvedValue(listing([keep]));
+
+      await images.removeImages(ME, LISTING, [drop, 'https://elsewhere.test/a.jpg']);
+
+      expect(imageTable.deleteMany).not.toHaveBeenCalled();
+      expect(removed).toEqual([]);
+    });
+
+    it('keeps a file another listing still shows', async () => {
+      query.findOwned.mockResolvedValue(listing([drop]));
+      imageTable.findMany.mockResolvedValueOnce([{ url: drop }]);
+
+      await images.removeImages(ME, LISTING, [drop]);
+
+      expect(imageTable.deleteMany).toHaveBeenCalled();
+      expect(removed).toEqual([]);
+    });
+
+    it("never deletes a file in another user's folder", async () => {
+      const theirs = `${PUBLIC}${SOMEONE_ELSE}/${OTHER_LISTING}/${FILE}-x.jpg`;
+      query.findOwned.mockResolvedValue(listing([theirs]));
+
+      await images.removeImages(ME, LISTING, [theirs]);
+
+      expect(imageTable.deleteMany).toHaveBeenCalled();
+      expect(removed).toEqual([]);
+    });
+
+    it('refreshes the public copy of a published listing', async () => {
+      query.findOwned.mockResolvedValue(listing([drop], 'Active'));
+
+      await images.removeImages(ME, LISTING, [drop]);
+
+      expect(publicCache.changed).toHaveBeenCalledWith(LISTING);
+    });
+
+    it('still succeeds when the file cannot be deleted', async () => {
+      query.findOwned.mockResolvedValue(listing([drop]));
+      jest.spyOn(storage, 'removeFiles').mockRejectedValueOnce(new Error('storage down'));
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      await expect(images.removeImages(ME, LISTING, [drop])).resolves.toBeDefined();
+      expect(imageTable.deleteMany).toHaveBeenCalled();
     });
   });
 

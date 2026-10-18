@@ -16,6 +16,18 @@ describe('buildCorsOptions', () => {
     expect(buildCorsOptions({ NODE_ENV: 'production' }).origin).toBe(false);
   });
 
+  it('lets a browser send the headers the app sets', () => {
+    const allowed = String(buildCorsOptions({}).allowedHeaders).toLowerCase().split(',');
+
+    for (const header of ['x-device-name', 'x-device-platform', 'x-guest-session-id', 'if-none-match']) {
+      expect(allowed).toContain(header);
+    }
+  });
+
+  it('lets a browser read the ETag of an answer', () => {
+    expect(buildCorsOptions({}).exposedHeaders).toBe('ETag');
+  });
+
   it('never lets a client set x-user-id', () => {
     expect(String(buildCorsOptions({}).allowedHeaders)).not.toMatch(/x-user-id/i);
   });

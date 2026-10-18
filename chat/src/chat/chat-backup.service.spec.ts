@@ -248,6 +248,16 @@ describe('ChatBackupService', () => {
       expect(seal.matches(ALICE, RIGHT, create.verifier)).toBe(true);
     });
 
+    it('records a backup as PIN-locked unless the device says the account password locks it', async () => {
+      await service.save(ALICE, { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT });
+      await service.save(ALICE, { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT, protectedBy: 'password' }, {
+        provenByPassword: true,
+      });
+
+      expect(prisma.chatKeyBackup.upsert.mock.calls[0][0].create.protectedBy).toBe('pin');
+      expect(prisma.chatKeyBackup.upsert.mock.calls[1][0].update.protectedBy).toBe('password');
+    });
+
     it('removes the backup from before PIN tries were counted', async () => {
       await service.save(ALICE, { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT });
 
@@ -320,10 +330,10 @@ describe('ChatBackupService', () => {
   });
 
   describe('describe', () => {
-    it('reveals only the salt of a protected backup', async () => {
-      prisma.chatKeyBackup.findUnique.mockResolvedValue({ salt: 'salt' });
+    it('reveals only the salt of a protected backup, and what to ask for', async () => {
+      prisma.chatKeyBackup.findUnique.mockResolvedValue({ salt: 'salt', protectedBy: 'password' });
 
-      await expect(service.describe(ALICE)).resolves.toEqual({ backupSalt: 'salt' });
+      await expect(service.describe(ALICE)).resolves.toEqual({ backupSalt: 'salt', protectedBy: 'password' });
       expect(prisma.user.findUnique).not.toHaveBeenCalled();
     });
 
@@ -331,7 +341,12 @@ describe('ChatBackupService', () => {
       prisma.chatKeyBackup.findUnique.mockResolvedValue(null);
       prisma.user.findUnique.mockResolvedValue({ backupBlob: 'b', backupSalt: 's', backupNonce: 'n' });
 
-      await expect(service.describe(ALICE)).resolves.toEqual({ backupSalt: 's', backupBlob: 'b', backupNonce: 'n' });
+      await expect(service.describe(ALICE)).resolves.toEqual({
+        backupSalt: 's',
+        backupBlob: 'b',
+        backupNonce: 'n',
+        protectedBy: 'pin',
+      });
     });
 
     it('reports a user without any backup', async () => {

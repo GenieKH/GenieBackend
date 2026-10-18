@@ -5,6 +5,7 @@ import { BoundaryDto } from './dto/boundary.dto';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { ImageFileNamesDto } from './dto/image-file-names.dto';
+import { ImageUrlsDto } from './dto/image-urls.dto';
 import { PinDto } from './dto/pin.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { PropertyEngagementService } from './services/property-engagement.service';
@@ -92,6 +93,11 @@ export class PropertiesController {
   @Post(':id/images/confirm')
   confirmUploadedImages(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ImageFileNamesDto) {
     return this.images.confirmUploads(userId, id, dto.fileNames);
+  }
+
+  @Post(':id/images/remove')
+  removeImages(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ImageUrlsDto) {
+    return this.images.removeImages(userId, id, dto.urls);
   }
 
   @Post(':id/like')

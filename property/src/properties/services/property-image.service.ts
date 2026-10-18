@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
 import { PropertyPhotoStorage } from '../storage/property-photo-storage';
 import { PropertyQueryService } from './property-query.service';
@@ -7,9 +7,14 @@ import { PublicPropertyCache } from './public-property-cache.service';
 /** The most photos one listing can have. The app stops at the same number. */
 export const MAX_PROPERTY_IMAGES = 30;
 
-/** Image upload flow: presigned upload URLs, then confirm what was uploaded. */
+/**
+ * A listing's photos: presigned upload URLs, then confirm what was uploaded;
+ * and taking photos off again.
+ */
 @Injectable()
 export class PropertyImageService {
+  private readonly logger = new Logger(PropertyImageService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly query: PropertyQueryService,
@@ -60,6 +65,36 @@ export class PropertyImageService {
   }
 
   /**
+   * Takes the photos with these URLs off the listing, then deletes their
+   * files. A URL the listing does not show is ignored, so removing twice is
+   * harmless. A file another listing still shows is kept.
+   */
+  async removeImages(userId: string, propertyId: string, urls: string[]) {
+    const property = await this.query.findOwned(userId, propertyId);
+    const wanted = new Set(urls);
+    const removed = property.images.map((image) => image.url).filter((url) => wanted.has(url));
+    if (removed.length === 0) return property;
+
+    await this.prisma.propertyImage.deleteMany({ where: { propertyId, url: { in: removed } } });
+    if (property.status === 'Active') {
+      await this.publicCache.changed(propertyId);
+    }
+
+    const stillShown = await this.prisma.propertyImage.findMany({
+      where: { url: { in: removed } },
+      select: { url: true },
+    });
+    const shownUrls = new Set(stillShown.map((image) => image.url));
+    await this.deleteFilesQuietly(
+      this.ownFileNames(
+        userId,
+        removed.filter((url) => !shownUrls.has(url)),
+      ),
+    );
+    return this.query.findOwned(userId, propertyId);
+  }
+
+  /**
    * Deletes the stored photos of every listing the user ever made, deleted
    * ones included. Called before the account itself is deleted, while the
    * database still says which files those are.
@@ -82,12 +117,36 @@ export class PropertyImageService {
     });
     const sharedUrls = new Set(shared.map((image) => image.url));
 
-    const fileNames = urls
-      .filter((url) => !sharedUrls.has(url))
+    await this.storage.removeUploadedFiles(
+      this.ownFileNames(
+        userId,
+        urls.filter((url) => !sharedUrls.has(url)),
+      ),
+    );
+  }
+
+  /**
+   * The stored files behind [urls] that [userId] may delete: those in the
+   * user's own folder, or from before photos had folders.
+   */
+  private ownFileNames(userId: string, urls: string[]): string[] {
+    return urls
       .map((url) => this.storage.uploadedFileNameOf(url))
       .filter((fileName): fileName is string => fileName !== null)
       .filter((fileName) => this.storage.isLegacyFileName(fileName) || fileName.startsWith(`${userId}/`));
-    await this.storage.removeUploadedFiles(fileNames);
+  }
+
+  /**
+   * The photos are already off the listing, so a file that cannot be deleted
+   * only wastes space: it is logged rather than failing the request.
+   */
+  private async deleteFilesQuietly(fileNames: string[]): Promise<void> {
+    if (fileNames.length === 0) return;
+    try {
+      await this.storage.removeUploadedFiles(fileNames);
+    } catch (error) {
+      this.logger.error(`Could not delete ${fileNames.length} removed photo file(s)`, error);
+    }
   }
 
   private ensureRoomFor(existing: number, added: number) {

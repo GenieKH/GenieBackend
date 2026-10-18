@@ -287,7 +287,7 @@ flowchart LR
 
 ---
 
-## 10. Chat: first use (create keys; the backup PIN is optional)
+## 10. Chat: first use (create keys; locked with the account password)
 
 ```mermaid
 flowchart LR
@@ -307,6 +307,10 @@ flowchart LR
 ```
 
 - Messages are always end-to-end encrypted. Keys are made without asking anything as soon as someone signs in, so they can be messaged before they ever open a chat.
+- **An account with a password locks its keys with that password** (since migration 18, `chat_key_backups.protected_by = 'password'`). Right after an email/phone sign-in, while the password is still in hand, the app derives the backup key from it (the same Argon2id as the PIN), restores the keys on a new device, or (re)locks them: a missing backup is made, a PIN backup is switched over (the PIN is asked one last time on a device without the keys), and a backup locked with a password reset since is locked again by a device that still has the keys. Replacing a backup is proven with `POST /auth/account/password-proof`. Changing or creating the password re-locks the keys at once. Nothing more is ever typed, and the password itself is never stored.
+- The server sees the password at sign-in, so this protects chats against a database leak and against someone who only reset the password by email code, but not against the server operator. That trade-off was chosen over the PIN for convenience.
+- After "Forgot password", a device that still has the keys locks them with the new password when it signs in. If none does, old messages cannot be read: the user is told and decides whether to start over on this device.
+- **An account that signs in only with Google** has no password: it keeps the optional backup PIN below. "Forgot backup PIN" sends it to create a password, which then protects its chats instead.
 - Without a backup PIN the private key exists only on the device. A new device makes new keys (`POST /chat/keys` replaces the public key while there is no backup); earlier messages cannot be read there. A device whose key was replaced this way does not replace it back on its own: the app asks the user first, so two devices do not keep replacing each other's key.
 - With a backup PIN the key is backed up, and the public key can then only be replaced with the PIN or the account password (`POST /chat/keys` answers `409`).
 - The private key never leaves the device unencrypted.
@@ -366,6 +370,18 @@ flowchart LR
 - 25 MB limit, 20 upload requests per user per minute.
 - Pictures are images only in the UI; other files show as a name.
 
+### Archive and delete a conversation
+
+A conversation is the messages between two people, so each person's own view of it lives in `chat_conversation_states` (migration 17): when they archived it and when they deleted it for themselves.
+
+| Endpoint | What it does |
+|---|---|
+| `GET /chat/conversations?list=archived` | The archive. Without `list` (or `list=main`): the main list, without archived or deleted conversations |
+| `POST /chat/conversations/:participantId/archive` / `unarchive` | For the caller only. A newer message (from either side) brings it back to the main list by itself |
+| `POST /chat/conversations/:participantId/delete` `{ forEveryone?: boolean }` | Default: for the caller only; messages up to now are hidden from them (history, unread count). A newer message brings the conversation back, starting there. `forEveryone: true`: deletes every message both ways and the pair's attachment files, for both people; cannot be undone |
+
+Each change is announced on the socket as `conversationChanged { participantId, historyCleared }` to the caller's devices, and for `forEveryone` to the other person's devices too, so lists and open chats update at once.
+
 ## 14. Chat key recovery: new phone, change PIN, forgot PIN
 
 ```mermaid
@@ -381,11 +397,13 @@ flowchart LR
 
 | Situation | What happens |
 |---|---|
-| New phone, no PIN | New keys made at sign-in; old history not readable there. Contacts see a "key changed" warning |
+| New phone, account with a password | Keys restored at sign-in with the password; nothing asked |
+| Password reset by email code | A device that still has the keys re-locks them with the new password at its next sign-in. A device without them shows "locked with an earlier password": start over here (old history unreadable) or sign in on an old device first |
+| New phone, Google-only, no PIN | New keys made at sign-in; old history not readable there. Contacts see a "key changed" warning |
 | New phone, knows PIN | Steps above; keys restored, old history readable |
 | Change PIN | Unlock with the old PIN, re-encrypt, save again. History stays readable |
 | Turn PIN off | `POST /chat/backup/remove` with the PIN proof (or a password proof). Same keys; a new phone then makes new ones |
-| **Forgot PIN** | Account password proves the owner (`passwordProofToken`); then a new PIN, or the PIN turned off. A device that still has the keys keeps the history; otherwise new keys are made and old messages become unreadable |
+| **Forgot PIN** (Google-only accounts) | Create an account password; it locks the keys from then on. A device that still has the keys keeps the history; otherwise new keys are made and old messages become unreadable |
 | Someone guesses | Locked after 5 wrong tries; count is stored in the database so restarts do not reset it |
 | Old-format backup | Returned whole once, opened with the PIN, then re-saved in the protected format |
 

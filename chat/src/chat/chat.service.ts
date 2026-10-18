@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { JsonCache, PrismaService } from '@genie/shared';
+import { ConversationStateService } from './conversation-state.service';
 import { PUBLIC_KEY_TTL_SECONDS, publicKeyCacheKey } from './public-key-cache';
 
 export interface Conversation {
@@ -18,7 +19,14 @@ export interface Conversation {
 }
 
 /** The newest message of one conversation, as the query returns it. */
-type LastMessageRow = Conversation['lastMessage'] & { partnerId: string };
+type LastMessageRow = Conversation['lastMessage'] & {
+  partnerId: string;
+  archivedAt: Date | null;
+  clearedAt: Date | null;
+};
+
+/** Which of a user's conversations to list. */
+export type ConversationList = 'main' | 'archived';
 
 /** An encrypted message as the sender's device submits it. */
 export interface NewMessage {
@@ -48,11 +56,22 @@ function displayName(user: DisplayFields | null): string {
   return user?.name || user?.username || user?.email || user?.phone || 'Property Owner';
 }
 
+/**
+ * Whether a conversation, as of its newest message, belongs in [list]. A
+ * message newer than the archive or delete brings it back to the main list.
+ */
+function isInList(row: LastMessageRow, list: ConversationList): boolean {
+  if (row.clearedAt && row.createdAt <= row.clearedAt) return false;
+  const archived = row.archivedAt !== null && row.createdAt <= row.archivedAt;
+  return list === 'archived' ? archived : !archived;
+}
+
 @Injectable()
 export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: JsonCache,
+    private readonly states: ConversationStateService,
   ) {}
 
   /**
@@ -154,7 +173,12 @@ export class ChatService {
    * jump through received messages; without it the answer is the same, only
    * slower.
    */
-  async getConversations(userId: string): Promise<Conversation[]> {
+  /**
+   * `main` leaves out conversations the user archived or deleted for
+   * themselves; `archived` lists only the archived ones. Either comes back
+   * to the main list when a newer message arrives.
+   */
+  async getConversations(userId: string, list: ConversationList = 'main'): Promise<Conversation[]> {
     const lastMessages = await this.prisma.$queryRaw<LastMessageRow[]>`
       WITH RECURSIVE sent AS (
         (SELECT recipient_id AS id FROM messages WHERE sender_id = ${userId}::uuid ORDER BY recipient_id LIMIT 1)
@@ -186,8 +210,12 @@ export class ChatService {
         last.ciphertext,
         last.nonce,
         last.created_at AS "createdAt",
-        last.read_at AS "readAt"
+        last.read_at AS "readAt",
+        state.archived_at AS "archivedAt",
+        state.cleared_at AS "clearedAt"
       FROM partners p
+      LEFT JOIN chat_conversation_states state
+        ON state.user_id = ${userId}::uuid AND state.partner_id = p.partner_id
       CROSS JOIN LATERAL (
         SELECT * FROM (
           (SELECT id, sender_id, ciphertext, nonce, created_at, read_at FROM messages
@@ -201,26 +229,32 @@ export class ChatService {
         ORDER BY created_at DESC
         LIMIT 1
       ) last`;
-    if (lastMessages.length === 0) return [];
+    const shown = lastMessages.filter((row) => isInList(row, list));
+    if (shown.length === 0) return [];
 
     const [partners, unread] = await Promise.all([
       this.prisma.user.findMany({
-        where: { id: { in: lastMessages.map((row) => row.partnerId) }, ...VISIBLE },
+        where: { id: { in: shown.map((row) => row.partnerId) }, ...VISIBLE },
         select: { id: true, ...DISPLAY_FIELDS },
       }),
-      this.prisma.message.groupBy({
-        by: ['senderId'],
-        where: { recipientId: userId, readAt: null },
-        _count: { _all: true },
-      }),
+      // Messages hidden by "delete for me" do not count as unread.
+      this.prisma.$queryRaw<{ senderId: string; count: number }[]>`
+        SELECT m.sender_id AS "senderId", count(*)::int AS count
+        FROM messages m
+        LEFT JOIN chat_conversation_states state
+          ON state.user_id = ${userId}::uuid AND state.partner_id = m.sender_id
+        WHERE m.recipient_id = ${userId}::uuid
+          AND m.read_at IS NULL
+          AND (state.cleared_at IS NULL OR m.created_at > state.cleared_at)
+        GROUP BY m.sender_id`,
     ]);
     const partnerById = new Map(partners.map((partner) => [partner.id, partner]));
-    const unreadBySender = new Map(unread.map((group) => [group.senderId, group._count._all]));
+    const unreadBySender = new Map(unread.map((group) => [group.senderId, group.count]));
 
-    return lastMessages
+    return shown
       .filter((row) => partnerById.has(row.partnerId))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .map(({ partnerId, ...lastMessage }) => {
+      .map(({ partnerId, archivedAt: _archivedAt, clearedAt: _clearedAt, ...lastMessage }) => {
         const partner = partnerById.get(partnerId)!;
         return {
           participantId: partnerId,
@@ -239,13 +273,20 @@ export class ChatService {
   async getMessagesWith(userId: string, participantId: string, limit = 50, before?: string) {
     if (!(await this.isVisible(participantId))) return [];
 
+    // "Delete for me" hides everything up to that moment.
+    const clearedAt = await this.states.clearedAt(userId, participantId);
     const newestFirst = await this.prisma.message.findMany({
       where: {
         OR: [
           { senderId: userId, recipientId: participantId },
           { senderId: participantId, recipientId: userId },
         ],
-        ...(before && { createdAt: { lt: new Date(before) } }),
+        ...((before || clearedAt) && {
+          createdAt: {
+            ...(before && { lt: new Date(before) }),
+            ...(clearedAt && { gt: clearedAt }),
+          },
+        }),
       },
       orderBy: { createdAt: 'desc' },
       take: limit,

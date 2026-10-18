@@ -182,6 +182,19 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     return { status: 'ok' };
   }
 
+  /**
+   * Tells [userId]'s devices that their conversation with [partnerId] was
+   * archived, restored or deleted, so every device shows the same list. With
+   * [forPartner] (deleted for everyone), the partner's devices are told too.
+   */
+  notifyConversationChanged(userId: string, partnerId: string, change: { historyCleared: boolean; forPartner?: boolean }) {
+    const { historyCleared, forPartner = false } = change;
+    this.server.to(userRoom(userId)).emit('conversationChanged', { participantId: partnerId, historyCleared });
+    if (forPartner) {
+      this.server.to(userRoom(partnerId)).emit('conversationChanged', { participantId: userId, historyCleared });
+    }
+  }
+
   /** How many devices the user has connected, counted across every instance of this service. */
   private async connectedDevices(userId: string): Promise<number> {
     let timer: NodeJS.Timeout | undefined;

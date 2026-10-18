@@ -83,6 +83,8 @@ model User {
   searchHistory   SearchHistoryEntry[]
   messagesSent    Message[] @relation("MessagesSent")
   messagesReceived Message[] @relation("MessagesReceived")
+  conversationStates      ChatConversationState[] @relation("ConversationStatesOwned")
+  conversationStatesAbout ChatConversationState[] @relation("ConversationStatesAbout")
 
   @@index([email], map: "idx_users_email", where: raw("(email IS NOT NULL)"))
   @@index([phone], map: "idx_users_phone", where: raw("(phone IS NOT NULL)"))
@@ -309,6 +311,9 @@ model ChatKeyBackup {
   nonce  String
   /// Keyed hash of the PIN proof. Useless without CHAT_BACKUP_SECRET.
   verifier       String
+  /// What the device encrypted it with: "pin" (the optional backup PIN) or
+  /// "password" (the account password). A new device asks for that one.
+  protectedBy    String    @default("pin") @map("protected_by")
   /// Wrong PINs in a row since the last correct one.
   failedAttempts Int       @default(0) @map("failed_attempts")
   lockedUntil    DateTime? @map("locked_until") @db.Timestamptz(6)
@@ -317,6 +322,25 @@ model ChatKeyBackup {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("chat_key_backups")
+}
+
+/// One person's own view of a conversation with `partnerId`. A missing row
+/// means nothing was archived or deleted.
+model ChatConversationState {
+  userId     String    @map("user_id") @db.Uuid
+  partnerId  String    @map("partner_id") @db.Uuid
+  /// Archived while its newest message is no newer than this.
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
+  /// "Delete for me": messages up to this moment are hidden from `userId`.
+  clearedAt  DateTime? @map("cleared_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user    User @relation("ConversationStatesOwned", fields: [userId], references: [id], onDelete: Cascade)
+  partner User @relation("ConversationStatesAbout", fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@id([userId, partnerId])
+  @@index([partnerId])
+  @@map("chat_conversation_states")
 }
 
 model Message {

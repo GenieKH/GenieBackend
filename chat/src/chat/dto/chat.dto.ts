@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
+  IsIn,
   IsInt,
   IsISO8601,
   IsNotEmpty,
@@ -67,6 +69,11 @@ export class SetBackupDto extends BackupOwnerProofDto {
   /** Made from the PIN on the device. Sent again later to prove the PIN. */
   @Matches(BACKUP_VERIFIER)
   backupVerifier: string;
+
+  /** Locked with the backup PIN (default) or the account password. */
+  @IsOptional()
+  @IsIn(['pin', 'password'])
+  protectedBy?: 'pin' | 'password';
 }
 
 /** "Reset keys": a new key pair and its backup, replacing the old ones together. */
@@ -129,4 +136,19 @@ export class MessagePageQuery {
   @IsOptional()
   @IsISO8601()
   before?: string;
+}
+
+/** `GET /chat/conversations`: the main list, or the archive. */
+export class ConversationListQuery {
+  @IsOptional()
+  @IsIn(['main', 'archived'])
+  list?: 'main' | 'archived';
+}
+
+/** `POST /chat/conversations/:participantId/delete`. */
+export class DeleteConversationDto {
+  /** Also delete it for the other person, with every message and file. */
+  @IsOptional()
+  @IsBoolean()
+  forEveryone?: boolean;
 }

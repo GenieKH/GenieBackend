@@ -74,6 +74,10 @@ Rules that matter:
 - **Connection budget.** Each service opens its own database pool. Supabase's pooler allows few
   connections on small plans, so `DATABASE_POOL_MAX` is 3-5 here (total 16) instead of the default 10
   (which would be 40). Raise a number only when that service's logs show waiting for a connection.
+  `DATABASE_POOL_MIN` (default 0) keeps that many connections open while idle, and
+  `DATABASE_POOL_IDLE_SECONDS` (default 10) is how long others stay open unused. Opening a connection
+  costs a TLS handshake and a login (about 0.4 s from far away, little next to the database), so local
+  development sets `DATABASE_POOL_MIN=1`; kept connections count against the same limit.
 - **`HOST=::`** makes a service listen on IPv6 and IPv4. Railway environments created before
   2025-10-16 resolve `*.railway.internal` to IPv6 only, and a service that listens only on IPv4 cannot be
   reached from the gateway there. It is harmless on newer environments. The gateway does not need it.

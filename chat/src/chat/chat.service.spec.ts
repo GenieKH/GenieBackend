@@ -6,6 +6,7 @@ describe('ChatService', () => {
   const messageTable = { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), groupBy: jest.fn() };
   const userTable = { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() };
   const prisma = { message: messageTable, user: userTable, $queryRaw: jest.fn() };
+  const states = { clearedAt: jest.fn() };
   let service: ChatService;
 
   const sender = { username: 'Dara', email: null, phone: null, avatarUrl: null };
@@ -27,7 +28,8 @@ describe('ChatService', () => {
     // How another person is looked up: only if their account is not deactivated.
     userTable.findFirst.mockResolvedValue({ id: 'bob' });
     messageTable.create.mockResolvedValue(stored);
-    service = new ChatService(prisma as never, fakeCache());
+    states.clearedAt.mockResolvedValue(null);
+    service = new ChatService(prisma as never, fakeCache(), states as never);
   });
 
   describe('public keys', () => {
@@ -134,7 +136,7 @@ describe('ChatService', () => {
   });
 
   describe('getConversations', () => {
-    const row = (partnerId: string, createdAt: string) => ({
+    const row = (partnerId: string, createdAt: string, state: { archivedAt?: string; clearedAt?: string } = {}) => ({
       partnerId,
       id: `last-${partnerId}`,
       senderId: partnerId,
@@ -142,15 +144,22 @@ describe('ChatService', () => {
       nonce: 'nonce',
       createdAt: new Date(createdAt),
       readAt: null,
+      archivedAt: state.archivedAt ? new Date(state.archivedAt) : null,
+      clearedAt: state.clearedAt ? new Date(state.clearedAt) : null,
     });
+    const people = [
+      { id: 'bob', username: 'Bob', email: null, phone: null, avatarUrl: null },
+      { id: 'carol', username: 'Carol', email: null, phone: null, avatarUrl: null },
+    ];
 
     it('returns one row per partner, newest conversation first, with unread counts', async () => {
-      prisma.$queryRaw.mockResolvedValue([row('bob', '2026-01-01T10:00:00Z'), row('carol', '2026-01-02T10:00:00Z')]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([row('bob', '2026-01-01T10:00:00Z'), row('carol', '2026-01-02T10:00:00Z')])
+        .mockResolvedValueOnce([{ senderId: 'bob', count: 3 }]);
       userTable.findMany.mockResolvedValue([
         { id: 'bob', username: 'Bob', email: null, phone: null, avatarUrl: 'bob.png' },
         { id: 'carol', username: null, email: null, phone: null, avatarUrl: null },
       ]);
-      messageTable.groupBy.mockResolvedValue([{ senderId: 'bob', _count: { _all: 3 } }]);
 
       const conversations = await service.getConversations('alice');
 
@@ -171,19 +180,63 @@ describe('ChatService', () => {
         },
       ]);
       expect(conversations[0].lastMessage).not.toHaveProperty('partnerId');
-      expect(messageTable.groupBy.mock.calls[0][0].where).toEqual({ recipientId: 'alice', readAt: null });
+      expect(conversations[0].lastMessage).not.toHaveProperty('archivedAt');
     });
 
     it('leaves out a conversation with a deactivated account, unread messages included', async () => {
-      prisma.$queryRaw.mockResolvedValue([row('bob', '2026-01-01T10:00:00Z'), row('carol', '2026-01-02T10:00:00Z')]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([row('bob', '2026-01-01T10:00:00Z'), row('carol', '2026-01-02T10:00:00Z')])
+        .mockResolvedValueOnce([{ senderId: 'carol', count: 2 }]);
       // Carol deactivated her account, so the query for visible partners does not return her.
       userTable.findMany.mockResolvedValue([{ id: 'bob', name: 'Bob', username: 'bob', email: null, phone: null, avatarUrl: null }]);
-      messageTable.groupBy.mockResolvedValue([{ senderId: 'carol', _count: { _all: 2 } }]);
 
       const conversations = await service.getConversations('alice');
 
       expect(conversations.map((conversation) => conversation.participantId)).toEqual(['bob']);
       expect(userTable.findMany.mock.calls[0][0].where).toMatchObject({ deactivatedAt: null });
+    });
+
+    it('keeps an archived conversation out of the main list and in the archive', async () => {
+      const rows = [
+        row('bob', '2026-01-01T10:00:00Z', { archivedAt: '2026-01-01T11:00:00Z' }),
+        row('carol', '2026-01-02T10:00:00Z'),
+      ];
+      userTable.findMany.mockResolvedValue(people);
+
+      prisma.$queryRaw.mockResolvedValueOnce(rows).mockResolvedValueOnce([]);
+      const main = await service.getConversations('alice', 'main');
+      prisma.$queryRaw.mockResolvedValueOnce(rows).mockResolvedValueOnce([]);
+      const archived = await service.getConversations('alice', 'archived');
+
+      expect(main.map((c) => c.participantId)).toEqual(['carol']);
+      expect(archived.map((c) => c.participantId)).toEqual(['bob']);
+    });
+
+    it('brings an archived conversation back when a newer message arrives', async () => {
+      prisma.$queryRaw
+        .mockResolvedValueOnce([row('bob', '2026-01-03T10:00:00Z', { archivedAt: '2026-01-01T11:00:00Z' })])
+        .mockResolvedValueOnce([]);
+      userTable.findMany.mockResolvedValue(people);
+
+      const main = await service.getConversations('alice', 'main');
+
+      expect(main.map((c) => c.participantId)).toEqual(['bob']);
+    });
+
+    it('hides a conversation deleted for me until a newer message arrives', async () => {
+      const rows = [
+        row('bob', '2026-01-01T10:00:00Z', { clearedAt: '2026-01-01T11:00:00Z' }),
+        row('carol', '2026-01-03T10:00:00Z', { clearedAt: '2026-01-02T00:00:00Z' }),
+      ];
+      userTable.findMany.mockResolvedValue(people);
+
+      prisma.$queryRaw.mockResolvedValueOnce(rows).mockResolvedValueOnce([]);
+      const main = await service.getConversations('alice', 'main');
+      prisma.$queryRaw.mockResolvedValueOnce(rows).mockResolvedValueOnce([]);
+      const archived = await service.getConversations('alice', 'archived');
+
+      expect(main.map((c) => c.participantId)).toEqual(['carol']);
+      expect(archived).toEqual([]);
     });
 
     it('asks for nothing more when the user has no messages', async () => {
@@ -223,6 +276,15 @@ describe('ChatService', () => {
         ],
         createdAt: { lt: new Date('2026-01-01T00:00:00Z') },
       });
+    });
+
+    it('hides the messages from before a delete for me', async () => {
+      messageTable.findMany.mockResolvedValue([]);
+      states.clearedAt.mockResolvedValue(new Date('2026-01-05T00:00:00Z'));
+
+      await service.getMessagesWith('alice', 'bob', 50);
+
+      expect(messageTable.findMany.mock.calls[0][0].where.createdAt).toEqual({ gt: new Date('2026-01-05T00:00:00Z') });
     });
   });
 });

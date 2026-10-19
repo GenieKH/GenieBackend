@@ -436,7 +436,7 @@ flowchart LR
 
 | Kind | Sent when | Shows | Can be turned off |
 |---|---|---|---|
-| `chat_message` | A new message is stored (not a retried one) | Sender name + "New message" (the text is end-to-end encrypted) | yes (`chatMessages`) |
+| `chat_message` | A new message is stored (not a retried one) | iOS and web: sender name + "New message". Android: a data-only push carrying the sealed message (`ciphertext`, `nonce`, `recipientId`, sender, message id; under 3000 characters, else the generic one), which the app opens with the keys on the phone and shows as a notification with the text. The server and Google only ever carry what is stored: ciphertext | yes (`chatMessages`) |
 | `security_sign_in` | An account already in use signs in on another device | "New sign-in to your account": device name and platform; not sent to the new device | no |
 | `promotion` | An admin sends one | Title, body (Khmer when written in Khmer), optional picture; opens a listing or an HTTPS page | yes (`promotions`) |
 | `call_incoming` / `call_ended` | A call rings / stops ringing | Android: silent and urgent, the app rings full screen. iOS and web: "X is calling" / "Missed call" | no |

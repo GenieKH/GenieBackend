@@ -3,6 +3,9 @@ import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from '
 /** Names are shown as they are; this keeps a notification readable. */
 const MAX_NAME_LENGTH = 100;
 
+/** A sealed message is up to about 16 KB of base64; one too long for a push is simply not attached. */
+const MAX_SEALED_LENGTH = 20_000;
+
 /** From chat: a message was stored for `recipientId`. */
 export class ChatMessageEventDto {
   @IsUUID()
@@ -18,6 +21,17 @@ export class ChatMessageEventDto {
 
   @IsUUID()
   messageId: string;
+
+  /** The sealed message. Optional, so an older chat service still works. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_SEALED_LENGTH)
+  ciphertext?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_SEALED_LENGTH)
+  nonce?: string;
 }
 
 /** From authentication: a new device signed in to an account already in use elsewhere. */

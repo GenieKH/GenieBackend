@@ -7,23 +7,53 @@ export interface ChatMessageEvent {
   senderId: string;
   senderName: string;
   messageId: string;
+  /** The sealed message, as stored. Only the recipient's phone can open it. */
+  ciphertext?: string;
+  nonce?: string;
 }
+
+/**
+ * Firebase accepts 4096 bytes of data in a push. Leave room for the rest of
+ * it (ids, name, field names); a longer message is announced without its text.
+ */
+export const MAX_SEALED_PUSH_LENGTH = 3000;
 
 /**
  * "Dara · New message". One notification per sender: a newer message from
  * the same person replaces the previous one instead of piling up.
+ *
+ * Android also gets the sealed message in a push with no notification of its
+ * own: the app opens it with the keys on the phone and writes the notification
+ * itself, with the message text. The server never reads the text, and Google
+ * only carries what the server stores anyway. iOS and browsers cannot do that
+ * while the app is closed, so they get the generic notification.
  */
 export function chatMessagePush(event: ChatMessageEvent, target: PushTarget): PushContent {
-  return {
-    alert: { title: event.senderName, body: inLocale(texts.newMessage, target.locale) },
-    data: {
-      type: 'chat_message',
-      senderId: event.senderId,
-      senderName: event.senderName,
-      messageId: event.messageId,
-    },
-    channel: 'chat_messages',
+  const common = {
+    channel: 'chat_messages' as const,
     tag: `chat:${event.senderId}`,
     urgent: true,
   };
+  const data = {
+    type: 'chat_message',
+    senderId: event.senderId,
+    senderName: event.senderName,
+    messageId: event.messageId,
+  };
+
+  if (target.platform === 'android' && event.ciphertext && event.nonce && fitsInPush(event.ciphertext, event.nonce)) {
+    return {
+      ...common,
+      data: { ...data, recipientId: event.recipientId, ciphertext: event.ciphertext, nonce: event.nonce },
+    };
+  }
+  return {
+    ...common,
+    alert: { title: event.senderName, body: inLocale(texts.newMessage, target.locale) },
+    data,
+  };
+}
+
+function fitsInPush(ciphertext: string, nonce: string): boolean {
+  return ciphertext.length + nonce.length <= MAX_SEALED_PUSH_LENGTH;
 }

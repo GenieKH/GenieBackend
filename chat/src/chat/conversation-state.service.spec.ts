@@ -4,10 +4,12 @@ import { ConversationStateService } from './conversation-state.service';
 describe('ConversationStateService', () => {
   const stateTable = { upsert: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn(), findUnique: jest.fn() };
   const messageTable = { deleteMany: jest.fn() };
+  const callLogTable = { deleteMany: jest.fn() };
   const userTable = { findUnique: jest.fn() };
   const prisma = {
     chatConversationState: stateTable,
     message: messageTable,
+    callLog: callLogTable,
     user: userTable,
     $transaction: jest.fn(async (operations: unknown[]) => Promise.all(operations)),
   };
@@ -44,7 +46,7 @@ describe('ConversationStateService', () => {
     expect(messageTable.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('deleting for everyone removes both directions, both views and the files', async () => {
+  it('deleting for everyone removes both directions, the calls, both views and the files', async () => {
     await states.deleteForEveryone('alice', 'bob');
 
     expect(messageTable.deleteMany).toHaveBeenCalledWith({
@@ -52,6 +54,14 @@ describe('ConversationStateService', () => {
         OR: [
           { senderId: 'alice', recipientId: 'bob' },
           { senderId: 'bob', recipientId: 'alice' },
+        ],
+      },
+    });
+    expect(callLogTable.deleteMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { callerId: 'alice', calleeId: 'bob' },
+          { callerId: 'bob', calleeId: 'alice' },
         ],
       },
     });

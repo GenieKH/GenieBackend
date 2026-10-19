@@ -90,6 +90,7 @@ model User {
   messagesReceived Message[] @relation("MessagesReceived")
   conversationStates      ChatConversationState[] @relation("ConversationStatesOwned")
   conversationStatesAbout ChatConversationState[] @relation("ConversationStatesAbout")
+  hiddenMessages          ChatHiddenMessage[]
 
   @@index([email], map: "idx_users_email", where: raw("(email IS NOT NULL)"))
   @@index([phone], map: "idx_users_phone", where: raw("(phone IS NOT NULL)"))
@@ -356,17 +357,40 @@ model Message {
   recipientId String    @map("recipient_id") @db.Uuid
   ciphertext  String
   nonce       String
+  /// The message this one replies to. Unlinked when that one is deleted.
+  replyToId   String?   @map("reply_to_id") @db.Uuid
   readAt      DateTime? @map("read_at") @db.Timestamptz(6)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// When the sender last changed it; only within an hour of sending.
+  editedAt    DateTime? @map("edited_at") @db.Timestamptz(6)
 
-  sender    User @relation("MessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
-  recipient User @relation("MessagesReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+  sender    User                @relation("MessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User                @relation("MessagesReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+  replyTo   Message?            @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[]           @relation("MessageReplies")
+  hiddenBy  ChatHiddenMessage[]
 
   @@index([recipientId, createdAt])
   @@index([recipientId, readAt])
   @@index([senderId, recipientId, createdAt])
   @@index([recipientId, senderId])
+  @@index([replyToId])
   @@map("messages")
+}
+
+/// One message "deleted for me": hidden from `userId` only. The other
+/// person still has it.
+model ChatHiddenMessage {
+  userId    String   @map("user_id") @db.Uuid
+  messageId String   @map("message_id") @db.Uuid
+  hiddenAt  DateTime @default(now()) @map("hidden_at") @db.Timestamptz(6)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([userId, messageId])
+  @@index([messageId])
+  @@map("chat_hidden_messages")
 }
 
 /// A text the user searched on the home screen. Shown on every device they

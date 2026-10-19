@@ -14,6 +14,7 @@ describe('ChatAttachmentService', () => {
     createSignedUploadUrl: jest.fn(),
     createSignedDownloadUrl: jest.fn(),
     removeFolder: jest.fn(),
+    removeFiles: jest.fn(),
   };
   let service: ChatAttachmentService;
 
@@ -101,5 +102,28 @@ describe('ChatAttachmentService', () => {
       ['chat-attachments', `${BOB}/${ALICE}`],
       ['chat-attachments', `${MALLORY}/${ALICE}`],
     ]);
+  });
+  describe('the file of a deleted message', () => {
+    const parties = { senderId: ALICE, recipientId: BOB };
+
+    it("accepts a file the sender sent to the recipient", () => {
+      expect(() => service.requireSentFile(parties, `${ALICE}/${BOB}/${FILE}`)).not.toThrow();
+    });
+
+    it.each([
+      ['sent the other way', `${BOB}/${ALICE}/${FILE}`],
+      ['of another conversation', `${ALICE}/${MALLORY}/${FILE}`],
+      ['a whole folder', `${ALICE}/${BOB}`],
+      ['deeper than a file', `${ALICE}/${BOB}/${FILE}/x`],
+      ['not a file id', `${ALICE}/${BOB}/..`],
+    ])('refuses a path %s', (_case, path) => {
+      expect(() => service.requireSentFile(parties, path)).toThrow(BadRequestException);
+    });
+
+    it('removes exactly that file', async () => {
+      await service.removeFile(`${ALICE}/${BOB}/${FILE}`);
+
+      expect(storage.removeFiles).toHaveBeenCalledWith('chat-attachments', [`${ALICE}/${BOB}/${FILE}`]);
+    });
   });
 });

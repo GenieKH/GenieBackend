@@ -481,7 +481,7 @@ sequenceDiagram
 - One call per person: a second caller gets `busy`. Live calls are in Redis (`call:*`), so any instance can answer; every call is recorded in `call_logs` (migration 21): who, when answered, how it ended (`ended`, `declined`, `missed`, `cancelled`, `disconnected`).
 - Ringing stops after 45 s (`missed`). A caller giving up is `cancelled`; both are a missed call for the callee. A dropped connection ends an active call (`disconnected`).
 - Signals are passed only between the two connections bound to the call; anyone else gets `gone`.
-- `GET /chat/calls/ice-servers`: Google's public STUN by default. Set `TURN_URLS` and `TURN_SECRET` (coturn `static-auth-secret`, or a provider using the TURN REST scheme) to add a relay for strict networks; credentials last 6 h.
+- `GET /chat/calls/ice-servers`: STUN plus a TURN relay, which most calls between two mobile networks need. With `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` set, each request asks Cloudflare TURN for 6 h credentials (its STUN and TURN servers are returned as is); if Cloudflare fails or times out (4 s), the call falls back to the env servers and the failure is logged. Env servers: Google's public STUN, plus `TURN_URLS` and `TURN_SECRET` (coturn `static-auth-secret`, TURN REST scheme) when set.
 - Android rings full screen from a silent push when the app is closed. Accept opens the app (after unlocking) and answers; Decline only silences that phone, and the caller hears "no answer" when the ring times out. iOS shows an ordinary notification (no CallKit yet).
 
 ## 15. Is this ready for the market? Findings, most important first

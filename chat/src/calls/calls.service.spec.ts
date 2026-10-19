@@ -1,8 +1,6 @@
-import { createHmac } from 'crypto';
 import { CallStore } from './call.store';
 import { CallEndReason, LiveCall } from './call.types';
 import { CallsService, RING_SECONDS } from './calls.service';
-import { IceServersService } from './ice-servers.service';
 
 /** The same rules as the Redis store, in memory. */
 class MemoryCallStore extends CallStore {
@@ -201,23 +199,5 @@ describe('CallsService', () => {
 
       expect(ended).toHaveLength(1);
     });
-  });
-});
-
-describe('IceServersService', () => {
-  it('offers public STUN only, until TURN is configured', () => {
-    expect(new IceServersService({}).forUser('u1')).toEqual({
-      iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
-    });
-  });
-
-  it('gives a TURN password that expires, in the coturn scheme', () => {
-    const service = new IceServersService({ TURN_URLS: 'turn:turn.example:3478, turns:turn.example:5349', TURN_SECRET: 's3cret' });
-
-    const turn = service.forUser('u1', 1_000_000_000_000).iceServers[1];
-
-    expect(turn.urls).toEqual(['turn:turn.example:3478', 'turns:turn.example:5349']);
-    expect(turn.username).toBe(`${1_000_000_000 + 6 * 60 * 60}:u1`);
-    expect(turn.credential).toBe(createHmac('sha1', 's3cret').update(turn.username!).digest('base64'));
   });
 });

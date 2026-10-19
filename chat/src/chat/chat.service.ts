@@ -55,6 +55,16 @@ function isInList(row: LastMessageRow, list: ConversationList): boolean {
   return list === 'archived' ? archived : !archived;
 }
 
+/**
+ * Whether a conversation, as of its newest message, belongs in [list]. A
+ * message newer than the archive or delete brings it back to the main list.
+ */
+function isInList(row: LastMessageRow, list: ConversationList): boolean {
+  if (row.clearedAt && row.createdAt <= row.clearedAt) return false;
+  const archived = row.archivedAt !== null && row.createdAt <= row.archivedAt;
+  return list === 'archived' ? archived : !archived;
+}
+
 @Injectable()
 export class ChatService {
   constructor(

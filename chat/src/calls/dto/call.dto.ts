@@ -1,4 +1,5 @@
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 
 /** A session description is a few kilobytes; this leaves room without accepting junk. */
 const MAX_SDP_LENGTH = 20_000;
@@ -49,4 +50,18 @@ export class CallSignalDto {
   @IsInt()
   @Min(0)
   sdpMLineIndex?: number;
+}
+
+/** `GET /chat/calls/history`: the calls with one person. */
+export class CallHistoryQuery {
+  /** The other person. */
+  @IsUUID()
+  with: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
 }

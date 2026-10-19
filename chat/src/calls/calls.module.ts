@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ChatModule } from '../chat/chat.module';
+import { CallHistoryService } from './call-history.service';
 import { CallStore, RedisCallStore } from './call.store';
 import { CallsController } from './calls.controller';
 import { CallsGateway } from './calls.gateway';
@@ -13,6 +14,7 @@ import { IceServersService } from './ice-servers.service';
   providers: [
     { provide: CallStore, useClass: RedisCallStore },
     { provide: IceServersService, useFactory: () => new IceServersService(process.env) },
+    CallHistoryService,
     CallsService,
     CallsGateway,
   ],

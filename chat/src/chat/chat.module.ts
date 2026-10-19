@@ -23,7 +23,8 @@ import { PresenceService } from './presence.service';
     RevokedSessions,
     ChatGateway,
   ],
-  // Calls share the chat connection, its sign-in checks and its pushes.
-  exports: [RevokedSessions, NotificationClient],
+  // Calls share the chat connection, its sign-in checks and its pushes, and
+  // list only the calls "delete for me" has not hidden.
+  exports: [RevokedSessions, NotificationClient, ConversationStateService],
 })
 export class ChatModule {}

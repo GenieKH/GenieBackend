@@ -53,8 +53,8 @@ export class ConversationStateService {
   }
 
   /**
-   * Deletes every message between the two people, and the files they sent,
-   * for both of them. It cannot be undone.
+   * Deletes every message between the two people, the files they sent and
+   * the record of their calls, for both of them. It cannot be undone.
    */
   async deleteForEveryone(userId: string, partnerId: string): Promise<void> {
     await this.ensureUser(partnerId);
@@ -64,6 +64,14 @@ export class ConversationStateService {
           OR: [
             { senderId: userId, recipientId: partnerId },
             { senderId: partnerId, recipientId: userId },
+          ],
+        },
+      }),
+      this.prisma.callLog.deleteMany({
+        where: {
+          OR: [
+            { callerId: userId, calleeId: partnerId },
+            { callerId: partnerId, calleeId: userId },
           ],
         },
       }),

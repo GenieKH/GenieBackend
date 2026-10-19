@@ -81,17 +81,6 @@ export class ChatController {
     return this.backupService.save(userId, backupOf(dto), ownerProofOf(userId, dto));
   }
 
-  /**
-   * Turns the backup PIN off: the backup is removed, with the same proof as
-   * replacing it (`403` wrong PIN or password proof, `429` locked). The public
-   * key stays, so chat goes on with the same keys.
-   */
-  @Post('backup/remove')
-  @HttpCode(HttpStatus.OK)
-  removeBackup(@CurrentUserId() userId: string, @Body() dto: BackupOwnerProofDto) {
-    return this.backupService.remove(userId, ownerProofOf(userId, dto));
-  }
-
   @Get('backup')
   async getBackup(@CurrentUserId() userId: string) {
     try {

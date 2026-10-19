@@ -7,6 +7,7 @@ import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { ConversationStateService } from './conversation-state.service';
 import { InternalAccountsController } from './internal-accounts.controller';
+import { NotificationClient } from './notification.client';
 import { PresenceService } from './presence.service';
 
 @Module({
@@ -18,8 +19,11 @@ import { PresenceService } from './presence.service';
     ChatAttachmentService,
     ConversationStateService,
     PresenceService,
+    NotificationClient,
     RevokedSessions,
     ChatGateway,
   ],
+  // Calls share the chat connection, its sign-in checks and its pushes.
+  exports: [RevokedSessions, NotificationClient],
 })
 export class ChatModule {}

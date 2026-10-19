@@ -1,7 +1,7 @@
 # One image definition for every service. Pick the service with the SERVICE
 # build argument (docker-compose passes it; on Railway set a SERVICE variable):
 #
-#   authentication | user | property | chat | payment | api-gateway
+#   authentication | user | property | chat | payment | notification | api-gateway
 #
 #   docker build --build-arg SERVICE=property -t genie-property .
 
@@ -18,6 +18,7 @@ COPY user/package.json user/
 COPY property/package.json property/
 COPY chat/package.json chat/
 COPY payment/package.json payment/
+COPY notification/package.json notification/
 COPY api-gateway/package.json api-gateway/
 # Retries ride out a dropped connection to the npm registry (ECONNRESET).
 RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
@@ -32,7 +33,7 @@ ARG SERVICE
 # On Railway the service name is the fallback, so a service named "chat" builds chat.
 ARG RAILWAY_SERVICE_NAME
 ENV NODE_ENV=production SERVICE=${SERVICE:-$RAILWAY_SERVICE_NAME}
-RUN test -n "$SERVICE" || (echo "Set the SERVICE variable (authentication, user, property, chat, payment or api-gateway)." >&2 && exit 1)
+RUN test -n "$SERVICE" || (echo "Set the SERVICE variable (authentication, user, property, chat, payment, notification or api-gateway)." >&2 && exit 1)
 WORKDIR /app
 
 # Every manifest, because the lockfile describes all workspaces; only this
@@ -44,6 +45,7 @@ COPY user/package.json user/
 COPY property/package.json property/
 COPY chat/package.json chat/
 COPY payment/package.json payment/
+COPY notification/package.json notification/
 COPY api-gateway/package.json api-gateway/
 RUN npm ci --omit=dev --include-workspace-root --workspace=shared --workspace=$SERVICE \
     --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000

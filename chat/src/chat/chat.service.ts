@@ -1,6 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { JsonCache, PrismaService } from '@genie/shared';
+import { CHAT_PIN_TTL_SECONDS, chatPinCacheKey } from './chat-pin-cache';
 import { ConversationStateService } from './conversation-state.service';
+import { DISPLAY_FIELDS, displayName } from './display-name';
+import { NotificationClient } from './notification.client';
 import { PUBLIC_KEY_TTL_SECONDS, publicKeyCacheKey } from './public-key-cache';
 
 export interface Conversation {
@@ -42,18 +45,14 @@ const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 /** A deactivated account is hidden from everyone else, as if it did not exist. */
 const VISIBLE = { deactivatedAt: null } as const;
 
-const DISPLAY_FIELDS = { name: true, username: true, email: true, phone: true, avatarUrl: true } as const;
-
-type DisplayFields = {
-  name: string | null;
-  username: string | null;
-  email: string | null;
-  phone: string | null;
-};
-
-/** The name a user chose, else their handle. */
-function displayName(user: DisplayFields | null): string {
-  return user?.name || user?.username || user?.email || user?.phone || 'Property Owner';
+/**
+ * Whether a conversation, as of its newest message, belongs in [list]. A
+ * message newer than the archive or delete brings it back to the main list.
+ */
+function isInList(row: LastMessageRow, list: ConversationList): boolean {
+  if (row.clearedAt && row.createdAt <= row.clearedAt) return false;
+  const archived = row.archivedAt !== null && row.createdAt <= row.archivedAt;
+  return list === 'archived' ? archived : !archived;
 }
 
 /**
@@ -72,6 +71,7 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly cache: JsonCache,
     private readonly states: ConversationStateService,
+    private readonly notifications: NotificationClient,
   ) {}
 
   /**
@@ -119,25 +119,53 @@ export class ChatService {
   /**
    * Stores an encrypted message and returns it with the sender's display info.
    * Sending the same `id` again returns the stored message instead of a duplicate.
+   * A new message also reaches the recipient's phones as a push; a retried one
+   * does not ping them twice.
    */
   async sendMessage(senderId: string, message: NewMessage) {
     if (message.recipientId === senderId) {
       throw new BadRequestException('You cannot message yourself');
     }
 
+    await this.requireChatPin(senderId);
+
     if (!(await this.isVisible(message.recipientId))) {
       throw new NotFoundException('Recipient not found');
     }
 
-    const saved = await this.createOrFindMessage(senderId, message);
+    const { saved, created } = await this.createOrFindMessage(senderId, message);
     const { sender, ...stored } = saved;
-    return { ...stored, senderName: displayName(sender), senderAvatar: sender.avatarUrl || null };
+    const senderName = displayName(sender);
+    if (created) {
+      this.notifications.chatMessage({ recipientId: stored.recipientId, senderId, senderName, messageId: stored.id });
+    }
+    return { ...stored, senderName, senderAvatar: sender.avatarUrl || null };
+  }
+
+  /**
+   * Every account protects its chats with a chat PIN before it chats: the app
+   * asks for one right after sign-in, and this stops a build that skips it.
+   * A backup still locked with the account password does not count; nor does
+   * none at all. One from before PIN tries were counted does.
+   */
+  private async requireChatPin(userId: string): Promise<void> {
+    if (await this.cache.get<boolean>(chatPinCacheKey(userId))) return;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { backupBlob: true, keyBackup: { select: { protectedBy: true } } },
+    });
+    const hasPin = user?.keyBackup?.protectedBy === 'pin' || (!user?.keyBackup && !!user?.backupBlob);
+    if (!hasPin) {
+      throw new ForbiddenException('Create your chat PIN before sending messages.');
+    }
+    await this.cache.set(chatPinCacheKey(userId), true, CHAT_PIN_TTL_SECONDS);
   }
 
   private async createOrFindMessage(senderId: string, message: NewMessage) {
     const include = { sender: { select: DISPLAY_FIELDS } };
     try {
-      return await this.prisma.message.create({
+      const saved = await this.prisma.message.create({
         data: {
           id: message.id,
           senderId,
@@ -147,6 +175,7 @@ export class ChatService {
         },
         include,
       });
+      return { saved, created: true };
     } catch (error) {
       if (!message.id || (error as { code?: string }).code !== UNIQUE_CONSTRAINT_VIOLATION) {
         throw error;
@@ -156,7 +185,7 @@ export class ChatService {
       if (!existing || existing.senderId !== senderId) {
         throw new ConflictException('Message id is already in use');
       }
-      return existing;
+      return { saved: existing, created: false };
     }
   }
 

@@ -27,7 +27,10 @@ export function lockDurationMs(failedAttempts: number): number {
   return Math.min(FIRST_LOCK_MS * 2 ** (round - 1), LONGEST_LOCK_MS);
 }
 
-/** What a device locked a backup with: the optional backup PIN, or the account password. */
+/**
+ * What a backup is locked with: the chat PIN every account has, or, for a
+ * backup from the short time chats were locked with it, the account password.
+ */
 export type BackupProtection = 'pin' | 'password';
 
 /** A key backup as a device uploads it. */
@@ -41,7 +44,7 @@ export interface NewKeyBackup {
   protectedBy?: BackupProtection;
 }
 
-/** How the owner shows an existing backup is theirs to replace or remove. */
+/** How the owner shows an existing backup is theirs to replace. */
 export interface BackupOwnerProof {
   /** Proof of the PIN of the backup. Required when there is one... */
   currentVerifier?: string;
@@ -121,29 +124,6 @@ export class ChatBackupService {
     if (options.identityPublicKey) {
       await this.cache.delete(publicKeyCacheKey(userId));
     }
-    return { success: true };
-  }
-
-  /**
-   * Turns the backup PIN off, which is the owner's choice: the PIN is optional.
-   * Removes the backup, and one from before PIN tries were counted, for the
-   * same proof as replacing it. The public key stays: chat goes on with the
-   * same keys, and from then on a new device makes new ones instead of
-   * restoring these.
-   */
-  async remove(userId: string, proof: BackupOwnerProof = {}) {
-    const seal = this.requireSeal();
-    if (!proof.provenByPassword) {
-      await this.requireCurrentPin(seal, userId, proof.currentVerifier);
-    }
-
-    await this.prisma.$transaction([
-      this.prisma.chatKeyBackup.deleteMany({ where: { userId } }),
-      this.prisma.user.update({
-        where: { id: userId },
-        data: { backupBlob: null, backupSalt: null, backupNonce: null },
-      }),
-    ]);
     return { success: true };
   }
 

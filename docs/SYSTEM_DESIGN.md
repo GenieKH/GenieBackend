@@ -59,7 +59,8 @@ flowchart LR
 | API Gateway | Only public entry. Verifies access JWT (RS256, `typ=access`), writes `x-user-id`, proxies | 300 req/min per IP, counted in Redis |
 | Authentication | Register, login, Google login, refresh, logout, password reset | Talks to Postgres through the Supabase client |
 | User service | Everything else | Talks to Postgres through Prisma |
-| Redis | Cache (map, listing page, chat keys, public profile), all rate limits, chat events between instances | Never the only copy: everything falls back to the database or memory. Inside the container today; must be external before a second instance |
+| Notification service | Push devices, notification preferences, promotions; sends chat, sign-in, call and promotion pushes through Firebase Cloud Messaging | Section 14b. Called by chat and authentication over `/internal` |
+| Redis | Cache (map, listing page, chat keys, public profile), all rate limits, chat events between instances, live calls | Never the only copy: everything falls back to the database or memory. Inside the container today; must be external before a second instance |
 | Supabase Postgres | All data | One database, shared by local dev and production |
 | Supabase Storage | Property photos (public bucket), chat files (private bucket) | Clients upload and download directly with signed URLs |
 
@@ -288,7 +289,7 @@ flowchart LR
 
 ---
 
-## 10. Chat: first use (create keys; locked with the account password)
+## 10. Chat: first use (create keys; every account has a chat PIN)
 
 ```mermaid
 flowchart LR
@@ -300,7 +301,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    C["App, Security > Set up backup PIN<br/>(optional)"] -->|"1 ask for 6-digit PIN<br/>(weak PINs refused)"| C
+    C["App, right after sign-up / sign-in<br/>(password or Google)"] -->|"1 GET /chat/backup: none?<br/>ask for 6-digit PIN, twice<br/>(weak PINs refused)"| C
     C -->|"2 Argon2id(PIN, salt) =<br/>encryption key + verifier"| C
     C -->|"3 POST /chat/backup<br/>encrypted private key + verifier"| G["API Gateway"]
     G --> U["Chat service"]
@@ -308,12 +309,14 @@ flowchart LR
 ```
 
 - Messages are always end-to-end encrypted. Keys are made without asking anything as soon as someone signs in, so they can be messaged before they ever open a chat.
-- **An account with a password locks its keys with that password** (since migration 18, `chat_key_backups.protected_by = 'password'`). Right after an email/phone sign-in, while the password is still in hand, the app derives the backup key from it (the same Argon2id as the PIN), restores the keys on a new device, or (re)locks them: a missing backup is made, a PIN backup is switched over (the PIN is asked one last time on a device without the keys), and a backup locked with a password reset since is locked again by a device that still has the keys. Replacing a backup is proven with `POST /auth/account/password-proof`. Changing or creating the password re-locks the keys at once. Nothing more is ever typed, and the password itself is never stored.
-- The server sees the password at sign-in, so this protects chats against a database leak and against someone who only reset the password by email code, but not against the server operator. That trade-off was chosen over the PIN for convenience.
-- After "Forgot password", a device that still has the keys locks them with the new password when it signs in. If none does, old messages cannot be read: the user is told and decides whether to start over on this device.
-- **An account that signs in only with Google** has no password: it keeps the optional backup PIN below. "Forgot backup PIN" sends it to create a password, which then protects its chats instead.
-- Without a backup PIN the private key exists only on the device. A new device makes new keys (`POST /chat/keys` replaces the public key while there is no backup); earlier messages cannot be read there. A device whose key was replaced this way does not replace it back on its own: the app asks the user first, so two devices do not keep replacing each other's key.
-- With a backup PIN the key is backed up, and the public key can then only be replaced with the PIN or the account password (`POST /chat/keys` answers `409`).
+- **Every account has a 6-digit chat PIN** (since 2026-10-18; before that it was optional, and for a few days password accounts locked their keys with the account password instead). A signed-in account without one is stopped by a full-screen "Create your chat PIN" step before it can use the app: right after signing up, after any sign-in (email/phone and password, or Google), and at the next app start for older accounts. The only way past it is creating the PIN or signing out. The PIN cannot be turned off.
+- Creating the PIN backs up the keys the device holds. A device that does not hold the account's current keys (they were never backed up) makes new ones and swaps the public key and the backup in one step (`POST /chat/keys/reset`, no proof needed while there is no backup); earlier messages cannot be read there.
+- A backup still locked with the account password (`chat_key_backups.protected_by = 'password'`, migration 18) is moved to a PIN by the same step: the password is typed once (a device with the keys proves it with `POST /auth/account/password-proof`; one without opens the backup with it), then the PIN replaces it. If the password was reset since and no device here can open the backup, the user can start over with new keys.
+- The account password no longer touches chat: signing in, changing or creating it leaves the keys alone. It is only used to prove a forgotten PIN is the owner's (section 14).
+- The app asks the server whether a PIN exists once per sign-in. If the server cannot be asked, nobody is blocked; the check runs again at the next start.
+- The server enforces it too. Sending a message needs a PIN-locked backup (`403` "Create your chat PIN before sending messages."), so an app build that skips the PIN cannot chat. A backup still locked with the account password does not count until it is moved; one from before PIN tries were counted does. Only a yes is cached (`chat:has-pin:<user>`, 24 h): a PIN cannot be removed (there is no `POST /chat/backup/remove` any more), and new backups are refused unless `protectedBy` is `pin`.
+- Keys are still published before the PIN exists (`POST /chat/keys`), so others can start a conversation with a brand-new account; that account replies once its PIN is created.
+- With a backup the public key can only be replaced with the PIN or the account password (`POST /chat/keys` answers `409`).
 - The private key never leaves the device unencrypted.
 - The server stores the key encrypted twice: by the PIN-derived key (device) and by `CHAT_BACKUP_SECRET` (server). The PIN proof is stored only as a keyed hash.
 
@@ -398,19 +401,88 @@ flowchart LR
 
 | Situation | What happens |
 |---|---|
-| New phone, account with a password | Keys restored at sign-in with the password; nothing asked |
-| Password reset by email code | A device that still has the keys re-locks them with the new password at its next sign-in. A device without them shows "locked with an earlier password": start over here (old history unreadable) or sign in on an old device first |
-| New phone, Google-only, no PIN | New keys made at sign-in; old history not readable there. Contacts see a "key changed" warning |
-| New phone, knows PIN | Steps above; keys restored, old history readable |
+| New phone, knows PIN | Opening a chat asks for the PIN in a dialog that stays open: steps above, keys restored, old history readable |
+| Wrong PIN | The dialog stays open and shows the tries left (`403 { attemptsLeft }`); the field shakes and clears |
+| 5th wrong PIN | The dialog shows a lock icon and counts down the wait (`429 { retryAfterSeconds }`: 15 min, then 30, 60 ... max 24 h). Closed, the chat screen says "Too many wrong PINs" |
+| No connection while checking | The dialog keeps the PIN and says the check failed; Unlock tries the same PIN again |
+| Password reset by email code | Nothing changes for chat: the PIN still opens the backup |
 | Change PIN | Unlock with the old PIN, re-encrypt, save again. History stays readable |
-| Turn PIN off | `POST /chat/backup/remove` with the PIN proof (or a password proof). Same keys; a new phone then makes new ones |
-| **Forgot PIN** (Google-only accounts) | Create an account password; it locks the keys from then on. A device that still has the keys keeps the history; otherwise new keys are made and old messages become unreadable |
+| **Forgot PIN** | Confirm with the account password (a Google-only account creates one first), then choose a new PIN. A device that still has the keys keeps the history; otherwise new keys are made and old messages become unreadable |
 | Someone guesses | Locked after 5 wrong tries; count is stored in the database so restarts do not reset it |
 | Old-format backup | Returned whole once, opened with the PIN, then re-saved in the protected format |
 
 Safety code: both people can compare a number derived from both public keys to detect a swapped key.
 
 ---
+
+## 14a. Chat: voice messages
+
+A voice message is a chat file (section 13) with two extra fields inside the encrypted envelope: `voice: { ms, wave }`, its length and 40 loudness bars (0-31). The server sees an ordinary encrypted file and stores nothing new.
+
+- Recorded as AAC (`audio/mp4`, about 6 KB/s) where possible; a browser that cannot record AAC uses Opus or WAV. 0.7 s minimum, 5 min maximum.
+- Played from memory (just_audio `StreamAudioSource`): the decrypted audio is never written to the phone. On Android the player reaches it through a local proxy, so the network security config allows plain HTTP to `127.0.0.1` and `localhost` only.
+- An older app shows a voice message as a file name.
+
+## 14b. Push notifications (notification service, :4006)
+
+```mermaid
+flowchart LR
+    APP["App"] -->|"POST /notifications/devices<br/>token, platform, locale"| GW["Gateway"] --> N["notification :4006"]
+    C["chat :4004"] -->|"/internal/notifications/chat-message<br/>call-ringing, call-ended"| N
+    A["authentication :4001"] -->|"/internal/notifications/sign-in"| N
+    N -->|"sendEach, 500 per batch"| FCM["Firebase Cloud Messaging"] --> APP
+    R[("Redis<br/>sessions:revoked")] -->|"sign-out"| N
+```
+
+| Kind | Sent when | Shows | Can be turned off |
+|---|---|---|---|
+| `chat_message` | A new message is stored (not a retried one) | Sender name + "New message" (the text is end-to-end encrypted) | yes (`chatMessages`) |
+| `security_sign_in` | An account already in use signs in on another device | "New sign-in to your account": device name and platform; not sent to the new device | no |
+| `promotion` | An admin sends one | Title, body (Khmer when written in Khmer), optional picture; opens a listing or an HTTPS page | yes (`promotions`) |
+| `call_incoming` / `call_ended` | A call rings / stops ringing | Android: silent and urgent, the app rings full screen. iOS and web: "X is calling" / "Missed call" | no |
+
+API (all need a signed-in user):
+
+| Endpoint | What it does |
+|---|---|
+| `POST /notifications/devices` `{ token, platform: android\|ios\|web, locale?: en\|km }` | `204`. A token belongs to one account and session; signing in as someone else moves it. At most 20 devices per account, oldest dropped |
+| `POST /notifications/devices/remove` `{ token }` | `204`. The app calls it before signing out; only the owner's own device is removed |
+| `GET /notifications/preferences` | `{ chatMessages, promotions }`, both `true` until changed |
+| `PATCH /notifications/preferences` `{ chatMessages?, promotions? }` | Returns the saved preferences |
+| `POST /notifications/promotions` `{ id?, title (≤65), body (≤240), titleKm?, bodyKm?, propertyId?, url? (https), imageUrl? (https) }` | Admins only (`users.role = 'admin'`, read from the database). `202` with its status; sent in the background to every device whose owner allows promotions. Repeating a request with the same `id` sends it once |
+| `GET /notifications/promotions/:id` | Admins only: `status` (queued, sending, sent, failed) and counts |
+
+- A device signed out from elsewhere is removed the moment authentication publishes the sign-out on Redis. A token Firebase reports as gone is removed after the send.
+- Without `FIREBASE_SERVICE_ACCOUNT_JSON` the service runs but sends nothing (logged once).
+- Tables (migration 20): `push_devices`, `notification_preferences`, `promotions`.
+
+## 14c. Voice calls
+
+```mermaid
+sequenceDiagram
+    participant A as Alice's app
+    participant C as chat :4004
+    participant B as Bob's devices
+    A->>C: call:invite {callId, calleeId}
+    C-->>B: call:incoming (socket) + push call_incoming
+    B->>C: call:accept (one device)
+    C-->>A: call:accepted
+    C-->>B: call:answered-elsewhere (the others)
+    A->>C: call:signal offer
+    C-->>B: call:signal (answering device only)
+    B->>C: call:signal answer, candidates
+    C-->>A: call:signal
+    Note over A,B: audio goes straight between the phones (WebRTC, DTLS-SRTP)
+    A->>C: call:hangup
+    C-->>B: call:ended {reason}
+```
+
+- Signalling rides the chat socket (`/chat` namespace, same sign-in check). The server only introduces the two phones; it never carries audio.
+- One call per person: a second caller gets `busy`. Live calls are in Redis (`call:*`), so any instance can answer; every call is recorded in `call_logs` (migration 21): who, when answered, how it ended (`ended`, `declined`, `missed`, `cancelled`, `disconnected`).
+- Ringing stops after 45 s (`missed`). A caller giving up is `cancelled`; both are a missed call for the callee. A dropped connection ends an active call (`disconnected`).
+- Signals are passed only between the two connections bound to the call; anyone else gets `gone`.
+- `GET /chat/calls/ice-servers`: Google's public STUN by default. Set `TURN_URLS` and `TURN_SECRET` (coturn `static-auth-secret`, or a provider using the TURN REST scheme) to add a relay for strict networks; credentials last 6 h.
+- Android rings full screen from a silent push when the app is closed. Accept opens the app (after unlocking) and answers; Decline only silences that phone, and the caller hears "no answer" when the ring times out. iOS shows an ordinary notification (no CallKit yet).
 
 ## 15. Is this ready for the market? Findings, most important first
 

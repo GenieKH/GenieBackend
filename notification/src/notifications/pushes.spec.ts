@@ -1,0 +1,123 @@
+import { callEndedPush, incomingCallPush, RING_SECONDS } from './calls/call.push';
+import { chatMessagePush } from './chat/chat-message.push';
+import { toFirebaseMessage } from './delivery/firebase-push-sender';
+import { PushTarget } from './delivery/push-sender';
+import { promotionPush } from './promotions/promotion.push';
+import { signInAlertPush } from './security/sign-in-alert.push';
+
+const device = (platform: PushTarget['platform'], locale: PushTarget['locale'] = 'en'): PushTarget => ({
+  id: `d-${platform}-${locale}`,
+  token: `token-${platform}`,
+  platform,
+  locale,
+});
+
+const call = { callId: 'c1', callerId: 'alice', callerName: 'Alice', calleeId: 'bob' };
+
+describe('what each push says', () => {
+  it('a chat message names the sender but never its text, one per sender', () => {
+    const push = chatMessagePush(
+      { recipientId: 'bob', senderId: 'alice', senderName: 'Alice', messageId: 'm1' },
+      device('android', 'km'),
+    );
+
+    expect(push.alert).toEqual({ title: 'Alice', body: 'សារថ្មី' });
+    expect(push.data).toEqual({ type: 'chat_message', senderId: 'alice', senderName: 'Alice', messageId: 'm1' });
+    expect(push.tag).toBe('chat:alice');
+    expect(push.channel).toBe('chat_messages');
+  });
+
+  it('a sign-in alert names the device that signed in', () => {
+    const push = signInAlertPush(
+      { userId: 'u', sessionId: 's2', deviceName: 'Pixel 8', platform: 'Android 15' },
+      device('ios'),
+    );
+
+    expect(push.alert!.title).toBe('New sign-in to your account');
+    expect(push.alert!.body).toMatch(/^Pixel 8 \(Android 15\) signed in\./);
+    expect(push.data).toEqual({ type: 'security_sign_in', sessionId: 's2' });
+  });
+
+  it('a sign-in alert from an unnamed device still reads well', () => {
+    const push = signInAlertPush({ userId: 'u', sessionId: 's2' }, device('web', 'km'));
+
+    expect(push.alert!.body.startsWith('ឧបករណ៍ថ្មីមួយ')).toBe(true);
+  });
+
+  it('an incoming call rings silently on Android, visibly elsewhere, and expires', () => {
+    const android = incomingCallPush(call, device('android'));
+    const ios = incomingCallPush(call, device('ios'));
+
+    expect(android.alert).toBeUndefined();
+    expect(android.data).toMatchObject({ type: 'call_incoming', callId: 'c1', callerName: 'Alice' });
+    expect(ios.alert).toEqual({ title: 'Alice is calling', body: 'Tap to answer' });
+    expect(android.timeToLiveSeconds).toBe(RING_SECONDS);
+    expect(android.urgent).toBe(true);
+  });
+
+  it('an ended call stops Android ringing; elsewhere only a missed call is told', () => {
+    expect(callEndedPush({ ...call, missed: false }, device('android'))!.data.type).toBe('call_ended');
+    expect(callEndedPush({ ...call, missed: false }, device('web'))).toBeNull();
+    expect(callEndedPush({ ...call, missed: true }, device('web'))!.alert).toEqual({
+      title: 'Missed call',
+      body: 'Alice called you',
+    });
+  });
+
+  it('a promotion is in Khmer where it was written in Khmer, else English', () => {
+    const promotion = {
+      id: 'p1',
+      title: 'Big sale',
+      body: 'Half off',
+      titleKm: 'លក់ធំ',
+      bodyKm: null,
+      propertyId: 'prop-1',
+      url: null,
+      imageUrl: 'https://img.example/a.png',
+    };
+
+    const khmer = promotionPush(promotion, device('android', 'km'));
+    const english = promotionPush(promotion, device('android', 'en'));
+
+    expect(khmer.alert).toEqual({ title: 'លក់ធំ', body: 'Half off', imageUrl: 'https://img.example/a.png' });
+    expect(english.alert!.title).toBe('Big sale');
+    expect(khmer.data).toEqual({ type: 'promotion', promotionId: 'p1', propertyId: 'prop-1' });
+    expect(khmer.urgent).toBe(false);
+  });
+});
+
+describe('the Firebase message', () => {
+  it('shows a visible push on every kind of device, on its Android channel', () => {
+    const message = toFirebaseMessage('t', {
+      alert: { title: 'Hi', body: 'There' },
+      data: { type: 'x' },
+      channel: 'chat_messages',
+      tag: 'chat:a',
+      urgent: true,
+    });
+
+    expect(message.notification).toEqual({ title: 'Hi', body: 'There', imageUrl: undefined });
+    expect(message.android).toMatchObject({
+      priority: 'high',
+      collapseKey: 'chat:a',
+      notification: { channelId: 'chat_messages', tag: 'chat:a' },
+    });
+    expect(message.apns!.headers).toMatchObject({ 'apns-priority': '10', 'apns-collapse-id': 'chat:a' });
+    expect(message.webpush!.notification).toMatchObject({ title: 'Hi', body: 'There' });
+  });
+
+  it('a silent push wakes the app instead, and expires when asked', () => {
+    const message = toFirebaseMessage('t', {
+      data: { type: 'call_incoming' },
+      channel: 'calls',
+      urgent: true,
+      timeToLiveSeconds: 45,
+    });
+
+    expect(message.notification).toBeUndefined();
+    expect(message.android!.notification).toBeUndefined();
+    expect(message.android!.ttl).toBe(45000);
+    expect(message.apns!.payload!.aps).toEqual({ contentAvailable: true });
+    expect(message.webpush!.headers).toMatchObject({ TTL: '45' });
+  });
+});

@@ -75,7 +75,8 @@ export class SessionService {
       throw new UnauthorizedException('User no longer exists');
     }
 
-    return this.issuer.issue(sub, user.role, client, record);
+    const { sessionId: _sessionId, ...tokens } = await this.issuer.issue(sub, user.role, client, record);
+    return tokens;
   }
 
   /** Signs out the device that holds this refresh token. Expired tokens are accepted. */

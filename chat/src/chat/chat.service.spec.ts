@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { fakeCache } from '@genie/shared/testing';
 import { ChatService } from './chat.service';
 
@@ -7,6 +7,7 @@ describe('ChatService', () => {
   const userTable = { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() };
   const prisma = { message: messageTable, user: userTable, $queryRaw: jest.fn() };
   const states = { clearedAt: jest.fn() };
+  const notifications = { chatMessage: jest.fn() };
   let service: ChatService;
 
   const sender = { username: 'Dara', email: null, phone: null, avatarUrl: null };
@@ -24,12 +25,13 @@ describe('ChatService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    userTable.findUnique.mockResolvedValue({ id: 'bob' });
+    // The sender has a chat PIN, as every account does.
+    userTable.findUnique.mockResolvedValue({ id: 'bob', backupBlob: null, keyBackup: { protectedBy: 'pin' } });
     // How another person is looked up: only if their account is not deactivated.
     userTable.findFirst.mockResolvedValue({ id: 'bob' });
     messageTable.create.mockResolvedValue(stored);
     states.clearedAt.mockResolvedValue(null);
-    service = new ChatService(prisma as never, fakeCache(), states as never);
+    service = new ChatService(prisma as never, fakeCache(), states as never, notifications as never);
   });
 
   describe('public keys', () => {
@@ -99,6 +101,17 @@ describe('ChatService', () => {
       expect(message).not.toHaveProperty('sender');
     });
 
+    it("pushes a new message to the recipient's phones, by sender name only", async () => {
+      await service.sendMessage('alice', newMessage);
+
+      expect(notifications.chatMessage).toHaveBeenCalledWith({
+        recipientId: 'bob',
+        senderId: 'alice',
+        senderName: 'Dara',
+        messageId: 'm-1',
+      });
+    });
+
     it('returns the stored message when the same id is sent again', async () => {
       messageTable.create.mockRejectedValue({ code: 'P2002' });
       messageTable.findUnique.mockResolvedValue(stored);
@@ -107,6 +120,8 @@ describe('ChatService', () => {
 
       expect(message.id).toBe('m-1');
       expect(messageTable.create).toHaveBeenCalledTimes(1);
+      // The first attempt already pushed it.
+      expect(notifications.chatMessage).not.toHaveBeenCalled();
     });
 
     it("refuses an id that belongs to someone else's message", async () => {
@@ -132,6 +147,39 @@ describe('ChatService', () => {
       messageTable.create.mockRejectedValue(new Error('connection lost'));
 
       await expect(service.sendMessage('alice', newMessage)).rejects.toThrow('connection lost');
+    });
+
+    describe('needs the sender to have a chat PIN', () => {
+      it.each([
+        ['no backup at all', { backupBlob: null, keyBackup: null }],
+        ['a backup the account password still locks', { backupBlob: null, keyBackup: { protectedBy: 'password' } }],
+      ])('refuses a sender with %s, storing nothing', async (_case, user) => {
+        userTable.findUnique.mockResolvedValue(user);
+
+        await expect(service.sendMessage('alice', newMessage)).rejects.toThrow(ForbiddenException);
+        expect(messageTable.create).not.toHaveBeenCalled();
+      });
+
+      it('accepts a backup from before PIN tries were counted', async () => {
+        userTable.findUnique.mockResolvedValue({ backupBlob: 'old-blob', keyBackup: null });
+
+        await expect(service.sendMessage('alice', newMessage)).resolves.toMatchObject({ id: 'm-1' });
+      });
+
+      it('remembers a PIN, so each message does not ask the database again', async () => {
+        await service.sendMessage('alice', newMessage);
+        await service.sendMessage('alice', newMessage);
+
+        expect(userTable.findUnique).toHaveBeenCalledTimes(1);
+      });
+
+      it('asks again until a sender without one has created it', async () => {
+        userTable.findUnique.mockResolvedValue({ backupBlob: null, keyBackup: null });
+        await expect(service.sendMessage('alice', newMessage)).rejects.toThrow(ForbiddenException);
+
+        userTable.findUnique.mockResolvedValue({ backupBlob: null, keyBackup: { protectedBy: 'pin' } });
+        await expect(service.sendMessage('alice', newMessage)).resolves.toMatchObject({ id: 'm-1' });
+      });
     });
   });
 

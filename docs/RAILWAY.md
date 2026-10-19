@@ -16,6 +16,7 @@ Dashboard labels move around; if one is missing, the setting is in the service's
 | `property` | `property` | 4003 | no | `/railway/property.json` |
 | `chat` | `chat` | 4004 | no | `/railway/chat.json` |
 | `payment` | `payment` | 4005 | no | `/railway/payment.json` |
+| `notification` | `notification` | 4006 | no | `/railway/notification.json` |
 | `Redis` | n/a | n/a | no | Railway's Redis database service |
 
 Name the services exactly as above: the private addresses below are built from the names.
@@ -58,13 +59,14 @@ Per service (everything else comes from the shared list):
 
 | Service | Variables |
 |---|---|
-| all six | `SERVICE=<its name>`, `PORT=<its port>`, `HOST=::` (see the note below) |
-| `api-gateway` | `JWT_PUBLIC_KEY`, `REDIS_URL`, `CORS_ORIGINS`, and the five addresses: `AUTH_SERVICE_URL=http://authentication.railway.internal:4001`, `USER_SERVICE_URL=http://user.railway.internal:4002`, `PROPERTY_SERVICE_URL=http://property.railway.internal:4003`, `CHAT_SERVICE_URL=http://chat.railway.internal:4004`, `PAYMENT_SERVICE_URL=http://payment.railway.internal:4005` |
-| `authentication` | as today: `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `SUPABASE_*`, `FIREBASE_SERVICE_ACCOUNT_JSON`, email provider keys, `REDIS_URL`, `IP_LOCATION_API_URL`, plus `USER_SERVICE_URL` |
+| all seven | `SERVICE=<its name>`, `PORT=<its port>`, `HOST=::` (see the note below) |
+| `api-gateway` | `JWT_PUBLIC_KEY`, `REDIS_URL`, `CORS_ORIGINS`, and the six addresses: `AUTH_SERVICE_URL=http://authentication.railway.internal:4001`, `USER_SERVICE_URL=http://user.railway.internal:4002`, `PROPERTY_SERVICE_URL=http://property.railway.internal:4003`, `CHAT_SERVICE_URL=http://chat.railway.internal:4004`, `PAYMENT_SERVICE_URL=http://payment.railway.internal:4005`, `NOTIFICATION_SERVICE_URL=http://notification.railway.internal:4006` |
+| `authentication` | as today: `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `SUPABASE_*`, `FIREBASE_SERVICE_ACCOUNT_JSON`, email provider keys, `REDIS_URL`, `IP_LOCATION_API_URL`, plus `USER_SERVICE_URL`, `INTERNAL_SERVICE_SECRET`, `NOTIFICATION_SERVICE_URL` (sign-in alerts by push) |
 | `user` | `DATABASE_URL`, `DATABASE_POOL_MAX=3`, `SUPABASE_*`, `JWT_PUBLIC_KEY`, `REDIS_URL`, `INTERNAL_SERVICE_SECRET`, `PROPERTY_SERVICE_URL`, `CHAT_SERVICE_URL` |
 | `property` | `DATABASE_URL`, `DATABASE_POOL_MAX=5`, `SUPABASE_*`, `JWT_PUBLIC_KEY`, `REDIS_URL`, `INTERNAL_SERVICE_SECRET`, `GOOGLE_PLACES_API_KEY`, `GOOGLE_PLACES_REGION_CODES` |
-| `chat` | `DATABASE_URL`, `DATABASE_POOL_MAX=5`, `SUPABASE_*`, `JWT_PUBLIC_KEY`, `REDIS_URL`, `INTERNAL_SERVICE_SECRET`, `CHAT_BACKUP_SECRET` |
+| `chat` | `DATABASE_URL`, `DATABASE_POOL_MAX=5`, `SUPABASE_*`, `JWT_PUBLIC_KEY`, `REDIS_URL`, `INTERNAL_SERVICE_SECRET`, `CHAT_BACKUP_SECRET`, `NOTIFICATION_SERVICE_URL` |
 | `payment` | `DATABASE_URL`, `DATABASE_POOL_MAX=3`, `JWT_PUBLIC_KEY`, `INTERNAL_SERVICE_SECRET`, `PROPERTY_SERVICE_URL`, `PAYMENT_WEBHOOK_SECRET` (no Redis, no Supabase) |
+| `notification` | `DATABASE_URL`, `DATABASE_POOL_MAX=3`, `JWT_PUBLIC_KEY`, `REDIS_URL` (to hear sign-outs), `INTERNAL_SERVICE_SECRET`, `FIREBASE_SERVICE_ACCOUNT_JSON` (the same as `authentication`; without it nothing is pushed) |
 
 Rules that matter:
 
@@ -129,7 +131,7 @@ speed, not data. Do **not** run Redis inside a service container any more: that 
       died at 3 a.m. For per-service visibility also monitor the 503s: the gateway names the failing service in
       the body (`{"service": "chat", ...}`).
 - [ ] Deploy notifications are on for the project (Settings, Notifications / webhooks) so a failed deploy reaches you.
-- [ ] `INTERNAL_SERVICE_SECRET` is identical in `user`, `property`, `chat` and `payment`.
+- [ ] `INTERNAL_SERVICE_SECRET` is identical in `authentication`, `user`, `property`, `chat`, `payment` and `notification`.
 - [ ] A `staging` environment exists and every change is deployed there first.
 - [ ] Database migrations are applied **before** deploying code that needs them (Railway does not run them).
 

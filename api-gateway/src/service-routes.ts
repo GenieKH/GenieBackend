@@ -7,6 +7,7 @@ export interface ServiceUrls {
   property: string;
   chat: string;
   payment: string;
+  notification: string;
 }
 
 export function serviceUrlsFromEnv(env: NodeJS.ProcessEnv = process.env): ServiceUrls {
@@ -16,6 +17,7 @@ export function serviceUrlsFromEnv(env: NodeJS.ProcessEnv = process.env): Servic
     property: env.PROPERTY_SERVICE_URL || 'http://localhost:4003',
     chat: env.CHAT_SERVICE_URL || 'http://localhost:4004',
     payment: env.PAYMENT_SERVICE_URL || 'http://localhost:4005',
+    notification: env.NOTIFICATION_SERVICE_URL || 'http://localhost:4006',
   };
 }
 
@@ -52,6 +54,7 @@ export const SERVICE_ROUTES: ServiceRoute[] = [
   { service: 'payment', prefixes: ['/payments'], authenticated: true, exclude: [PAYMENT_WEBHOOK] },
   { service: 'user', prefixes: ['/users'], authenticated: true },
   { service: 'chat', prefixes: ['/chat'], authenticated: true, websocket: true },
+  { service: 'notification', prefixes: ['/notifications'], authenticated: true },
 ];
 
 /** Each prefix as `/x` and `/x/...`, for every HTTP method. */

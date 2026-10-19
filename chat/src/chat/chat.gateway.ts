@@ -9,20 +9,16 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { plainToInstance } from 'class-transformer';
-import { validateSync } from 'class-validator';
 import { Namespace, Socket } from 'socket.io';
 import { RateLimit, RateLimits, RevokedSessions } from '@genie/shared';
 import { ChatService } from './chat.service';
 import { PresenceTargetDto, SendMessageDto } from './dto/chat.dto';
 import { PresenceService } from './presence.service';
+import { parsePayload } from './socket-payload';
+import { userRoom } from './socket-rooms';
 import { authenticateSocket } from './ws-auth';
 import { WsJwtGuard } from './ws-jwt.guard';
 
-/** Every device a user is signed in on joins this room. */
-function userRoom(userId: string): string {
-  return `user:${userId}`;
-}
 
 /** The connections of one signed-in device, so they can be closed when it is signed out. */
 function sessionRoom(sessionId: string): string {
@@ -37,12 +33,6 @@ function presenceRoom(userId: string): string {
 /** Asking the other instances must never hold up a connection for long. */
 const PRESENCE_TIMEOUT_MS = 1000;
 
-/** Reads a socket payload into a DTO, or returns null if it is not valid. */
-function parsePayload<T extends object>(dto: new () => T, payload: unknown): T | null {
-  const isObject = typeof payload === 'object' && payload !== null && !Array.isArray(payload);
-  const parsed = plainToInstance(dto, isObject ? payload : {});
-  return validateSync(parsed, { whitelist: true }).length > 0 ? null : parsed;
-}
 
 /**
  * Real-time delivery of end-to-end encrypted messages, and who is online.

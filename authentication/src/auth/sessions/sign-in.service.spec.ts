@@ -14,15 +14,22 @@ describe('SignInService', () => {
   const tokens = { issue: jest.fn() };
   const refreshTokens = { listSessionTokens: jest.fn() };
   const mail = { deliver: jest.fn() };
+  const notifications = { signIn: jest.fn() };
   const user = { id: 'u1', role: 'user', email: 'owner@example.com' };
   let service: SignInService;
 
   beforeEach(() => {
     jest.resetAllMocks();
     refreshTokens.listSessionTokens.mockResolvedValue([]);
-    tokens.issue.mockResolvedValue({ accessToken: 'a', refreshToken: 'r' });
+    tokens.issue.mockResolvedValue({ accessToken: 'a', refreshToken: 'r', sessionId: 's-new' });
     mail.deliver.mockResolvedValue(true);
-    service = new SignInService(account as never, tokens as never, refreshTokens as never, mail as never);
+    service = new SignInService(
+      account as never,
+      tokens as never,
+      refreshTokens as never,
+      mail as never,
+      notifications as never,
+    );
   });
 
   it('brings a deactivated account back and starts a session', async () => {
@@ -43,10 +50,36 @@ describe('SignInService', () => {
     expect(message.html).toContain('203.0.113.7');
   });
 
+  it("pushes the alert to the account's other devices, naming the new one", async () => {
+    refreshTokens.listSessionTokens.mockResolvedValue([{ session_id: 'other-device' }]);
+
+    await service.complete(user as never, CLIENT);
+
+    expect(notifications.signIn).toHaveBeenCalledWith({
+      userId: 'u1',
+      sessionId: 's-new',
+      deviceName: 'Pixel 8',
+      platform: 'Android 15',
+    });
+  });
+
+  it('pushes the alert even for an account without email', async () => {
+    refreshTokens.listSessionTokens.mockResolvedValue([{ session_id: 'other-device' }]);
+
+    await service.complete({ ...user, email: null } as never, CLIENT);
+
+    expect(notifications.signIn).toHaveBeenCalled();
+  });
+
   it('sends nothing for the only device of an account: nobody else is using it', async () => {
     await service.complete(user as never, CLIENT);
 
     expect(mail.deliver).not.toHaveBeenCalled();
+    expect(notifications.signIn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the session id on the server', async () => {
+    await expect(service.complete(user as never, CLIENT)).resolves.not.toHaveProperty('sessionId');
   });
 
   it('signs in all the same when the account has no email, or the mail cannot be sent', async () => {

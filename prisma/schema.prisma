@@ -81,6 +81,11 @@ model User {
 
   keyBackup       ChatKeyBackup?
   searchHistory   SearchHistoryEntry[]
+  pushDevices             PushDevice[]
+  callsMade               CallLog[] @relation("CallsMade")
+  callsReceived           CallLog[] @relation("CallsReceived")
+  notificationPreferences NotificationPreferences?
+  promotionsSent          Promotion[]
   messagesSent    Message[] @relation("MessagesSent")
   messagesReceived Message[] @relation("MessagesReceived")
   conversationStates      ChatConversationState[] @relation("ConversationStatesOwned")
@@ -149,6 +154,7 @@ model Property {
   likes            PropertyLike[]
   nearbyPlaces     PropertyNearbyPlace[]
   views            PropertyView[]
+  promotions       Promotion[]
 
   @@index([userId])
   @@index([status])
@@ -381,4 +387,91 @@ model SearchHistoryEntry {
   @@index([userId, searchedAt(sort: Desc)])
   @@index([searchedAt])
   @@map("search_history")
+}
+
+/// Where to reach one signed-in device with push notifications (Firebase
+/// Cloud Messaging). Tied to the session it registered from: signing that
+/// device out removes it.
+model PushDevice {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  /// The session (`sid` of the access token) that registered it.
+  sessionId String?  @map("session_id") @db.Uuid
+  /// The Firebase registration token. One device, one row.
+  token     String   @unique(map: "push_devices_token_key")
+  /// 'android', 'ios' or 'web' (checked by the database).
+  platform  String
+  /// 'en' or 'km': the language notifications are written in.
+  locale    String   @default("en")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("push_devices")
+}
+
+/// What a user wants to be told about. No row means the defaults. Security
+/// alerts and calls are always sent.
+model NotificationPreferences {
+  userId       String   @id @map("user_id") @db.Uuid
+  chatMessages Boolean  @default(true) @map("chat_messages")
+  promotions   Boolean  @default(true)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+/// A promotion an admin sent to everyone who allows promotions.
+model Promotion {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdBy   String?   @map("created_by") @db.Uuid
+  title       String
+  body        String
+  titleKm     String?   @map("title_km")
+  bodyKm      String?   @map("body_km")
+  /// Opened when the notification is tapped: a listing, or else a web page.
+  propertyId  String?   @map("property_id") @db.Uuid
+  url         String?
+  imageUrl    String?   @map("image_url")
+  /// 'queued', 'sending', 'sent' or 'failed' (checked by the database).
+  status      String    @default("queued")
+  sentCount   Int       @default(0) @map("sent_count")
+  failedCount Int       @default(0) @map("failed_count")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  creator  User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("promotions")
+}
+
+/// One voice call between two people, for tracing it. The audio goes
+/// straight between the phones and is never stored.
+model CallLog {
+  /// Chosen by the caller's app, so a retried invite is the same call.
+  id         String    @id @db.Uuid
+  callerId   String    @map("caller_id") @db.Uuid
+  calleeId   String    @map("callee_id") @db.Uuid
+  /// 'ringing', 'active' or 'ended' (checked by the database).
+  status     String    @default("ringing")
+  /// 'ended', 'declined', 'missed', 'cancelled' or 'disconnected'; null until it ends.
+  endReason  String?   @map("end_reason")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  answeredAt DateTime? @map("answered_at") @db.Timestamptz(6)
+  endedAt    DateTime? @map("ended_at") @db.Timestamptz(6)
+
+  caller User @relation("CallsMade", fields: [callerId], references: [id], onDelete: Cascade)
+  callee User @relation("CallsReceived", fields: [calleeId], references: [id], onDelete: Cascade)
+
+  @@index([callerId, createdAt])
+  @@index([calleeId, createdAt])
+  @@map("call_logs")
 }

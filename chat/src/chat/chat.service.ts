@@ -127,7 +127,14 @@ export class ChatService {
     const { sender, ...stored } = saved;
     const senderName = displayName(sender);
     if (created) {
-      this.notifications.chatMessage({ recipientId: stored.recipientId, senderId, senderName, messageId: stored.id });
+      this.notifications.chatMessage({
+        recipientId: stored.recipientId,
+        senderId,
+        senderName,
+        messageId: stored.id,
+        ciphertext: stored.ciphertext,
+        nonce: stored.nonce,
+      });
     }
     return { ...stored, senderName, senderAvatar: sender.avatarUrl || null };
   }

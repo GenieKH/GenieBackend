@@ -101,7 +101,7 @@ describe('ChatService', () => {
       expect(message).not.toHaveProperty('sender');
     });
 
-    it("pushes a new message to the recipient's phones, by sender name only", async () => {
+    it("pushes a new message to the recipient's phones, with the sealed message and never its text", async () => {
       await service.sendMessage('alice', newMessage);
 
       expect(notifications.chatMessage).toHaveBeenCalledWith({
@@ -109,6 +109,8 @@ describe('ChatService', () => {
         senderId: 'alice',
         senderName: 'Dara',
         messageId: 'm-1',
+        ciphertext: 'cipher',
+        nonce: 'nonce',
       });
     });
 

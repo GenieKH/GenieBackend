@@ -14,6 +14,9 @@ export interface ChatMessageNotice {
   senderId: string;
   senderName: string;
   messageId: string;
+  /** The sealed message, as stored: only the recipient's phone can open it. */
+  ciphertext: string;
+  nonce: string;
 }
 
 export interface CallNotice {

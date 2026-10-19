@@ -1,5 +1,5 @@
 import { callEndedPush, incomingCallPush, RING_SECONDS } from './calls/call.push';
-import { chatMessagePush } from './chat/chat-message.push';
+import { chatMessagePush, MAX_SEALED_PUSH_LENGTH } from './chat/chat-message.push';
 import { toFirebaseMessage } from './delivery/firebase-push-sender';
 import { PushTarget } from './delivery/push-sender';
 import { promotionPush } from './promotions/promotion.push';
@@ -25,6 +25,61 @@ describe('what each push says', () => {
     expect(push.data).toEqual({ type: 'chat_message', senderId: 'alice', senderName: 'Alice', messageId: 'm1' });
     expect(push.tag).toBe('chat:alice');
     expect(push.channel).toBe('chat_messages');
+  });
+
+  describe('a chat message with its sealed text', () => {
+    const sealed = { ciphertext: 'c'.repeat(100), nonce: 'n'.repeat(32) };
+    const event = { recipientId: 'bob', senderId: 'alice', senderName: 'Alice', messageId: 'm1', ...sealed };
+
+    it('goes to Android with no notification of its own, for the app to open and show', () => {
+      const push = chatMessagePush(event, device('android'));
+
+      expect(push.alert).toBeUndefined();
+      expect(push.data).toEqual({
+        type: 'chat_message',
+        senderId: 'alice',
+        senderName: 'Alice',
+        messageId: 'm1',
+        recipientId: 'bob',
+        ...sealed,
+      });
+      expect(push.urgent).toBe(true);
+      expect(push.tag).toBe('chat:alice');
+    });
+
+    it('is only the generic notification on iOS and in browsers, which cannot open it', () => {
+      for (const platform of ['ios', 'web'] as const) {
+        const push = chatMessagePush(event, device(platform));
+
+        expect(push.alert).toEqual({ title: 'Alice', body: 'New message' });
+        expect(push.data).not.toHaveProperty('ciphertext');
+      }
+    });
+
+    it('is the generic notification when the message is too long to fit in a push', () => {
+      const long = { ...event, ciphertext: 'c'.repeat(MAX_SEALED_PUSH_LENGTH) };
+
+      const push = chatMessagePush(long, device('android'));
+
+      expect(push.alert).toEqual({ title: 'Alice', body: 'New message' });
+      expect(JSON.stringify(push.data).length).toBeLessThan(500);
+    });
+
+    it('stays within what Firebase accepts at the largest size it attaches', () => {
+      const biggest = { ...event, ciphertext: 'c'.repeat(MAX_SEALED_PUSH_LENGTH - 32) };
+
+      const message = toFirebaseMessage('t', chatMessagePush(biggest, device('android')));
+
+      expect(Buffer.byteLength(JSON.stringify(message.data))).toBeLessThan(4096);
+      expect(message.notification).toBeUndefined();
+      expect(message.android?.priority).toBe('high');
+    });
+
+    it('is the generic notification when the chat service sent no sealed text', () => {
+      const push = chatMessagePush({ ...event, ciphertext: undefined }, device('android'));
+
+      expect(push.alert).toEqual({ title: 'Alice', body: 'New message' });
+    });
   });
 
   it('a sign-in alert names the device that signed in', () => {

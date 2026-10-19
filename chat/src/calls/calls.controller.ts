@@ -10,7 +10,9 @@ export class CallsController {
 
   /** Asked before each call: the TURN password in it expires. */
   @Get('ice-servers')
-  getIceServers(@CurrentUserId() userId: string): { iceServers: IceServer[] } {
+  getIceServers(
+    @CurrentUserId() userId: string,
+  ): Promise<{ iceServers: IceServer[] }> {
     return this.iceServers.forUser(userId);
   }
 }

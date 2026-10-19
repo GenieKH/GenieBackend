@@ -12,6 +12,7 @@ import { CredentialsAuthService } from './credentials/credentials-auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { EmailDeliveryService } from './mail/email-delivery.service';
 import { OtpEmailService } from './mail/otp-email.service';
+import { NotificationClient } from './notifications/notification.client';
 import { PasswordResetOtpRepository } from './password-reset/password-reset-otp.repository';
 import { PasswordResetService } from './password-reset/password-reset.service';
 import { EstablishedDeviceService } from './sessions/established-device.service';
@@ -59,6 +60,7 @@ import { UserRepository } from './users/user.repository';
     PasswordResetService,
     EmailDeliveryService,
     OtpEmailService,
+    NotificationClient,
   ],
 })
 export class AuthModule {}

@@ -12,7 +12,7 @@ export { PUBLIC_IMAGE_TYPES, SupabaseService } from './supabase/supabase.service
 export { CurrentUserId } from './auth/current-user-id.decorator';
 export { JwtAuthGuard } from './auth/jwt-auth.guard';
 export { describeJwtPublicKey } from './auth/jwt-key-info';
-export { JwtStrategy } from './auth/jwt.strategy';
+export { AuthenticatedUser, JwtStrategy } from './auth/jwt.strategy';
 export { OptionalJwtAuthGuard } from './auth/optional-jwt-auth.guard';
 export { RevokedSessions } from './auth/revoked-sessions.service';
 export { ACCESS_TOKEN, INTERNAL_TOKEN, PASSWORD_PROOF_TOKEN, verifySignedToken } from './auth/signed-token';

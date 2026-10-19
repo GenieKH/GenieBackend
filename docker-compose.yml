@@ -24,6 +24,7 @@ x-service: &service
     PROPERTY_SERVICE_URL: http://property:4003
     CHAT_SERVICE_URL: http://chat:4004
     PAYMENT_SERVICE_URL: http://payment:4005
+    NOTIFICATION_SERVICE_URL: http://notification:4006
     INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in .env (32+ characters)}
 
 services:
@@ -72,6 +73,13 @@ services:
     environment:
       <<: *shared-environment
       PORT: "4005"
+
+  notification:
+    <<: *service
+    build: { context: ., args: { SERVICE: notification } }
+    environment:
+      <<: *shared-environment
+      PORT: "4006"
 
   api-gateway:
     <<: *service

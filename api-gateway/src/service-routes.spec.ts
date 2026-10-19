@@ -28,6 +28,8 @@ describe('where the gateway sends each path', () => {
     ['/payments/webhook', 'payment', false],
     ['/users/me', 'user', true],
     ['/chat/conversations', 'chat', true],
+    ['/notifications/devices', 'notification', true],
+    ['/notifications/promotions', 'notification', true],
   ])('%s goes to %s (JWT required: %s)', (path, service, authenticated) => {
     expect(resolve(path)).toEqual({ service, authenticated });
   });
@@ -49,6 +51,7 @@ describe('where the gateway sends each path', () => {
       chat: 'http://chat.internal:4004',
       property: 'http://localhost:4003',
       payment: 'http://localhost:4005',
+      notification: 'http://localhost:4006',
     });
   });
 });

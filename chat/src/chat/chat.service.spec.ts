@@ -7,6 +7,7 @@ describe('ChatService', () => {
   const userTable = { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() };
   const prisma = { message: messageTable, user: userTable, $queryRaw: jest.fn() };
   const states = { clearedAt: jest.fn() };
+  const notifications = { chatMessage: jest.fn() };
   let service: ChatService;
 
   const sender = { username: 'Dara', email: null, phone: null, avatarUrl: null };
@@ -30,7 +31,7 @@ describe('ChatService', () => {
     userTable.findFirst.mockResolvedValue({ id: 'bob' });
     messageTable.create.mockResolvedValue(stored);
     states.clearedAt.mockResolvedValue(null);
-    service = new ChatService(prisma as never, fakeCache(), states as never);
+    service = new ChatService(prisma as never, fakeCache(), states as never, notifications as never);
   });
 
   describe('public keys', () => {
@@ -100,6 +101,17 @@ describe('ChatService', () => {
       expect(message).not.toHaveProperty('sender');
     });
 
+    it("pushes a new message to the recipient's phones, by sender name only", async () => {
+      await service.sendMessage('alice', newMessage);
+
+      expect(notifications.chatMessage).toHaveBeenCalledWith({
+        recipientId: 'bob',
+        senderId: 'alice',
+        senderName: 'Dara',
+        messageId: 'm-1',
+      });
+    });
+
     it('returns the stored message when the same id is sent again', async () => {
       messageTable.create.mockRejectedValue({ code: 'P2002' });
       messageTable.findUnique.mockResolvedValue(stored);
@@ -108,6 +120,8 @@ describe('ChatService', () => {
 
       expect(message.id).toBe('m-1');
       expect(messageTable.create).toHaveBeenCalledTimes(1);
+      // The first attempt already pushed it.
+      expect(notifications.chatMessage).not.toHaveBeenCalled();
     });
 
     it("refuses an id that belongs to someone else's message", async () => {

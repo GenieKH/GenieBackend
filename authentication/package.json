@@ -14,6 +14,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@genie/shared": "*",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
     "@nestjs/jwt": "^11.0.2",

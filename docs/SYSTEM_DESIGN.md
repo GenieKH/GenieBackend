@@ -59,7 +59,8 @@ flowchart LR
 | API Gateway | Only public entry. Verifies access JWT (RS256, `typ=access`), writes `x-user-id`, proxies | 300 req/min per IP, counted in Redis |
 | Authentication | Register, login, Google login, refresh, logout, password reset | Talks to Postgres through the Supabase client |
 | User service | Everything else | Talks to Postgres through Prisma |
-| Redis | Cache (map, listing page, chat keys, public profile), all rate limits, chat events between instances | Never the only copy: everything falls back to the database or memory. Inside the container today; must be external before a second instance |
+| Notification service | Push devices, notification preferences, promotions; sends chat, sign-in, call and promotion pushes through Firebase Cloud Messaging | Section 14b. Called by chat and authentication over `/internal` |
+| Redis | Cache (map, listing page, chat keys, public profile), all rate limits, chat events between instances, live calls | Never the only copy: everything falls back to the database or memory. Inside the container today; must be external before a second instance |
 | Supabase Postgres | All data | One database, shared by local dev and production |
 | Supabase Storage | Property photos (public bucket), chat files (private bucket) | Clients upload and download directly with signed URLs |
 
@@ -413,6 +414,75 @@ flowchart LR
 Safety code: both people can compare a number derived from both public keys to detect a swapped key.
 
 ---
+
+## 14a. Chat: voice messages
+
+A voice message is a chat file (section 13) with two extra fields inside the encrypted envelope: `voice: { ms, wave }`, its length and 40 loudness bars (0-31). The server sees an ordinary encrypted file and stores nothing new.
+
+- Recorded as AAC (`audio/mp4`, about 6 KB/s) where possible; a browser that cannot record AAC uses Opus or WAV. 0.7 s minimum, 5 min maximum.
+- Played from memory (just_audio `StreamAudioSource`): the decrypted audio is never written to the phone. On Android the player reaches it through a local proxy, so the network security config allows plain HTTP to `127.0.0.1` and `localhost` only.
+- An older app shows a voice message as a file name.
+
+## 14b. Push notifications (notification service, :4006)
+
+```mermaid
+flowchart LR
+    APP["App"] -->|"POST /notifications/devices<br/>token, platform, locale"| GW["Gateway"] --> N["notification :4006"]
+    C["chat :4004"] -->|"/internal/notifications/chat-message<br/>call-ringing, call-ended"| N
+    A["authentication :4001"] -->|"/internal/notifications/sign-in"| N
+    N -->|"sendEach, 500 per batch"| FCM["Firebase Cloud Messaging"] --> APP
+    R[("Redis<br/>sessions:revoked")] -->|"sign-out"| N
+```
+
+| Kind | Sent when | Shows | Can be turned off |
+|---|---|---|---|
+| `chat_message` | A new message is stored (not a retried one) | Sender name + "New message" (the text is end-to-end encrypted) | yes (`chatMessages`) |
+| `security_sign_in` | An account already in use signs in on another device | "New sign-in to your account": device name and platform; not sent to the new device | no |
+| `promotion` | An admin sends one | Title, body (Khmer when written in Khmer), optional picture; opens a listing or an HTTPS page | yes (`promotions`) |
+| `call_incoming` / `call_ended` | A call rings / stops ringing | Android: silent and urgent, the app rings full screen. iOS and web: "X is calling" / "Missed call" | no |
+
+API (all need a signed-in user):
+
+| Endpoint | What it does |
+|---|---|
+| `POST /notifications/devices` `{ token, platform: android\|ios\|web, locale?: en\|km }` | `204`. A token belongs to one account and session; signing in as someone else moves it. At most 20 devices per account, oldest dropped |
+| `POST /notifications/devices/remove` `{ token }` | `204`. The app calls it before signing out; only the owner's own device is removed |
+| `GET /notifications/preferences` | `{ chatMessages, promotions }`, both `true` until changed |
+| `PATCH /notifications/preferences` `{ chatMessages?, promotions? }` | Returns the saved preferences |
+| `POST /notifications/promotions` `{ id?, title (≤65), body (≤240), titleKm?, bodyKm?, propertyId?, url? (https), imageUrl? (https) }` | Admins only (`users.role = 'admin'`, read from the database). `202` with its status; sent in the background to every device whose owner allows promotions. Repeating a request with the same `id` sends it once |
+| `GET /notifications/promotions/:id` | Admins only: `status` (queued, sending, sent, failed) and counts |
+
+- A device signed out from elsewhere is removed the moment authentication publishes the sign-out on Redis. A token Firebase reports as gone is removed after the send.
+- Without `FIREBASE_SERVICE_ACCOUNT_JSON` the service runs but sends nothing (logged once).
+- Tables (migration 20): `push_devices`, `notification_preferences`, `promotions`.
+
+## 14c. Voice calls
+
+```mermaid
+sequenceDiagram
+    participant A as Alice's app
+    participant C as chat :4004
+    participant B as Bob's devices
+    A->>C: call:invite {callId, calleeId}
+    C-->>B: call:incoming (socket) + push call_incoming
+    B->>C: call:accept (one device)
+    C-->>A: call:accepted
+    C-->>B: call:answered-elsewhere (the others)
+    A->>C: call:signal offer
+    C-->>B: call:signal (answering device only)
+    B->>C: call:signal answer, candidates
+    C-->>A: call:signal
+    Note over A,B: audio goes straight between the phones (WebRTC, DTLS-SRTP)
+    A->>C: call:hangup
+    C-->>B: call:ended {reason}
+```
+
+- Signalling rides the chat socket (`/chat` namespace, same sign-in check). The server only introduces the two phones; it never carries audio.
+- One call per person: a second caller gets `busy`. Live calls are in Redis (`call:*`), so any instance can answer; every call is recorded in `call_logs` (migration 21): who, when answered, how it ended (`ended`, `declined`, `missed`, `cancelled`, `disconnected`).
+- Ringing stops after 45 s (`missed`). A caller giving up is `cancelled`; both are a missed call for the callee. A dropped connection ends an active call (`disconnected`).
+- Signals are passed only between the two connections bound to the call; anyone else gets `gone`.
+- `GET /chat/calls/ice-servers`: Google's public STUN by default. Set `TURN_URLS` and `TURN_SECRET` (coturn `static-auth-secret`, or a provider using the TURN REST scheme) to add a relay for strict networks; credentials last 6 h.
+- Android rings full screen from a silent push when the app is closed. Accept opens the app (after unlocking) and answers; Decline only silences that phone, and the caller hears "no answer" when the ring times out. iOS shows an ordinary notification (no CallKit yet).
 
 ## 15. Is this ready for the market? Findings, most important first
 

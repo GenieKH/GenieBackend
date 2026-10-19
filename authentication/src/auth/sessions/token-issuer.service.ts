@@ -18,6 +18,11 @@ export interface TokenPair {
   refreshToken: string;
 }
 
+/** A new pair, and the session it belongs to (kept on the server, not sent to the app). */
+export interface IssuedTokens extends TokenPair {
+  sessionId: string;
+}
+
 /** Signs a new access/refresh token pair and records the refresh token. */
 @Injectable()
 export class TokenIssuerService {
@@ -33,7 +38,7 @@ export class TokenIssuerService {
    * A sign-in starts a new session. A refresh passes the token it replaces as
    * `previous`, and the new token continues that token's session.
    */
-  async issue(userId: string, role: string, client: ClientContext, previous?: RefreshTokenRecord): Promise<TokenPair> {
+  async issue(userId: string, role: string, client: ClientContext, previous?: RefreshTokenRecord): Promise<IssuedTokens> {
     const session = continueOrStartSession(client, previous);
 
     // `sid` names the session: it marks the asking device in the session list,
@@ -61,7 +66,7 @@ export class TokenIssuerService {
       this.locateInBackground(jti, session.ipAddress);
     }
 
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken, sessionId: session.id };
   }
 
   /** The lookup calls another server, so signing in does not wait for it. */

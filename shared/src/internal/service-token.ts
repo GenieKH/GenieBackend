@@ -1,7 +1,7 @@
 import * as jwt from 'jsonwebtoken';
 
 /** The services that call each other. A token names its sender; a receiver names who it accepts. */
-export type ServiceName = 'user' | 'payment' | 'property' | 'chat';
+export type ServiceName = 'user' | 'payment' | 'property' | 'chat' | 'authentication' | 'notification';
 
 /** `typ` of a token one service signs for another. Never accepted as a user's token. */
 export const SERVICE_TOKEN = 'service';

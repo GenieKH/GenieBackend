@@ -11,6 +11,7 @@ const BUCKET = 'chat-attachments';
  */
 const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 const DOWNLOAD_URL_SECONDS = 60;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Where an attachment lives. Both people are in the path, so access needs no lookup. */
 export interface AttachmentLocation {
@@ -96,6 +97,22 @@ export class ChatAttachmentService implements OnModuleInit {
   async removeConversation(userId: string, partnerId: string): Promise<void> {
     await this.storage.removeFolder(BUCKET, `${userId}/${partnerId}`);
     await this.storage.removeFolder(BUCKET, `${partnerId}/${userId}`);
+  }
+
+  /**
+   * Refuses [path] unless it is a file [parties.senderId] sent to
+   * [parties.recipientId]: a deleted message only takes its own file along.
+   */
+  requireSentFile(parties: { senderId: string; recipientId: string }, path: string): void {
+    const [senderId, recipientId, fileId, ...rest] = path.split('/');
+    const isTheirs = senderId === parties.senderId && recipientId === parties.recipientId;
+    if (!isTheirs || !fileId || !UUID.test(fileId) || rest.length > 0) {
+      throw new BadRequestException('This file does not belong to the message');
+    }
+  }
+
+  async removeFile(path: string): Promise<void> {
+    await this.storage.removeFiles(BUCKET, [path]);
   }
 
   private pathOf(location: AttachmentLocation): string {

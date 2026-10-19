@@ -3,6 +3,7 @@ import { JsonCache, PrismaService } from '@genie/shared';
 import { CHAT_PIN_TTL_SECONDS, chatPinCacheKey } from './chat-pin-cache';
 import { ConversationStateService } from './conversation-state.service';
 import { DISPLAY_FIELDS, displayName } from './display-name';
+import { betweenPair, toMessageView, withReplyTo } from './message-view';
 import { NotificationClient } from './notification.client';
 import { PUBLIC_KEY_TTL_SECONDS, publicKeyCacheKey } from './public-key-cache';
 
@@ -38,6 +39,8 @@ export interface NewMessage {
   recipientId: string;
   ciphertext: string;
   nonce: string;
+  /** The message this one replies to, in the same conversation. */
+  replyToId?: string;
 }
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
@@ -107,10 +110,10 @@ export class ChatService {
   }
 
   /**
-   * Stores an encrypted message and returns it with the sender's display info.
-   * Sending the same `id` again returns the stored message instead of a duplicate.
-   * A new message also reaches the recipient's phones as a push; a retried one
-   * does not ping them twice.
+   * Stores an encrypted message and returns it with the sender's display info
+   * and the message it replies to. Sending the same `id` again returns the
+   * stored message instead of a duplicate. A new message also reaches the
+   * recipient's phones as a push; a retried one does not ping them twice.
    */
   async sendMessage(senderId: string, message: NewMessage) {
     if (message.recipientId === senderId) {
@@ -124,7 +127,7 @@ export class ChatService {
     }
 
     const { saved, created } = await this.createOrFindMessage(senderId, message);
-    const { sender, ...stored } = saved;
+    const { sender, ...stored } = toMessageView(saved);
     const senderName = displayName(sender);
     if (created) {
       this.notifications.chatMessage({
@@ -160,7 +163,7 @@ export class ChatService {
   }
 
   private async createOrFindMessage(senderId: string, message: NewMessage) {
-    const include = { sender: { select: DISPLAY_FIELDS } };
+    const include = { sender: { select: DISPLAY_FIELDS }, ...withReplyTo(senderId) };
     try {
       const saved = await this.prisma.message.create({
         data: {
@@ -169,6 +172,7 @@ export class ChatService {
           recipientId: message.recipientId,
           ciphertext: message.ciphertext,
           nonce: message.nonce,
+          replyToId: await this.quotable(senderId, message),
         },
         include,
       });
@@ -184,6 +188,20 @@ export class ChatService {
       }
       return { saved: existing, created: false };
     }
+  }
+
+  /**
+   * The message [message] replies to, if it is in the same conversation. One
+   * deleted meanwhile (or never there) leaves an ordinary message: the reply
+   * is still worth sending.
+   */
+  private async quotable(senderId: string, message: NewMessage): Promise<string | null> {
+    if (!message.replyToId) return null;
+    const quoted = await this.prisma.message.findFirst({
+      where: { id: message.replyToId, OR: betweenPair(senderId, message.recipientId) },
+      select: { id: true },
+    });
+    return quoted?.id ?? null;
   }
 
   /**
@@ -244,12 +262,18 @@ export class ChatService {
         ON state.user_id = ${userId}::uuid AND state.partner_id = p.partner_id
       CROSS JOIN LATERAL (
         SELECT * FROM (
-          (SELECT id, sender_id, ciphertext, nonce, created_at, read_at FROM messages
+          (SELECT id, sender_id, ciphertext, nonce, created_at, read_at FROM messages m
             WHERE sender_id = ${userId}::uuid AND recipient_id = p.partner_id
+              AND NOT EXISTS (
+                SELECT 1 FROM chat_hidden_messages h WHERE h.user_id = ${userId}::uuid AND h.message_id = m.id
+              )
             ORDER BY created_at DESC LIMIT 1)
           UNION ALL
-          (SELECT id, sender_id, ciphertext, nonce, created_at, read_at FROM messages
+          (SELECT id, sender_id, ciphertext, nonce, created_at, read_at FROM messages m
             WHERE sender_id = p.partner_id AND recipient_id = ${userId}::uuid
+              AND NOT EXISTS (
+                SELECT 1 FROM chat_hidden_messages h WHERE h.user_id = ${userId}::uuid AND h.message_id = m.id
+              )
             ORDER BY created_at DESC LIMIT 1)
         ) both_directions
         ORDER BY created_at DESC
@@ -263,7 +287,7 @@ export class ChatService {
         where: { id: { in: shown.map((row) => row.partnerId) }, ...VISIBLE },
         select: { id: true, ...DISPLAY_FIELDS },
       }),
-      // Messages hidden by "delete for me" do not count as unread.
+      // Messages hidden by "delete for me" (the chat or one message) do not count as unread.
       this.prisma.$queryRaw<{ senderId: string; count: number }[]>`
         SELECT m.sender_id AS "senderId", count(*)::int AS count
         FROM messages m
@@ -272,6 +296,9 @@ export class ChatService {
         WHERE m.recipient_id = ${userId}::uuid
           AND m.read_at IS NULL
           AND (state.cleared_at IS NULL OR m.created_at > state.cleared_at)
+          AND NOT EXISTS (
+            SELECT 1 FROM chat_hidden_messages h WHERE h.user_id = ${userId}::uuid AND h.message_id = m.id
+          )
         GROUP BY m.sender_id`,
     ]);
     const partnerById = new Map(partners.map((partner) => [partner.id, partner]));
@@ -294,7 +321,9 @@ export class ChatService {
 
   /**
    * The newest `limit` messages of a conversation (older than `before`, when
-   * given), returned oldest first so they can be shown top to bottom.
+   * given), returned oldest first so they can be shown top to bottom. Each
+   * carries the message it replies to. Messages the user deleted for
+   * themselves are left out.
    */
   async getMessagesWith(userId: string, participantId: string, limit = 50, before?: string) {
     if (!(await this.isVisible(participantId))) return [];
@@ -303,10 +332,8 @@ export class ChatService {
     const clearedAt = await this.states.clearedAt(userId, participantId);
     const newestFirst = await this.prisma.message.findMany({
       where: {
-        OR: [
-          { senderId: userId, recipientId: participantId },
-          { senderId: participantId, recipientId: userId },
-        ],
+        OR: betweenPair(userId, participantId),
+        hiddenBy: { none: { userId } },
         ...((before || clearedAt) && {
           createdAt: {
             ...(before && { lt: new Date(before) }),
@@ -316,8 +343,9 @@ export class ChatService {
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
+      include: withReplyTo(userId),
     });
-    return newestFirst.reverse();
+    return newestFirst.reverse().map((row) => toMessageView(row, clearedAt));
   }
 
   private async isVisible(userId: string): Promise<boolean> {

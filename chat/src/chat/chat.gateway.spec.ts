@@ -6,6 +6,7 @@ import * as wsAuth from './ws-auth';
 const ALICE = '11111111-1111-4111-8111-111111111111';
 const BOB = '22222222-2222-4222-8222-222222222222';
 const MESSAGE_ID = '33333333-3333-4333-8333-333333333333';
+const OTHER_MESSAGE_ID = '44444444-4444-4444-8444-444444444444';
 const LAST_SEEN = new Date('2026-01-01T10:00:00Z');
 
 describe('ChatGateway', () => {
@@ -23,8 +24,8 @@ describe('ChatGateway', () => {
 
   /** Room name -> socket ids, as socket.io tracks them. */
   let rooms: Map<string, Set<string>>;
-  /** Everything the server broadcast: [room, event, payload]. */
-  let broadcasts: [string, string, unknown][];
+  /** Everything the server broadcast: [room(s), event, payload]. */
+  let broadcasts: [string | string[], string, unknown][];
 
   /** A connected socket; records which rooms a broadcast was sent to. */
   function socketFor(userId: string, id = `socket-${userId}`) {
@@ -71,7 +72,7 @@ describe('ChatGateway', () => {
       in: (room: string) => ({
         fetchSockets: () => Promise.resolve([...(rooms.get(room) ?? [])]),
       }),
-      to: (room: string) => ({
+      to: (room: string | string[]) => ({
         emit: (event: string, data: unknown) => broadcasts.push([room, event, data]),
       }),
     };
@@ -227,6 +228,14 @@ describe('ChatGateway', () => {
       expect(ack).toMatchObject({ status: 'ok', messageId: MESSAGE_ID });
     });
 
+    it('passes on which message a reply quotes', async () => {
+      const client = socketFor(ALICE);
+
+      await gateway.handleSendMessage(client as never, { ...payload, replyToId: OTHER_MESSAGE_ID });
+
+      expect(chatService.sendMessage.mock.calls[0][1]).toMatchObject({ replyToId: OTHER_MESSAGE_ID });
+    });
+
     it('takes the sender from the socket, never from the payload', async () => {
       const client = socketFor(ALICE);
 
@@ -286,6 +295,30 @@ describe('ChatGateway', () => {
       const ack = await gateway.handleSendMessage(client as never, payload);
 
       expect(ack).toEqual({ status: 'error', message: 'Failed to process message' });
+    });
+  });
+  describe('message changes', () => {
+    it("tells both people's devices about an edit", () => {
+      const edited = { id: MESSAGE_ID, senderId: ALICE, recipientId: BOB, ciphertext: 'new' };
+
+      gateway.notifyMessageEdited(edited);
+
+      expect(broadcasts).toEqual([[[`user:${ALICE}`, `user:${BOB}`], 'messageEdited', edited]]);
+    });
+
+    it("tells only the caller's devices about a delete for me", () => {
+      gateway.notifyMessageDeleted(BOB, MESSAGE_ID, { senderId: ALICE, recipientId: BOB, forEveryone: false });
+
+      expect(broadcasts).toEqual([[`user:${BOB}`, 'messageDeleted', { messageId: MESSAGE_ID, participantId: ALICE }]]);
+    });
+
+    it('tells both people about a delete for everyone, each naming the other person', () => {
+      gateway.notifyMessageDeleted(ALICE, MESSAGE_ID, { senderId: ALICE, recipientId: BOB, forEveryone: true });
+
+      expect(broadcasts).toEqual([
+        [`user:${ALICE}`, 'messageDeleted', { messageId: MESSAGE_ID, participantId: BOB }],
+        [`user:${BOB}`, 'messageDeleted', { messageId: MESSAGE_ID, participantId: ALICE }],
+      ]);
     });
   });
 });

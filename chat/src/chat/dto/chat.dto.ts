@@ -25,6 +25,9 @@ const BACKUP_VERIFIER = /^[A-Za-z0-9+/]{43}=$/;
 /** A signed token is a few hundred characters. */
 const MAX_PROOF_TOKEN_LENGTH = 2048;
 
+/** Three UUIDs and two slashes. */
+const MAX_ATTACHMENT_PATH_LENGTH = 120;
+
 /** A 32-byte public key is 44 characters. */
 const MAX_PUBLIC_KEY_LENGTH = 128;
 
@@ -112,6 +115,38 @@ export class SendMessageDto {
   @IsNotEmpty()
   @MaxLength(MAX_NONCE_LENGTH)
   nonce: string;
+
+  /** The message this one replies to, in the same conversation. */
+  @IsOptional()
+  @IsUUID()
+  replyToId?: string;
+}
+
+/** `POST /chat/messages/:messageId/edit`: the new text, sealed again on the sender's device. */
+export class EditMessageDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_CIPHERTEXT_LENGTH)
+  ciphertext: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_NONCE_LENGTH)
+  nonce: string;
+}
+
+/** `POST /chat/messages/:messageId/delete`. */
+export class DeleteMessageDto {
+  /** Delete the sender's own message for both people, instead of hiding it from the caller. */
+  @IsOptional()
+  @IsBoolean()
+  forEveryone?: boolean;
+
+  /** With `forEveryone`: the file the message carried, `senderId/recipientId/fileId`. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_ATTACHMENT_PATH_LENGTH)
+  attachmentPath?: string;
 }
 
 /** Asks for a place to upload one encrypted file for this recipient. */

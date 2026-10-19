@@ -386,6 +386,23 @@ A conversation is the messages between two people, so each person's own view of 
 
 Each change is announced on the socket as `conversationChanged { participantId, historyCleared }` to the caller's devices, and for `forEveryone` to the other person's devices too, so lists and open chats update at once.
 
+### Reply to, edit and delete one message
+
+Migration 22: `messages.reply_to_id` (FK to `messages`, `ON DELETE SET NULL`), `messages.edited_at`, and `chat_hidden_messages (user_id, message_id)` for "delete for me".
+
+| Endpoint / event | What it does |
+|---|---|
+| socket `sendMessage { ..., replyToId? }` | A reply. Linked only if that message is in the same conversation; otherwise (deleted meanwhile, or another chat) it is stored as an ordinary message. Every message the app receives (ack, `newMessage`, history) carries `replyTo { id, senderId, recipientId, ciphertext, nonce, createdAt, editedAt }` or `null`, and `editedAt` |
+| `POST /chat/messages/:messageId/edit` `{ ciphertext, nonce }` | The sender's new text, sealed again on their device, within **1 hour** of sending (checked inside the update). `403` someone else's message or too late, `404` not in the caller's conversations. Returns the stored message |
+| `POST /chat/messages/:messageId/delete` `{ forEveryone?, attachmentPath? }` | Default: hidden from the caller only (history, conversation list preview, unread count); either person may do it. `forEveryone`: sender only (`403` otherwise), no time limit; the row is deleted with nothing left in its place, replies to it lose their quote, and `attachmentPath` (`senderId/recipientId/fileId` of that message, `400` otherwise) is removed from storage. `404` once gone |
+| socket `messageEdited` | The edited message (no `replyTo`), to both people's devices |
+| socket `messageDeleted { messageId, participantId }` | To the caller's devices, and for `forEveryone` to the other person's too. `participantId` is the other person as seen by the receiver |
+
+- Edit and delete share a limit of 60 per user per minute.
+- The server still never reads text: the reply link is also sealed inside the message (`re`), and the app shows a quote only when the server's `replyTo.id` matches it, so the server can drop a quote but never swap one.
+- A quoted message the reader deleted for themselves, or from before they cleared the chat, comes back as `replyTo: null`.
+- Not covered: a push already shown on a phone stays there after the message is deleted or edited.
+
 ## 14. Chat key recovery: new phone, change PIN, forgot PIN
 
 ```mermaid

@@ -7,17 +7,20 @@ import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { ConversationStateService } from './conversation-state.service';
 import { InternalAccountsController } from './internal-accounts.controller';
+import { MessageActionsController } from './message-actions.controller';
+import { MessageActionsService } from './message-actions.service';
 import { NotificationClient } from './notification.client';
 import { PresenceService } from './presence.service';
 
 @Module({
   imports: [SupabaseModule],
-  controllers: [ChatController, InternalAccountsController],
+  controllers: [ChatController, MessageActionsController, InternalAccountsController],
   providers: [
     ChatService,
     ChatBackupService,
     ChatAttachmentService,
     ConversationStateService,
+    MessageActionsService,
     PresenceService,
     NotificationClient,
     RevokedSessions,

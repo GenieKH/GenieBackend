@@ -3,7 +3,13 @@ import { fakeCache } from '@genie/shared/testing';
 import { ChatService } from './chat.service';
 
 describe('ChatService', () => {
-  const messageTable = { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), groupBy: jest.fn() };
+  const messageTable = {
+    create: jest.fn(),
+    findUnique: jest.fn(),
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+    groupBy: jest.fn(),
+  };
   const userTable = { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() };
   const prisma = { message: messageTable, user: userTable, $queryRaw: jest.fn() };
   const states = { clearedAt: jest.fn() };
@@ -96,6 +102,7 @@ describe('ChatService', () => {
         recipientId: 'bob',
         ciphertext: 'cipher',
         nonce: 'nonce',
+        replyToId: null,
       });
       expect(message).toMatchObject({ id: 'm-1', senderId: 'alice', senderName: 'Dara', senderAvatar: null });
       expect(message).not.toHaveProperty('sender');
@@ -324,6 +331,7 @@ describe('ChatService', () => {
           { senderId: 'alice', recipientId: 'bob' },
           { senderId: 'bob', recipientId: 'alice' },
         ],
+        hiddenBy: { none: { userId: 'alice' } },
         createdAt: { lt: new Date('2026-01-01T00:00:00Z') },
       });
     });
@@ -335,6 +343,92 @@ describe('ChatService', () => {
       await service.getMessagesWith('alice', 'bob', 50);
 
       expect(messageTable.findMany.mock.calls[0][0].where.createdAt).toEqual({ gt: new Date('2026-01-05T00:00:00Z') });
+    });
+
+    describe('replies', () => {
+      const quoted = {
+        id: 'q-1',
+        senderId: 'bob',
+        recipientId: 'alice',
+        ciphertext: 'quoted-cipher',
+        nonce: 'quoted-nonce',
+        createdAt: new Date('2026-01-03T00:00:00Z'),
+        editedAt: null,
+      };
+
+      it('carries the quoted message, still encrypted', async () => {
+        messageTable.findMany.mockResolvedValue([{ id: 'm-2', replyToId: 'q-1', replyTo: { ...quoted, hiddenBy: [] } }]);
+
+        const [message] = await service.getMessagesWith('alice', 'bob', 50);
+
+        expect(message).toEqual({ id: 'm-2', replyTo: quoted });
+        expect(messageTable.findMany.mock.calls[0][0].include.replyTo.select.hiddenBy).toEqual({
+          where: { userId: 'alice' },
+          select: { userId: true },
+        });
+      });
+
+      it('does not quote a message the reader deleted for themselves', async () => {
+        messageTable.findMany.mockResolvedValue([
+          { id: 'm-2', replyToId: 'q-1', replyTo: { ...quoted, hiddenBy: [{ userId: 'alice' }] } },
+        ]);
+
+        const [message] = await service.getMessagesWith('alice', 'bob', 50);
+
+        expect(message.replyTo).toBeNull();
+      });
+
+      it('does not quote a message from before the reader deleted the chat for themselves', async () => {
+        states.clearedAt.mockResolvedValue(new Date('2026-01-04T00:00:00Z'));
+        messageTable.findMany.mockResolvedValue([{ id: 'm-2', replyToId: 'q-1', replyTo: { ...quoted, hiddenBy: [] } }]);
+
+        const [message] = await service.getMessagesWith('alice', 'bob', 50);
+
+        expect(message.replyTo).toBeNull();
+      });
+    });
+  });
+
+  describe('sending a reply', () => {
+    it('links a reply to a message of the same conversation', async () => {
+      messageTable.findFirst.mockResolvedValue({ id: 'q-1' });
+
+      await service.sendMessage('alice', { ...newMessage, replyToId: 'q-1' });
+
+      expect(messageTable.findFirst.mock.calls[0][0].where).toEqual({
+        id: 'q-1',
+        OR: [
+          { senderId: 'alice', recipientId: 'bob' },
+          { senderId: 'bob', recipientId: 'alice' },
+        ],
+      });
+      expect(messageTable.create.mock.calls[0][0].data.replyToId).toBe('q-1');
+    });
+
+    it('sends a reply to a deleted message, or one from another chat, as an ordinary message', async () => {
+      messageTable.findFirst.mockResolvedValue(null);
+
+      await service.sendMessage('alice', { ...newMessage, replyToId: 'elsewhere' });
+
+      expect(messageTable.create.mock.calls[0][0].data.replyToId).toBeNull();
+    });
+
+    it('returns the quoted message with the reply', async () => {
+      messageTable.findFirst.mockResolvedValue({ id: 'q-1' });
+      const quoted = { id: 'q-1', senderId: 'bob', ciphertext: 'q', nonce: 'n', hiddenBy: [] };
+      messageTable.create.mockResolvedValue({ ...stored, replyToId: 'q-1', replyTo: quoted });
+
+      const sent = await service.sendMessage('alice', { ...newMessage, replyToId: 'q-1' });
+
+      expect(sent.replyTo).toEqual({ id: 'q-1', senderId: 'bob', ciphertext: 'q', nonce: 'n' });
+      expect(sent).not.toHaveProperty('replyToId');
+    });
+
+    it('needs no lookup for an ordinary message', async () => {
+      await service.sendMessage('alice', newMessage);
+
+      expect(messageTable.findFirst).not.toHaveBeenCalled();
+      expect(messageTable.create.mock.calls[0][0].data.replyToId).toBeNull();
     });
   });
 });

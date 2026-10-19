@@ -185,6 +185,28 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
+  /** Both people's devices replace the text of an edited message. */
+  notifyMessageEdited(message: { senderId: string; recipientId: string }) {
+    this.server.to([userRoom(message.senderId), userRoom(message.recipientId)]).emit('messageEdited', message);
+  }
+
+  /**
+   * [userId]'s devices drop a message they deleted; with [forEveryone] the
+   * other person's devices drop it too. `participantId` is the other person
+   * in the conversation, as seen by whoever receives the event.
+   */
+  notifyMessageDeleted(
+    userId: string,
+    messageId: string,
+    change: { senderId: string; recipientId: string; forEveryone: boolean },
+  ) {
+    const partnerId = change.senderId === userId ? change.recipientId : change.senderId;
+    this.server.to(userRoom(userId)).emit('messageDeleted', { messageId, participantId: partnerId });
+    if (change.forEveryone) {
+      this.server.to(userRoom(partnerId)).emit('messageDeleted', { messageId, participantId: userId });
+    }
+  }
+
   /** How many devices the user has connected, counted across every instance of this service. */
   private async connectedDevices(userId: string): Promise<number> {
     let timer: NodeJS.Timeout | undefined;

@@ -285,7 +285,16 @@ flowchart LR
 - Like, favorite and view are `INSERT ... ON CONFLICT DO NOTHING`: repeating is harmless.
 - Every listing read carries `_count: { favorites, views, contacts }`, counted for the listings read only (`PropertyEngagementCounts`; Prisma's own `_count` grouped the whole tables on every read). A view is one row per person (`property_views`), so `views` is how many people opened it; the owner opening their own listing is not recorded (migration 19 removed earlier ones). The app records a view when a listing is selected on the map or its detail sheet opens. Counts may lag by the public cache (map 30 s, detail 60 s).
 - Contact stores a message for the owner in the database. **The owner is not notified** (no push, no email).
-- Favorites list is unpaginated.
+- Lists can be read a page at a time. Without `limit` each answers the whole list as an array, as before, so older app builds keep working:
+
+| Endpoint | Page |
+|---|---|
+| `GET /properties/my/favorites?limit=&offset=&sort=` | `{ items, nextOffset }`; `sort`: `saved` (most recently saved first, default), `newest` (listing age), `priceHigh`, `priceLow` (by number) |
+| `GET /properties/my/favorites/ids` | The ids of every saved listing: what the heart on each card shows |
+| `GET /properties?limit=&offset=` | The user's own listings, newest first: `{ items, nextOffset, countByStatus }`; `countByStatus` covers all of them (the My Properties tabs) |
+| `GET /properties/my/in-area?minLat=&maxLat=&minLng=&maxLng=` | The user's own listings (drafts too) inside a map area, newest 500: the map's edit markers |
+
+  `limit` is 1-50 (`offset` at most 10 000).
 
 ---
 
@@ -380,7 +389,7 @@ A conversation is the messages between two people, so each person's own view of 
 
 | Endpoint | What it does |
 |---|---|
-| `GET /chat/conversations?list=archived` | The archive. Without `list` (or `list=main`): the main list, without archived or deleted conversations |
+| `GET /chat/conversations?list=archived` | The archive. Without `list` (or `list=main`): the main list, without archived or deleted conversations. With `limit` (1-100): one page `{ items, nextCursor, unreadTotal }`; pass `cursor=<nextCursor>` for the next. The cursor names the last conversation shown, so one jumping to the top meanwhile is neither repeated nor skipped. `unreadTotal` counts the whole list (the chat tab badge) |
 | `POST /chat/conversations/:participantId/archive` / `unarchive` | For the caller only. A newer message (from either side) brings it back to the main list by itself |
 | `POST /chat/conversations/:participantId/delete` `{ forEveryone?: boolean }` | Default: for the caller only; messages up to now are hidden from them (history, unread count). A newer message brings the conversation back, starting there. `forEveryone: true`: deletes every message both ways and the pair's attachment files, for both people; cannot be undone |
 

@@ -10,7 +10,7 @@ const PLACE = { id: LISTING, userId: ME, lat: 11.56, lng: 104.92 };
 describe('PropertyPublicationService', () => {
   const propertyTable = { update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn() };
   const query = { findOwned: jest.fn() };
-  const publicCache = { changed: jest.fn() };
+  const listingChanges = { changed: jest.fn() };
   let service: PropertyPublicationService;
 
   beforeEach(() => {
@@ -22,7 +22,7 @@ describe('PropertyPublicationService', () => {
       { property: propertyTable } as never,
       query as never,
       new PropertyStatusService(),
-      publicCache as never,
+      listingChanges as never,
     );
   });
 
@@ -64,7 +64,7 @@ describe('PropertyPublicationService', () => {
         where: { id: LISTING, status: 'Pending' },
         data: { status: 'Active' },
       });
-      expect(publicCache.changed).toHaveBeenCalledWith(PLACE);
+      expect(listingChanges.changed).toHaveBeenCalledWith(PLACE);
     });
 
     it('returns an unpaid listing to Draft without touching the public cache', async () => {
@@ -74,7 +74,7 @@ describe('PropertyPublicationService', () => {
         where: { id: LISTING, status: 'Pending' },
         data: { status: 'Draft' },
       });
-      expect(publicCache.changed).not.toHaveBeenCalled();
+      expect(listingChanges.changed).not.toHaveBeenCalled();
     });
 
     it('changes only a Pending listing, so a repeated call does nothing', async () => {
@@ -82,7 +82,7 @@ describe('PropertyPublicationService', () => {
 
       await service.settlePublish(LISTING, 'Active');
 
-      expect(publicCache.changed).not.toHaveBeenCalled();
+      expect(listingChanges.changed).not.toHaveBeenCalled();
     });
   });
 

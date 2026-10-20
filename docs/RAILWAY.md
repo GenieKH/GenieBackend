@@ -92,6 +92,25 @@ Add Railway's Redis database to the project and point every service that uses it
 sessions and chat fan-out between instances; nothing stores its only copy there, so a Redis restart costs
 speed, not data. Do **not** run Redis inside a service container any more: that was a single point of failure.
 
+## 4b. Search engine (Meilisearch)
+
+Optional: without it, search reads the database exactly as before. With it, listings and publishers are ranked by
+relevance, typos are tolerated and Khmer text is split into words.
+
+1. Add a service from the Docker image `getmeili/meilisearch:v1.54.3` (pin the version; upgrade on purpose).
+2. Attach a volume mounted at `/meili_data`, so the index survives restarts.
+3. Variables of that service: `MEILI_ENV=production`, `MEILI_NO_ANALYTICS=true`, and `MEILI_MASTER_KEY` set to a
+   long random secret (`openssl rand -base64 32`).
+4. Do not give it a public domain: only the property service talks to it, over the private network.
+5. Ask it for an admin API key once (`GET /keys` with the master key, from a shell in that service) and set, on the
+   **property** service: `MEILISEARCH_URL=http://${{Meilisearch.RAILWAY_PRIVATE_DOMAIN}}:7700` and
+   `MEILISEARCH_API_KEY=<the "Default Admin API Key">`. The master key itself stays on the Meilisearch service.
+
+The property service fills an empty index when it starts and rebuilds it every night at 03:00 Cambodia time, which
+also repairs any change made while the engine was down. Every listing change updates the index within moments.
+Results are always read back from the database, so a stale index can never show a draft, a deleted listing or a
+hidden account. If the engine is down or slow (over 1.5 s), search answers from the database and logs a warning.
+
 ## 5. Moving from the single container to six services
 
 1. **Staging first** (Railway **Environments**): create `staging`, add the seven services with staging

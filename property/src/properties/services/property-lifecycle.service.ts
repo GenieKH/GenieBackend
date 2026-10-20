@@ -12,7 +12,8 @@ import { toCreateData, toUpdateData } from '../property-write-data';
 import { PropertyStatusService } from '../property-status.service';
 import { NO_ENGAGEMENT, PropertyEngagementCounts, withEngagement } from './property-engagement-counts.service';
 import { PropertyQueryService } from './property-query.service';
-import { CachedListing, Position, PublicPropertyCache } from './public-property-cache.service';
+import { ListingChanges } from './listing-changes.service';
+import { CachedListing, Position } from './public-property-cache.service';
 
 /** The keyword codes of a property read with PROPERTY_WITH_RELATIONS. */
 const keywordCodes = (property: { keywords?: { keyword: string }[] }) =>
@@ -28,7 +29,7 @@ export class PropertyLifecycleService {
     private readonly prisma: PrismaService,
     private readonly query: PropertyQueryService,
     private readonly status: PropertyStatusService,
-    private readonly publicCache: PublicPropertyCache,
+    private readonly listingChanges: ListingChanges,
     private readonly nearby: PropertyNearbyService,
     private readonly counts: PropertyEngagementCounts,
   ) {}
@@ -139,7 +140,7 @@ export class PropertyLifecycleService {
    */
   private async refreshPublicView(listing: CachedListing, statuses: string[], movedFrom?: Position) {
     if (statuses.includes(PUBLIC_STATUS)) {
-      await this.publicCache.changed(listing, movedFrom);
+      await this.listingChanges.changed(listing, movedFrom);
     }
   }
 }

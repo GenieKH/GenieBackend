@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { FakeRedis, fakeCache } from '@genie/shared/testing';
+import { ListingChanges } from './listing-changes.service';
 import { PropertyEngagementCounts } from './property-engagement-counts.service';
 import { PropertyLifecycleService } from './property-lifecycle.service';
 import { MapBoundsQuery } from '../dto/map-bounds.query';
@@ -118,7 +119,7 @@ describe('public property cache', () => {
         canMarkSold: () => true,
         canRelist: () => true,
       } as never,
-      publicCache,
+      new ListingChanges(publicCache),
       { locationChanged: jest.fn(), keywordsChanged: jest.fn() } as never,
       counts,
     );

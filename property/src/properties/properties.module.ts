@@ -10,6 +10,7 @@ import { PropertyStatusService } from './property-status.service';
 import { PublicPropertiesController } from './public-properties.controller';
 import { FavoriteListingsService } from './services/favorite-listings.service';
 import { GuestSessionService } from './services/guest-session.service';
+import { ListingChanges } from './services/listing-changes.service';
 import { OwnerListingsService } from './services/owner-listings.service';
 import { PropertyEngagementCounts } from './services/property-engagement-counts.service';
 import { PropertyEngagementService } from './services/property-engagement.service';
@@ -27,6 +28,7 @@ import { PropertyPhotoStorage } from './storage/property-photo-storage';
   providers: [
     PropertyStatusService,
     PublicPropertyCache,
+    ListingChanges,
     PropertyEngagementCounts,
     PropertyQueryService,
     FavoriteListingsService,
@@ -42,10 +44,14 @@ import { PropertyPhotoStorage } from './storage/property-photo-storage';
     { provide: NearbyPlaceProvider, useClass: GoogleNearbyPlaceProvider },
     { provide: RouteDistanceProvider, useClass: GoogleRouteDistanceProvider },
   ],
-  // Search reads listings through these services.
+  // Search reads listings through these services, caches what it finds
+  // with the public listings, and keeps its index current by listening to
+  // every listing change.
   exports: [
     PropertyQueryService,
     PropertySearchService,
+    PublicPropertyCache,
+    ListingChanges,
   ],
 })
 export class PropertiesModule {}

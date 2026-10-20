@@ -40,6 +40,20 @@ export class PropertySearchService {
     );
   }
 
+  /**
+   * The published listings among `ids`, in the order of `ids` (a search
+   * engine's ranking). An id no longer published is left out, however stale
+   * the engine that found it.
+   */
+  async byIds(ids: string[]) {
+    if (ids.length === 0) return [];
+    const listings = await this.prisma.property.findMany({
+      where: { ...PUBLISHED, id: { in: ids } },
+      select: MAP_SELECT,
+    });
+    return this.counts.attach(inOrderOf(ids, listings));
+  }
+
   /** One owner's published listings, newest first. */
   byOwner(ownerId: string, limit: number) {
     return this.publicCache.ownerListings(ownerId, `${limit}`, async () =>
@@ -53,4 +67,10 @@ export class PropertySearchService {
       ),
     );
   }
+}
+
+/** `rows` sorted as their ids are in `ids`. */
+export function inOrderOf<T extends { id: string }>(ids: string[], rows: T[]): T[] {
+  const position = new Map(ids.map((id, index) => [id, index]));
+  return [...rows].sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
 }

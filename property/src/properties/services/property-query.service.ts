@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService, ReadPrisma } from '@genie/shared';
 import {
   MAP_SELECT,
   PROPERTY_WITH_RELATIONS,
@@ -23,6 +23,8 @@ export class PropertyQueryService {
     private readonly prisma: PrismaService,
     private readonly publicCache: PublicPropertyCache,
     private readonly counts: PropertyEngagementCounts,
+    /** For what every visitor sees; the owner's own reads use `prisma`. */
+    private readonly publicReads: ReadPrisma,
   ) {}
 
   /** One property owned by `userId`; 404 if it is missing, deleted or not theirs. */
@@ -45,7 +47,7 @@ export class PropertyQueryService {
   findPublic(id: string) {
     return this.publicCache.detail(id, async () => {
       const [property, counts] = await Promise.all([
-        this.prisma.property.findFirst({
+        this.publicReads.property.findFirst({
           where: { id, ...PUBLISHED },
           include: PROPERTY_WITH_RELATIONS,
         }),
@@ -70,7 +72,7 @@ export class PropertyQueryService {
     const box = widenToGrid(bounds);
     const properties = await this.publicCache.map(box, filter, async () =>
       this.counts.attach(
-        await this.prisma.property.findMany({
+        await this.publicReads.property.findMany({
           where: {
             ...PUBLISHED,
             ...(filter.propertyType && { propertyType: filter.propertyType }),

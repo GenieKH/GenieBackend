@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { ReadPrisma } from '@genie/shared';
 import { inOrderOf } from '../properties/services/property-search.service';
 
 /** What a list of search results shows of a person: no contact details. */
@@ -61,7 +61,8 @@ type PublisherRow = {
  */
 @Injectable()
 export class PeopleSearchService {
-  constructor(private readonly prisma: PrismaService) {}
+  /** Public reads: a moment old is fine. */
+  constructor(private readonly prisma: ReadPrisma) {}
 
   /** Publishers whose name or username contains every one of `terms`; the busiest first. */
   async matching(terms: string[], limit: number): Promise<PublisherSummary[]> {

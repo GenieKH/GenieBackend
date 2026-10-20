@@ -110,7 +110,7 @@ describe('public property cache', () => {
     redis = new FakeRedis();
     publicCache = new PublicPropertyCache(fakeCache(redis));
     const counts = new PropertyEngagementCounts(prisma as never);
-    query = new PropertyQueryService(prisma as never, publicCache, counts);
+    query = new PropertyQueryService(prisma as never, publicCache, counts, prisma as never);
     lifecycle = new PropertyLifecycleService(
       prisma as never,
       query,

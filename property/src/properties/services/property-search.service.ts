@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { ReadPrisma } from '@genie/shared';
 import { MAP_SELECT, PUBLISHED } from '../property-includes';
 import { PropertyEngagementCounts } from './property-engagement-counts.service';
 import { PublicPropertyCache } from './public-property-cache.service';
 
-/** Published listings found by what they say or who posted them. */
+/** Published listings found by what they say or who posted them. Public reads: a moment old is fine. */
 @Injectable()
 export class PropertySearchService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: ReadPrisma,
     private readonly publicCache: PublicPropertyCache,
     private readonly counts: PropertyEngagementCounts,
   ) {}

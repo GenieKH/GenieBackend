@@ -82,7 +82,8 @@ docker compose down --remove-orphans   # stop (and remove the old single-contain
 
 Redis, six services, one image definition (`Dockerfile`, chosen with `--build-arg SERVICE=...`).
 Only port 4000 is published. Each container restarts by itself (`restart: unless-stopped`).
-Deploying to Railway: see [docs/RAILWAY.md](docs/RAILWAY.md).
+Deploying to Railway: see [docs/RAILWAY.md](docs/RAILWAY.md). Nightly encrypted database backups and how to
+restore one: see [docs/BACKUPS.md](docs/BACKUPS.md).
 
 ### Redis: cache, limits, chat between instances
 
@@ -92,7 +93,8 @@ sockets on the same instance.
 
 | Cached | Expires | Cleared at once when |
 |---|---|---|
-| Map search (`/public/properties/map`), per ~1 km grid box | 30 s | any published listing is created, edited, published, hidden, sold, paid for, or gets photos, or an owner's name or picture changes |
+| Map search (`/public/properties/map`), per ~1 km grid box | 30 s | a published listing inside it (in the same ~11 km cell) is created, edited, moved, published, hidden, sold, paid for, or gets photos, or its owner's name or picture changes. A map wider than 64 cells is cleared by any such change |
+| Text search listings / one owner's listings | 30 s | any published listing changes / one of that owner's does |
 | Listing page (`/public/properties/:id`) | 60 s | that listing changes, or its owner's name or picture does |
 | Chat public key (`/chat/keys/:userId`) | 10 min | that user publishes a new key, or their account is hidden, shown again or deleted |
 | Public profile (`/users/:id`) | 2 min | that user edits their profile or picture, or their account is hidden, shown again or deleted |
@@ -101,7 +103,11 @@ Redis also holds the sessions that were signed out (`sessions:revoked:<id>`, 15 
 a `sessions:revoked` channel), see "Sessions, password and account".
 
 Only data that is the same for every viewer is cached; `isVisited` is looked up per user. Map
-searches are widened to the grid box, so the answer can contain listings just outside the viewport.
+searches are widened to the grid box (the app asks for the box already widened, so nearby positions
+reuse its in-memory answer too), so the answer can contain listings just outside the viewport.
+
+The gateway gzips responses for clients that accept it (the app does): a map answer of 500 listings
+shrinks several times.
 
 Also in Redis: the gateway's 300 requests/minute per address, login and reset-code attempt limits,
 chat send / upload / backup-lookup limits, and the Socket.IO adapter that relays chat events and

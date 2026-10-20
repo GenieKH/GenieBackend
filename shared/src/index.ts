@@ -1,5 +1,6 @@
 export { PrismaModule } from './prisma/prisma.module';
 export { PrismaService } from './prisma/prisma.service';
+export { ReadPrisma } from './prisma/read-prisma';
 
 export { RedisModule } from './redis/redis.module';
 export { JsonCache } from './redis/json-cache.service';

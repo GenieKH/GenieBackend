@@ -1,9 +1,9 @@
 import { Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
 import { UserRepository } from '../users/user.repository';
 import { ClientContext } from './client-context';
 import { EstablishedDeviceService, SessionCaller, sessionStartOf } from './established-device.service';
+import { refreshTokenMatches } from './refresh-token-hash';
 import { RefreshTokenRecord, RefreshTokenRepository } from './refresh-token.repository';
 import { SessionRevocationService } from './session-revocation.service';
 import { TokenIssuerService, TokenPair } from './token-issuer.service';
@@ -59,7 +59,7 @@ export class SessionService {
       await this.rejectRevokedToken(record, sub);
     }
 
-    if (!(await bcrypt.compare(refreshToken, record.token_hash))) {
+    if (!(await refreshTokenMatches(refreshToken, record.token_hash))) {
       throw new UnauthorizedException('Invalid refresh token signature');
     }
 

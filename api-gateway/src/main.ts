@@ -4,6 +4,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import compression from 'compression';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { buildCorsOptions } from './cors.config';
@@ -14,6 +15,10 @@ async function bootstrap() {
 
   app.set('trust proxy', 1);
   app.use(helmet());
+  // Gzips what the services answer (JSON listings shrink several times) for
+  // clients that accept it. Small bodies are sent as they are; WebSocket
+  // upgrades never pass through here.
+  app.use(compression());
   app.enableCors(buildCorsOptions());
   app.enableShutdownHooks();
 

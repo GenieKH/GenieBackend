@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { clientContextFrom } from './client-context';
 import { EstablishedDeviceService } from './established-device.service';
 import { isPublicAddress } from './ip-location.provider';
+import { hashRefreshToken } from './refresh-token-hash';
 import { SessionRevocationService } from './session-revocation.service';
 import { SessionService } from './session.service';
 import { continueOrStartSession } from './token-issuer.service';
@@ -70,6 +71,18 @@ describe('SessionService', () => {
       expect(refreshTokens.revokeIfActive).toHaveBeenCalledWith('t1');
       expect(issuer.issue).toHaveBeenCalledWith('u1', 'agent', CLIENT, used);
       expect(result).toEqual({ accessToken: 'new-a', refreshToken: 'new-r' });
+    });
+
+    it('accepts a token stored with the current hash, and refuses another one', async () => {
+      refreshTokens.findById.mockResolvedValue(storedToken({ token_hash: hashRefreshToken(REFRESH_TOKEN) }));
+      refreshTokens.revokeIfActive.mockResolvedValue(true);
+      users.findById.mockResolvedValue({ id: 'u1', role: 'agent' });
+      issuer.issue.mockResolvedValue({ accessToken: 'new-a', refreshToken: 'new-r' });
+
+      await expect(service.refresh(REFRESH_TOKEN, CLIENT)).resolves.toEqual({ accessToken: 'new-a', refreshToken: 'new-r' });
+
+      refreshTokens.findById.mockResolvedValue(storedToken({ token_hash: hashRefreshToken('some-other-token') }));
+      await expect(service.refresh(REFRESH_TOKEN, CLIENT)).rejects.toThrow('Invalid refresh token signature');
     });
 
     it('treats a replayed token as theft when its session moved on, and revokes every session', async () => {

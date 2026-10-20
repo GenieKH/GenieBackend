@@ -85,7 +85,7 @@ flowchart LR
 2. Gateway counts the request for the client IP and forwards it (no JWT needed on `/auth`).
 3. Per-account counter: 10 wrong passwords pauses that account for 15 minutes. A correct login clears it.
 4. Same error for unknown user and wrong password (no account probing). bcrypt, 10 rounds.
-5. A refresh token row is stored with only a bcrypt hash and a `jti`.
+5. A refresh token row is stored with only a SHA-256 hash (`sha256:...`) and a `jti`. The token is a signed JWT with a random id, so a fast hash is as safe as bcrypt, which cost ~0.1 s per refresh and only read its first 72 bytes. Rows from before carry a bcrypt hash until their next refresh (at most 30 days).
 6. Two RS256 JWTs come back: access (15 min, `typ=access`) and refresh (30 days, `typ=refresh`).
 7. App keeps them in `flutter_secure_storage`.
 
@@ -227,7 +227,7 @@ flowchart LR
 ```
 
 - Optional filters (the pills under the search bar): `propertyType` and `listingType`, exact values from `property-options.ts` (400 otherwise). Served by the `(status, property_type, lat, lng)` and `(status, listing_type, lat, lng)` indexes.
-- The list is cached for 30 s per ~1 km grid box and filter, and cleared the moment a published listing changes; `isVisited` is looked up per user.
+- The list is cached for 30 s per ~1 km grid box and filter, and cleared the moment a published listing in its area changes (versions per ~11 km cell; a map wider than 64 cells uses one version every change counts up); `isVisited` is looked up per user.
 - No pagination and no limit on the map query: a wide box returns everything with all images.
 - The owner's **email and phone are included** for anyone, signed in or not.
 
@@ -256,7 +256,7 @@ flowchart LR
 - A listing matches when its title or description contains every word of the text, in any order; a person when their name or username does. Only published listings, and only people with at least one, can be found: search is no directory of accounts. A person result never includes email or phone.
 - Places come from Google, called by the server so its key (`GOOGLE_PLACES_API_KEY`) is never in the app. The app makes one `session` token per search, so the suggestions and the place picked are billed as one session. Without a key, or when Google fails, search still answers listings and people.
 - A place's viewport is grown to at least ~500 m, so a single address still finds the listings around it.
-- Listing results share the map's cache version: publishing or hiding a listing outdates them at once. Trigram indexes (migration `11_search_indexes`) keep the `ILIKE '%word%'` queries off full table scans.
+- Listing results have their own cache version: publishing or hiding any listing outdates them at once; one owner's listings are outdated by that owner's changes only. Trigram indexes (migration `11_search_indexes`) keep the `ILIKE '%word%'` queries off full table scans.
 - A person result carries `memberSince`. `GET /public/search/people/:userId` is the profile page, opened from search or by tapping the other person in a chat. It answers for any active account (404 if missing or deactivated), but only search finds people, and only publishers. It carries `email` and `phone` only for publishers, whose listings already show them; someone who has published nothing keeps them private. Result lists never include contact details, so search cannot be used to collect them in bulk. The page has Follow (does nothing yet), Chat and View on map.
 
 **Search history** (signed-in only, token required; migration `12_search_history`):
@@ -282,10 +282,19 @@ flowchart LR
     U -->|"6"| DB2[("likes, views, contacts")]
 ```
 
-- Like, favorite and view are upserts: repeating is harmless.
-- Every listing read carries `_count: { favorites, views, contacts }`. A view is one row per person (`property_views`), so `views` is how many people opened it; the owner opening their own listing is not recorded (migration 19 removed earlier ones). The app records a view when a listing is selected on the map or its detail sheet opens. Counts may lag by the public cache (map 30 s, detail 60 s).
+- Like, favorite and view are `INSERT ... ON CONFLICT DO NOTHING`: repeating is harmless.
+- Every listing read carries `_count: { favorites, views, contacts }`, counted for the listings read only (`PropertyEngagementCounts`; Prisma's own `_count` grouped the whole tables on every read). A view is one row per person (`property_views`), so `views` is how many people opened it; the owner opening their own listing is not recorded (migration 19 removed earlier ones). The app records a view when a listing is selected on the map or its detail sheet opens. Counts may lag by the public cache (map 30 s, detail 60 s).
 - Contact stores a message for the owner in the database. **The owner is not notified** (no push, no email).
-- Favorites list is unpaginated.
+- Lists can be read a page at a time. Without `limit` each answers the whole list as an array, as before, so older app builds keep working:
+
+| Endpoint | Page |
+|---|---|
+| `GET /properties/my/favorites?limit=&offset=&sort=` | `{ items, nextOffset }`; `sort`: `saved` (most recently saved first, default), `newest` (listing age), `priceHigh`, `priceLow` (by number) |
+| `GET /properties/my/favorites/ids` | The ids of every saved listing: what the heart on each card shows |
+| `GET /properties?limit=&offset=` | The user's own listings, newest first: `{ items, nextOffset, countByStatus }`; `countByStatus` covers all of them (the My Properties tabs) |
+| `GET /properties/my/in-area?minLat=&maxLat=&minLng=&maxLng=` | The user's own listings (drafts too) inside a map area, newest 500: the map's edit markers |
+
+  `limit` is 1-50 (`offset` at most 10 000).
 
 ---
 
@@ -380,7 +389,7 @@ A conversation is the messages between two people, so each person's own view of 
 
 | Endpoint | What it does |
 |---|---|
-| `GET /chat/conversations?list=archived` | The archive. Without `list` (or `list=main`): the main list, without archived or deleted conversations |
+| `GET /chat/conversations?list=archived` | The archive. Without `list` (or `list=main`): the main list, without archived or deleted conversations. With `limit` (1-100): one page `{ items, nextCursor, unreadTotal }`; pass `cursor=<nextCursor>` for the next. The cursor names the last conversation shown, so one jumping to the top meanwhile is neither repeated nor skipped. `unreadTotal` counts the whole list (the chat tab badge) |
 | `POST /chat/conversations/:participantId/archive` / `unarchive` | For the caller only. A newer message (from either side) brings it back to the main list by itself |
 | `POST /chat/conversations/:participantId/delete` `{ forEveryone?: boolean }` | Default: for the caller only; messages up to now are hidden from them (history, unread count). A newer message brings the conversation back, starting there. `forEveryone: true`: deletes every message both ways and the pair's attachment files, for both people; cannot be undone |
 

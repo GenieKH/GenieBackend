@@ -1,10 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService, ReadPrisma } from '@genie/shared';
 import {
   MAP_SELECT,
   PROPERTY_WITH_RELATIONS,
   PUBLISHED,
 } from '../property-includes';
+import { PropertyEngagementCounts, withEngagement } from './property-engagement-counts.service';
 import {
   MapBounds,
   MapFilter,
@@ -16,62 +17,47 @@ import {
 /** The most listings one map search returns: the newest ones in the area. */
 export const MAP_RESULT_LIMIT = 500;
 
-/** Statuses a saved listing is hidden in: the owner has not published it, or removed it. */
-const HIDDEN_STATUSES = ['Draft', 'Pending', 'Deleted'];
-
 @Injectable()
 export class PropertyQueryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly publicCache: PublicPropertyCache,
+    private readonly counts: PropertyEngagementCounts,
+    /** For what every visitor sees; the owner's own reads use `prisma`. */
+    private readonly publicReads: ReadPrisma,
   ) {}
-
-  /** All of a user's properties except deleted ones, newest first. */
-  findAllForOwner(userId: string) {
-    return this.prisma.property.findMany({
-      where: { userId, status: { not: 'Deleted' } },
-      include: PROPERTY_WITH_RELATIONS,
-      orderBy: { createdAt: 'desc' },
-    });
-  }
 
   /** One property owned by `userId`; 404 if it is missing, deleted or not theirs. */
   async findOwned(userId: string, id: string) {
-    const property = await this.prisma.property.findFirst({
-      where: { id, userId, status: { not: 'Deleted' } },
-      include: PROPERTY_WITH_RELATIONS,
-    });
+    // Counted alongside the read: the id is already known.
+    const [property, counts] = await Promise.all([
+      this.prisma.property.findFirst({
+        where: { id, userId, status: { not: 'Deleted' } },
+        include: PROPERTY_WITH_RELATIONS,
+      }),
+      this.counts.of([id]),
+    ]);
     if (!property) {
       throw new NotFoundException('Property not found');
     }
-    return property;
+    return withEngagement(property, counts);
   }
 
   /** A published property, visible to anyone. */
   findPublic(id: string) {
     return this.publicCache.detail(id, async () => {
-      const property = await this.prisma.property.findFirst({
-        where: { id, ...PUBLISHED },
-        include: PROPERTY_WITH_RELATIONS,
-      });
+      const [property, counts] = await Promise.all([
+        this.publicReads.property.findFirst({
+          where: { id, ...PUBLISHED },
+          include: PROPERTY_WITH_RELATIONS,
+        }),
+        this.counts.of([id]),
+      ]);
       if (!property) {
         throw new NotFoundException('Property not found or not active');
       }
-      return property;
+      return withEngagement(property, counts);
     });
-  }
-
-  /**
-   * Saved listings. One whose owner deactivated their account is left out until they return,
-   * and so is one its owner took back to a draft or deleted since it was saved.
-   */
-  async listFavorites(userId: string) {
-    const favorites = await this.prisma.propertyFavorite.findMany({
-      where: { userId, property: { user: { deactivatedAt: null }, status: { notIn: HIDDEN_STATUSES } } },
-      include: { property: { include: PROPERTY_WITH_RELATIONS } },
-      orderBy: { createdAt: 'desc' },
-    });
-    return favorites.map((favorite) => favorite.property);
   }
 
   /**
@@ -84,20 +70,22 @@ export class PropertyQueryService {
       throw new BadRequestException('The map bounds are the wrong way round');
     }
     const box = widenToGrid(bounds);
-    const properties = await this.publicCache.map(box, filter, () =>
-      this.prisma.property.findMany({
-        where: {
-          ...PUBLISHED,
-          ...(filter.propertyType && { propertyType: filter.propertyType }),
-          ...(filter.listingType && { listingType: filter.listingType }),
-          lat: { gte: box.minLat, lte: box.maxLat },
-          lng: { gte: box.minLng, lte: box.maxLng },
-        },
-        select: MAP_SELECT,
-        // A zoomed-out map would otherwise receive every listing there is.
-        orderBy: { createdAt: 'desc' },
-        take: MAP_RESULT_LIMIT,
-      }),
+    const properties = await this.publicCache.map(box, filter, async () =>
+      this.counts.attach(
+        await this.publicReads.property.findMany({
+          where: {
+            ...PUBLISHED,
+            ...(filter.propertyType && { propertyType: filter.propertyType }),
+            ...(filter.listingType && { listingType: filter.listingType }),
+            lat: { gte: box.minLat, lte: box.maxLat },
+            lng: { gte: box.minLng, lte: box.maxLng },
+          },
+          select: MAP_SELECT,
+          // A zoomed-out map would otherwise receive every listing there is.
+          orderBy: { createdAt: 'desc' },
+          take: MAP_RESULT_LIMIT,
+        }),
+      ),
     );
 
     const visited = await this.visitedAmong(

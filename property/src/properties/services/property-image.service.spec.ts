@@ -13,7 +13,7 @@ const PUBLIC = 'https://storage.test/storage/v1/object/public/property-images/';
 describe('PropertyImageService', () => {
   const imageTable = { createMany: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() };
   const query = { findOwned: jest.fn() };
-  const publicCache = { changed: jest.fn() };
+  const listingChanges = { changed: jest.fn() };
   const client = {
     storage: {
       from: () => ({
@@ -49,7 +49,7 @@ describe('PropertyImageService', () => {
       { propertyImage: imageTable } as never,
       query as never,
       photos,
-      publicCache as never,
+      listingChanges as never,
     );
   });
 
@@ -148,7 +148,7 @@ describe('PropertyImageService', () => {
 
       await images.removeImages(ME, LISTING, [drop]);
 
-      expect(publicCache.changed).toHaveBeenCalledWith(LISTING);
+      expect(listingChanges.changed).toHaveBeenCalledWith(expect.objectContaining({ id: LISTING }));
     });
 
     it('still succeeds when the file cannot be deleted', async () => {

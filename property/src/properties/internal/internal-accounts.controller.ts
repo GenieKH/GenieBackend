@@ -2,7 +2,8 @@ import { Controller, Delete, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, U
 import { ApiExcludeController } from '@nestjs/swagger';
 import { PrismaService, serviceCallGuard } from '@genie/shared';
 import { PropertyImageService } from '../services/property-image.service';
-import { PublicPropertyCache } from '../services/public-property-cache.service';
+import { ListingChanges } from '../services/listing-changes.service';
+import { CACHED_LISTING_SELECT } from '../services/public-property-cache.service';
 
 /**
  * What the property service keeps for an account, acted on when the user
@@ -16,7 +17,7 @@ export class InternalAccountsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly images: PropertyImageService,
-    private readonly publicCache: PublicPropertyCache,
+    private readonly listingChanges: ListingChanges,
   ) {}
 
   /** The account is being deleted: remove the photos of its listings. */
@@ -29,15 +30,16 @@ export class InternalAccountsController {
   /**
    * What others see of the account changed (name, picture, hidden or shown):
    * its published listings carry the owner's name and picture, so they are
-   * dropped from the cache and read again.
+   * dropped from the cache and read again, and searched for anew (a hidden
+   * owner's listings, and the owner, leave the search index).
    */
   @Post('visibility-changed')
   @HttpCode(HttpStatus.NO_CONTENT)
   async visibilityChanged(@Param('userId', ParseUUIDPipe) userId: string): Promise<void> {
     const listings = await this.prisma.property.findMany({
       where: { userId, status: 'Active' },
-      select: { id: true },
+      select: CACHED_LISTING_SELECT,
     });
-    await Promise.all(listings.map((listing) => this.publicCache.changed(listing.id)));
+    await Promise.all(listings.map((listing) => this.listingChanges.changed(listing)));
   }
 }

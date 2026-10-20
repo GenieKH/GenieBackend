@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { ReadPrisma } from '@genie/shared';
+import { inOrderOf } from '../properties/services/property-search.service';
 
 /** What a list of search results shows of a person: no contact details. */
 export interface PublisherSummary {
@@ -25,7 +26,7 @@ export interface PublisherProfile extends PublisherSummary {
 }
 
 /** Someone the public may find: not deactivated, with at least one published listing. */
-const PUBLISHER = {
+export const PUBLISHER = {
   deactivatedAt: null,
   properties: { some: { status: 'Active' } },
 } as const;
@@ -60,7 +61,8 @@ type PublisherRow = {
  */
 @Injectable()
 export class PeopleSearchService {
-  constructor(private readonly prisma: PrismaService) {}
+  /** Public reads: a moment old is fine. */
+  constructor(private readonly prisma: ReadPrisma) {}
 
   /** Publishers whose name or username contains every one of `terms`; the busiest first. */
   async matching(terms: string[], limit: number): Promise<PublisherSummary[]> {
@@ -81,6 +83,20 @@ export class PeopleSearchService {
       take: limit,
     });
     return rows.map(toSummary);
+  }
+
+  /**
+   * The publishers among `ids`, in the order of `ids` (a search engine's
+   * ranking). Someone who has since hidden their account or unpublished
+   * everything is left out, however stale the engine that found them.
+   */
+  async byIds(ids: string[]): Promise<PublisherSummary[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.user.findMany({
+      where: { ...PUBLISHER, id: { in: ids } },
+      select: PUBLISHER_SELECT,
+    });
+    return inOrderOf(ids, rows).map(toSummary);
   }
 
   /**

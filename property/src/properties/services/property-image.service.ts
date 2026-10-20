@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
 import { PropertyPhotoStorage } from '../storage/property-photo-storage';
 import { PropertyQueryService } from './property-query.service';
-import { PublicPropertyCache } from './public-property-cache.service';
+import { ListingChanges } from './listing-changes.service';
 
 /** The most photos one listing can have. The app stops at the same number. */
 export const MAX_PROPERTY_IMAGES = 30;
@@ -19,7 +19,7 @@ export class PropertyImageService {
     private readonly prisma: PrismaService,
     private readonly query: PropertyQueryService,
     private readonly storage: PropertyPhotoStorage,
-    private readonly publicCache: PublicPropertyCache,
+    private readonly listingChanges: ListingChanges,
   ) {}
 
   /** One upload URL per name, in the same order, inside this listing's own folder. */
@@ -58,7 +58,7 @@ export class PropertyImageService {
 
       // New photos of a published listing should show up right away.
       if (property.status === 'Active') {
-        await this.publicCache.changed(propertyId);
+        await this.listingChanges.changed(property);
       }
     }
     return this.query.findOwned(userId, propertyId);
@@ -77,7 +77,7 @@ export class PropertyImageService {
 
     await this.prisma.propertyImage.deleteMany({ where: { propertyId, url: { in: removed } } });
     if (property.status === 'Active') {
-      await this.publicCache.changed(propertyId);
+      await this.listingChanges.changed(property);
     }
 
     const stillShown = await this.prisma.propertyImage.findMany({

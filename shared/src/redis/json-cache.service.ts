@@ -23,6 +23,17 @@ export class JsonCache {
     }
   }
 
+  /** Several values in one round trip, in the order of `keys`; null where missing. */
+  async getMany<T>(keys: string[]): Promise<(T | null)[]> {
+    if (keys.length === 0) return [];
+    try {
+      const raws = await this.connection.client.mget(...keys);
+      return raws.map((raw) => (raw === null ? null : (JSON.parse(raw) as T)));
+    } catch {
+      return keys.map(() => null);
+    }
+  }
+
   async set(key: string, value: unknown, ttlSeconds: number): Promise<void> {
     try {
       await this.connection.client.set(key, JSON.stringify(value), 'EX', ttlSeconds);

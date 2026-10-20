@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
 import { PropertyStatusService } from '../property-status.service';
 import { PropertyQueryService } from './property-query.service';
-import { PublicPropertyCache } from './public-property-cache.service';
+import { ListingChanges } from './listing-changes.service';
+import { CACHED_LISTING_SELECT } from './public-property-cache.service';
 
 /** How a payment ended, as far as the listing is concerned. */
 export type PublishOutcome = 'Active' | 'Draft';
@@ -18,7 +19,7 @@ export class PropertyPublicationService {
     private readonly prisma: PrismaService,
     private readonly query: PropertyQueryService,
     private readonly status: PropertyStatusService,
-    private readonly publicCache: PublicPropertyCache,
+    private readonly listingChanges: ListingChanges,
   ) {}
 
   /**
@@ -45,7 +46,8 @@ export class PropertyPublicationService {
     });
     // The listing just went live: let the map show it without waiting for the cache to expire.
     if (outcome === 'Active' && count > 0) {
-      await this.publicCache.changed(propertyId);
+      const listing = await this.prisma.property.findUnique({ where: { id: propertyId }, select: CACHED_LISTING_SELECT });
+      if (listing) await this.listingChanges.changed(listing);
     }
   }
 

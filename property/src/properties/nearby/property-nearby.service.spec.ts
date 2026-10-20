@@ -33,7 +33,7 @@ describe('PropertyNearbyService', () => {
   let written: { deleted: number; created: object[]; searchedAt?: Date | null };
   let places: jest.Mocked<NearbyPlaceProvider>;
   let routes: jest.Mocked<RouteDistanceProvider>;
-  let publicCache: { changed: jest.Mock };
+  let publicCache: { changed: jest.Mock; detailChanged: jest.Mock };
   let service: PropertyNearbyService;
 
   beforeEach(() => {
@@ -87,7 +87,7 @@ describe('PropertyNearbyService', () => {
         ]),
       ),
     } as never;
-    publicCache = { changed: jest.fn() };
+    publicCache = { changed: jest.fn(), detailChanged: jest.fn() };
     service = new PropertyNearbyService(prisma as never, places, routes, publicCache as never);
   });
 
@@ -104,7 +104,9 @@ describe('PropertyNearbyService', () => {
       expect.objectContaining({ category: 'school', rank: 0, roadMeters: null, straightMeters: 111 }),
     ]);
     expect(written.searchedAt).toBeInstanceOf(Date);
-    expect(publicCache.changed).toHaveBeenCalledWith('p-1');
+    // Only the listing's own page shows them.
+    expect(publicCache.detailChanged).toHaveBeenCalledWith('p-1');
+    expect(publicCache.changed).not.toHaveBeenCalled();
   });
 
   it('records "nothing within 5 km" as a search with no places', async () => {
@@ -164,7 +166,7 @@ describe('PropertyNearbyService', () => {
     await service.refresh('p-1');
 
     expect(written.deleted).toBe(0);
-    expect(publicCache.changed).not.toHaveBeenCalled();
+    expect(publicCache.detailChanged).not.toHaveBeenCalled();
   });
 
   it('looks again after an edit only when the asked categories changed', () => {

@@ -120,13 +120,21 @@ export class ChatService {
       throw new BadRequestException('You cannot message yourself');
     }
 
-    await this.requireChatPin(senderId);
-
-    if (!(await this.isVisible(message.recipientId))) {
+    // Independent of each other, so asked at once; a refusal is still the
+    // one the first failing check gives.
+    const [pin, visible, replyToId] = await Promise.allSettled([
+      this.requireChatPin(senderId),
+      this.isVisible(message.recipientId),
+      this.quotable(senderId, message),
+    ]);
+    if (pin.status === 'rejected') throw pin.reason;
+    if (visible.status === 'rejected') throw visible.reason;
+    if (!visible.value) {
       throw new NotFoundException('Recipient not found');
     }
+    if (replyToId.status === 'rejected') throw replyToId.reason;
 
-    const { saved, created } = await this.createOrFindMessage(senderId, message);
+    const { saved, created } = await this.createOrFindMessage(senderId, message, replyToId.value);
     const { sender, ...stored } = toMessageView(saved);
     const senderName = displayName(sender);
     if (created) {
@@ -162,7 +170,7 @@ export class ChatService {
     await this.cache.set(chatPinCacheKey(userId), true, CHAT_PIN_TTL_SECONDS);
   }
 
-  private async createOrFindMessage(senderId: string, message: NewMessage) {
+  private async createOrFindMessage(senderId: string, message: NewMessage, replyToId: string | null) {
     const include = { sender: { select: DISPLAY_FIELDS }, ...withReplyTo(senderId) };
     try {
       const saved = await this.prisma.message.create({
@@ -172,7 +180,7 @@ export class ChatService {
           recipientId: message.recipientId,
           ciphertext: message.ciphertext,
           nonce: message.nonce,
-          replyToId: await this.quotable(senderId, message),
+          replyToId,
         },
         include,
       });
@@ -306,7 +314,8 @@ export class ChatService {
 
     return shown
       .filter((row) => partnerById.has(row.partnerId))
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      // Ties by the other person, so pages (conversation-pages.ts) are exact.
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.partnerId < b.partnerId ? -1 : 1))
       .map(({ partnerId, archivedAt: _archivedAt, clearedAt: _clearedAt, ...lastMessage }) => {
         const partner = partnerById.get(partnerId)!;
         return {
@@ -326,10 +335,12 @@ export class ChatService {
    * themselves are left out.
    */
   async getMessagesWith(userId: string, participantId: string, limit = 50, before?: string) {
-    if (!(await this.isVisible(participantId))) return [];
-
     // "Delete for me" hides everything up to that moment.
-    const clearedAt = await this.states.clearedAt(userId, participantId);
+    const [visible, clearedAt] = await Promise.all([
+      this.isVisible(participantId),
+      this.states.clearedAt(userId, participantId),
+    ]);
+    if (!visible) return [];
     const newestFirst = await this.prisma.message.findMany({
       where: {
         OR: betweenPair(userId, participantId),

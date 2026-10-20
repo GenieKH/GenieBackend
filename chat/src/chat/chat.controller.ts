@@ -16,6 +16,7 @@ import { ChatAttachmentService } from './chat-attachment.service';
 import { BackupOwnerProof, ChatBackupService, NewKeyBackup } from './chat-backup.service';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
+import { pageOfConversations } from './conversation-pages';
 import { ConversationStateService } from './conversation-state.service';
 import {
   BackupOwnerProofDto,
@@ -98,10 +99,12 @@ export class ChatController {
     return this.backupService.unlock(userId, dto.backupVerifier);
   }
 
-  /** The main list by default; `?list=archived` for the archive. */
+  /** The main list by default; `?list=archived` for the archive. Paged with `limit`. */
   @Get('conversations')
-  getConversations(@CurrentUserId() userId: string, @Query() query: ConversationListQuery) {
-    return this.chatService.getConversations(userId, query.list ?? 'main');
+  async getConversations(@CurrentUserId() userId: string, @Query() query: ConversationListQuery) {
+    const conversations = await this.chatService.getConversations(userId, query.list ?? 'main');
+    if (query.limit === undefined) return conversations;
+    return pageOfConversations(conversations, { limit: query.limit, cursor: query.cursor });
   }
 
   @Post('conversations/:participantId/archive')

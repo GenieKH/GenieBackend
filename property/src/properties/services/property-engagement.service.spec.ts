@@ -1,13 +1,16 @@
 import { HttpException, NotFoundException } from '@nestjs/common';
 import { PropertyEngagementService } from './property-engagement.service';
 
+/** The row a like or favorite answers with, as before. */
+const STORED = { userId: 'u', propertyId: 'p1', createdAt: new Date('2026-01-01T00:00:00Z') };
+
 function setup(options: { visible?: boolean; allowContact?: boolean } = {}) {
   const { visible = true, allowContact = true } = options;
   const prisma = {
     property: { findFirst: jest.fn().mockResolvedValue(visible ? { userId: 'owner' } : null) },
-    propertyLike: { upsert: jest.fn().mockResolvedValue({}), deleteMany: jest.fn() },
-    propertyFavorite: { upsert: jest.fn().mockResolvedValue({}), deleteMany: jest.fn() },
-    propertyView: { upsert: jest.fn().mockResolvedValue({}) },
+    propertyLike: { createMany: jest.fn(), findUniqueOrThrow: jest.fn().mockResolvedValue(STORED), deleteMany: jest.fn() },
+    propertyFavorite: { createMany: jest.fn(), findUniqueOrThrow: jest.fn().mockResolvedValue(STORED), deleteMany: jest.fn() },
+    propertyView: { createMany: jest.fn() },
     propertyContact: { create: jest.fn().mockResolvedValue({ id: 'c1' }) },
   };
   const limiter = { consume: allowContact ? jest.fn().mockResolvedValue({}) : jest.fn().mockRejectedValue(new Error('limit')) };
@@ -25,9 +28,9 @@ describe('PropertyEngagementService', () => {
   ])('%s of a listing that is not published is 404 and writes nothing', async (_name, act) => {
     const { service, prisma } = setup({ visible: false });
     await expect(act(service)).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.propertyLike.upsert).not.toHaveBeenCalled();
-    expect(prisma.propertyFavorite.upsert).not.toHaveBeenCalled();
-    expect(prisma.propertyView.upsert).not.toHaveBeenCalled();
+    expect(prisma.propertyLike.createMany).not.toHaveBeenCalled();
+    expect(prisma.propertyFavorite.createMany).not.toHaveBeenCalled();
+    expect(prisma.propertyView.createMany).not.toHaveBeenCalled();
     expect(prisma.propertyContact.create).not.toHaveBeenCalled();
   });
 
@@ -37,20 +40,29 @@ describe('PropertyEngagementService', () => {
     expect(prisma.property.findFirst.mock.calls[0][0].where).toMatchObject({ id: 'p1', status: 'Active' });
   });
 
-  it('records one view per person', async () => {
+  it('records one view per person, in one statement', async () => {
     const { service, prisma } = setup();
     await service.logView('u', 'p1');
-    expect(prisma.propertyView.upsert).toHaveBeenCalledWith({
-      where: { userId_propertyId: { userId: 'u', propertyId: 'p1' } },
-      create: { userId: 'u', propertyId: 'p1' },
-      update: {},
+    expect(prisma.propertyView.createMany).toHaveBeenCalledWith({
+      data: [{ userId: 'u', propertyId: 'p1' }],
+      skipDuplicates: true,
     });
+  });
+
+  it.each([
+    ['like', (s: PropertyEngagementService) => s.like('u', 'p1'), 'propertyLike'],
+    ['favorite', (s: PropertyEngagementService) => s.favorite('u', 'p1'), 'propertyFavorite'],
+  ] as const)('a %s is stored once, and answers what is stored', async (_name, act, table) => {
+    const { service, prisma } = setup();
+    await expect(act(service)).resolves.toEqual(STORED);
+    expect(prisma[table].createMany).toHaveBeenCalledWith({ data: [{ userId: 'u', propertyId: 'p1' }], skipDuplicates: true });
+    expect(prisma[table].findUniqueOrThrow).toHaveBeenCalledWith({ where: { userId_propertyId: { userId: 'u', propertyId: 'p1' } } });
   });
 
   it('does not count the owner opening their own listing', async () => {
     const { service, prisma } = setup();
     await expect(service.logView('owner', 'p1')).resolves.toEqual({ success: true });
-    expect(prisma.propertyView.upsert).not.toHaveBeenCalled();
+    expect(prisma.propertyView.createMany).not.toHaveBeenCalled();
   });
 
   it('stores a contact message', async () => {

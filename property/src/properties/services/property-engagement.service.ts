@@ -19,13 +19,16 @@ export class PropertyEngagementService {
     this.contactLimiter = rateLimits.create('property-contact', CONTACT_LIMIT, CONTACT_WINDOW_SECONDS);
   }
 
+  /**
+   * Liking, saving and viewing again changes nothing. Each is one
+   * `INSERT ... ON CONFLICT DO NOTHING`: an upsert costs a transaction of
+   * four statements.
+   */
   async like(userId: string, propertyId: string) {
     await this.assertVisible(propertyId);
-    return this.prisma.propertyLike.upsert({
-      where: { userId_propertyId: { userId, propertyId } },
-      create: { userId, propertyId },
-      update: {},
-    });
+    const key = { userId, propertyId };
+    await this.prisma.propertyLike.createMany({ data: [key], skipDuplicates: true });
+    return this.prisma.propertyLike.findUniqueOrThrow({ where: { userId_propertyId: key } });
   }
 
   async unlike(userId: string, propertyId: string) {
@@ -35,11 +38,9 @@ export class PropertyEngagementService {
 
   async favorite(userId: string, propertyId: string) {
     await this.assertVisible(propertyId);
-    return this.prisma.propertyFavorite.upsert({
-      where: { userId_propertyId: { userId, propertyId } },
-      create: { userId, propertyId },
-      update: {},
-    });
+    const key = { userId, propertyId };
+    await this.prisma.propertyFavorite.createMany({ data: [key], skipDuplicates: true });
+    return this.prisma.propertyFavorite.findUniqueOrThrow({ where: { userId_propertyId: key } });
   }
 
   async unfavorite(userId: string, propertyId: string) {
@@ -54,11 +55,7 @@ export class PropertyEngagementService {
   async logView(userId: string, propertyId: string) {
     const ownerId = await this.visibleOwnerId(propertyId);
     if (ownerId === userId) return { success: true };
-    await this.prisma.propertyView.upsert({
-      where: { userId_propertyId: { userId, propertyId } },
-      create: { userId, propertyId },
-      update: {},
-    });
+    await this.prisma.propertyView.createMany({ data: [{ userId, propertyId }], skipDuplicates: true });
     return { success: true };
   }
 

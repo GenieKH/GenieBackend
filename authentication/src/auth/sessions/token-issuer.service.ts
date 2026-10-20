@@ -1,16 +1,15 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import {
   ACCESS_TOKEN_TTL_SECONDS,
   ACCESS_TOKEN_TYPE,
-  BCRYPT_ROUNDS,
   REFRESH_TOKEN_TTL_DAYS,
   REFRESH_TOKEN_TYPE,
 } from '../auth.constants';
 import { ClientContext } from './client-context';
 import { IpLocationProvider } from './ip-location.provider';
+import { hashRefreshToken } from './refresh-token-hash';
 import { RefreshTokenRecord, RefreshTokenRepository, SessionDetails } from './refresh-token.repository';
 
 export interface TokenPair {
@@ -58,7 +57,7 @@ export class TokenIssuerService {
     await this.refreshTokens.insert({
       id: jti,
       userId,
-      tokenHash: await bcrypt.hash(refreshToken, BCRYPT_ROUNDS),
+      tokenHash: hashRefreshToken(refreshToken),
       expiresAt: this.refreshExpiry(),
       session,
     });

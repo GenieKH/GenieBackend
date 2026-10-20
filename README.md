@@ -82,7 +82,8 @@ docker compose down --remove-orphans   # stop (and remove the old single-contain
 
 Redis, six services, one image definition (`Dockerfile`, chosen with `--build-arg SERVICE=...`).
 Only port 4000 is published. Each container restarts by itself (`restart: unless-stopped`).
-Deploying to Railway: see [docs/RAILWAY.md](docs/RAILWAY.md).
+Deploying to Railway: see [docs/RAILWAY.md](docs/RAILWAY.md). Nightly encrypted database backups and how to
+restore one: see [docs/BACKUPS.md](docs/BACKUPS.md).
 
 ### Redis: cache, limits, chat between instances
 

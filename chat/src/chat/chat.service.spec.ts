@@ -147,6 +147,22 @@ describe('ChatService', () => {
       expect(messageTable.create).not.toHaveBeenCalled();
     });
 
+    it('checks the sender, the recipient and the quoted message at the same time', async () => {
+      const pending: (() => void)[] = [];
+      const held = <T>(value: T) => new Promise<T>((resolve) => pending.push(() => resolve(value)));
+      userTable.findUnique.mockImplementation(() => held({ backupBlob: null, keyBackup: { protectedBy: 'pin' } }));
+      userTable.findFirst.mockImplementation(() => held({ id: 'bob' }));
+      messageTable.findFirst.mockImplementation(() => held({ id: 'm-0' }));
+
+      const sending = service.sendMessage('alice', { ...newMessage, replyToId: 'm-0' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(pending).toHaveLength(3);
+      pending.forEach((answer) => answer());
+      await sending;
+      expect(messageTable.create.mock.calls[0][0].data.replyToId).toBe('m-0');
+    });
+
     it('rejects a message to yourself', async () => {
       await expect(service.sendMessage('bob', newMessage)).rejects.toThrow(BadRequestException);
       expect(messageTable.create).not.toHaveBeenCalled();
@@ -167,6 +183,13 @@ describe('ChatService', () => {
 
         await expect(service.sendMessage('alice', newMessage)).rejects.toThrow(ForbiddenException);
         expect(messageTable.create).not.toHaveBeenCalled();
+      });
+
+      it('says so first, even when the recipient is gone too', async () => {
+        userTable.findUnique.mockResolvedValue({ backupBlob: null, keyBackup: null });
+        userTable.findFirst.mockResolvedValue(null);
+
+        await expect(service.sendMessage('alice', newMessage)).rejects.toThrow(ForbiddenException);
       });
 
       it('accepts a backup from before PIN tries were counted', async () => {

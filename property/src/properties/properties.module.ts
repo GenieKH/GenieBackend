@@ -9,6 +9,7 @@ import { PropertiesController } from './properties.controller';
 import { PropertyStatusService } from './property-status.service';
 import { PublicPropertiesController } from './public-properties.controller';
 import { GuestSessionService } from './services/guest-session.service';
+import { PropertyEngagementCounts } from './services/property-engagement-counts.service';
 import { PropertyEngagementService } from './services/property-engagement.service';
 import { PropertyImageService } from './services/property-image.service';
 import { PropertyLifecycleService } from './services/property-lifecycle.service';
@@ -24,6 +25,7 @@ import { PropertyPhotoStorage } from './storage/property-photo-storage';
   providers: [
     PropertyStatusService,
     PublicPropertyCache,
+    PropertyEngagementCounts,
     PropertyQueryService,
     PropertySearchService,
     PropertyLifecycleService,

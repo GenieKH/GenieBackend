@@ -5,6 +5,7 @@ import {
   PROPERTY_WITH_RELATIONS,
   PUBLISHED,
 } from '../property-includes';
+import { PropertyEngagementCounts, withEngagement } from './property-engagement-counts.service';
 import {
   MapBounds,
   MapFilter,
@@ -24,40 +25,49 @@ export class PropertyQueryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly publicCache: PublicPropertyCache,
+    private readonly counts: PropertyEngagementCounts,
   ) {}
 
   /** All of a user's properties except deleted ones, newest first. */
-  findAllForOwner(userId: string) {
-    return this.prisma.property.findMany({
+  async findAllForOwner(userId: string) {
+    const properties = await this.prisma.property.findMany({
       where: { userId, status: { not: 'Deleted' } },
       include: PROPERTY_WITH_RELATIONS,
       orderBy: { createdAt: 'desc' },
     });
+    return this.counts.attach(properties);
   }
 
   /** One property owned by `userId`; 404 if it is missing, deleted or not theirs. */
   async findOwned(userId: string, id: string) {
-    const property = await this.prisma.property.findFirst({
-      where: { id, userId, status: { not: 'Deleted' } },
-      include: PROPERTY_WITH_RELATIONS,
-    });
+    // Counted alongside the read: the id is already known.
+    const [property, counts] = await Promise.all([
+      this.prisma.property.findFirst({
+        where: { id, userId, status: { not: 'Deleted' } },
+        include: PROPERTY_WITH_RELATIONS,
+      }),
+      this.counts.of([id]),
+    ]);
     if (!property) {
       throw new NotFoundException('Property not found');
     }
-    return property;
+    return withEngagement(property, counts);
   }
 
   /** A published property, visible to anyone. */
   findPublic(id: string) {
     return this.publicCache.detail(id, async () => {
-      const property = await this.prisma.property.findFirst({
-        where: { id, ...PUBLISHED },
-        include: PROPERTY_WITH_RELATIONS,
-      });
+      const [property, counts] = await Promise.all([
+        this.prisma.property.findFirst({
+          where: { id, ...PUBLISHED },
+          include: PROPERTY_WITH_RELATIONS,
+        }),
+        this.counts.of([id]),
+      ]);
       if (!property) {
         throw new NotFoundException('Property not found or not active');
       }
-      return property;
+      return withEngagement(property, counts);
     });
   }
 
@@ -71,7 +81,7 @@ export class PropertyQueryService {
       include: { property: { include: PROPERTY_WITH_RELATIONS } },
       orderBy: { createdAt: 'desc' },
     });
-    return favorites.map((favorite) => favorite.property);
+    return this.counts.attach(favorites.map((favorite) => favorite.property));
   }
 
   /**
@@ -84,20 +94,22 @@ export class PropertyQueryService {
       throw new BadRequestException('The map bounds are the wrong way round');
     }
     const box = widenToGrid(bounds);
-    const properties = await this.publicCache.map(box, filter, () =>
-      this.prisma.property.findMany({
-        where: {
-          ...PUBLISHED,
-          ...(filter.propertyType && { propertyType: filter.propertyType }),
-          ...(filter.listingType && { listingType: filter.listingType }),
-          lat: { gte: box.minLat, lte: box.maxLat },
-          lng: { gte: box.minLng, lte: box.maxLng },
-        },
-        select: MAP_SELECT,
-        // A zoomed-out map would otherwise receive every listing there is.
-        orderBy: { createdAt: 'desc' },
-        take: MAP_RESULT_LIMIT,
-      }),
+    const properties = await this.publicCache.map(box, filter, async () =>
+      this.counts.attach(
+        await this.prisma.property.findMany({
+          where: {
+            ...PUBLISHED,
+            ...(filter.propertyType && { propertyType: filter.propertyType }),
+            ...(filter.listingType && { listingType: filter.listingType }),
+            lat: { gte: box.minLat, lte: box.maxLat },
+            lng: { gte: box.minLng, lte: box.maxLng },
+          },
+          select: MAP_SELECT,
+          // A zoomed-out map would otherwise receive every listing there is.
+          orderBy: { createdAt: 'desc' },
+          take: MAP_RESULT_LIMIT,
+        }),
+      ),
     );
 
     const visited = await this.visitedAmong(

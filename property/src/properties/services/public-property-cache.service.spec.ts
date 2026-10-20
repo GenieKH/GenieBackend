@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { FakeRedis, fakeCache } from '@genie/shared/testing';
+import { PropertyEngagementCounts } from './property-engagement-counts.service';
 import { PropertyLifecycleService } from './property-lifecycle.service';
 import { MapBoundsQuery } from '../dto/map-bounds.query';
 import { MapSearchQuery } from '../dto/map-search.query';
@@ -37,7 +38,7 @@ describe('widenToGrid', () => {
 describe('public property cache', () => {
   const propertyTable = { findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn(), create: jest.fn() };
   const viewTable = { findMany: jest.fn() };
-  const prisma = { property: propertyTable, propertyView: viewTable };
+  const prisma = { property: propertyTable, propertyView: viewTable, $queryRaw: jest.fn() };
   const listing = { id: 'p-1', title: 'Villa', status: 'Active', createdAt: new Date('2026-01-01T00:00:00Z') };
   let redis: FakeRedis;
   let publicCache: PublicPropertyCache;
@@ -48,18 +49,21 @@ describe('public property cache', () => {
     jest.resetAllMocks();
     redis = new FakeRedis();
     publicCache = new PublicPropertyCache(fakeCache(redis));
-    query = new PropertyQueryService(prisma as never, publicCache);
+    const counts = new PropertyEngagementCounts(prisma as never);
+    query = new PropertyQueryService(prisma as never, publicCache, counts);
     lifecycle = new PropertyLifecycleService(
       prisma as never,
       query,
       { canPublish: () => true, canMarkSold: () => true, canRelist: () => true } as never,
       publicCache,
       { locationChanged: jest.fn(), keywordsChanged: jest.fn() } as never,
+      counts,
     );
     propertyTable.findMany.mockResolvedValue([listing]);
     propertyTable.findFirst.mockResolvedValue(listing);
     propertyTable.update.mockImplementation(({ data }) => Promise.resolve({ ...listing, ...data }));
     viewTable.findMany.mockResolvedValue([]);
+    prisma.$queryRaw.mockResolvedValue([]);
   });
 
   describe('map search', () => {

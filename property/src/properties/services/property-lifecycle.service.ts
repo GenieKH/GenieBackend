@@ -10,6 +10,7 @@ import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { PROPERTY_WITH_RELATIONS } from '../property-includes';
 import { toCreateData, toUpdateData } from '../property-write-data';
 import { PropertyStatusService } from '../property-status.service';
+import { NO_ENGAGEMENT, PropertyEngagementCounts, withEngagement } from './property-engagement-counts.service';
 import { PropertyQueryService } from './property-query.service';
 import { PublicPropertyCache } from './public-property-cache.service';
 
@@ -29,6 +30,7 @@ export class PropertyLifecycleService {
     private readonly status: PropertyStatusService,
     private readonly publicCache: PublicPropertyCache,
     private readonly nearby: PropertyNearbyService,
+    private readonly counts: PropertyEngagementCounts,
   ) {}
 
   async create(userId: string, dto: CreatePropertyDto) {
@@ -38,7 +40,8 @@ export class PropertyLifecycleService {
       include: PROPERTY_WITH_RELATIONS,
     });
     await this.refreshPublicView(property.id, property.status);
-    return property;
+    // Nobody can have saved, opened or messaged about it yet.
+    return { ...property, _count: NO_ENGAGEMENT };
   }
 
   async update(userId: string, id: string, dto: UpdatePropertyDto) {
@@ -54,16 +57,20 @@ export class PropertyLifecycleService {
             ? null
             : Number(before.discountValue),
     });
-    const property = await this.prisma.property.update({
-      where: { id },
-      data: toUpdateData(dto, before.propertyType),
-      include: PROPERTY_WITH_RELATIONS,
-    });
+    // An edit does not change the counts: read alongside it.
+    const [property, counts] = await Promise.all([
+      this.prisma.property.update({
+        where: { id },
+        data: toUpdateData(dto, before.propertyType),
+        include: PROPERTY_WITH_RELATIONS,
+      }),
+      this.counts.of([id]),
+    ]);
     await this.refreshPublicView(id, before.status);
     if (dto.keywords) {
       this.nearby.keywordsChanged(id, keywordCodes(before), dto.keywords);
     }
-    return property;
+    return withEngagement(property, counts);
   }
 
   async updatePin(userId: string, id: string, pin: PinDto) {

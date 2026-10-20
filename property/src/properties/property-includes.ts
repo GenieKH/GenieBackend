@@ -9,14 +9,9 @@ export const OWNER_SUMMARY_SELECT = {
 } as const;
 
 /**
- * How many people saved, opened and messaged about a listing. Sent as
- * `_count` with every read so each card shows real numbers.
+ * Relations returned together with a property in every read endpoint. The
+ * `_count` each read also sends is added by `PropertyEngagementCounts`.
  */
-export const ENGAGEMENT_COUNT = {
-  select: { favorites: true, views: true, contacts: true },
-} as const;
-
-/** Relations returned together with a property in every read endpoint. */
 export const PROPERTY_WITH_RELATIONS = {
   images: { orderBy: { order: 'asc' } },
   keywords: { select: { keyword: true }, orderBy: { keyword: 'asc' } },
@@ -35,10 +30,12 @@ export const PROPERTY_WITH_RELATIONS = {
     orderBy: { rank: 'asc' },
   },
   user: { select: OWNER_SUMMARY_SELECT },
-  _count: ENGAGEMENT_COUNT,
 } as const;
 
-/** What the map shows of a listing. The same for every visitor, so it can be cached. */
+/**
+ * What the map shows of a listing, besides its `_count`. The same for every
+ * visitor, so it can be cached.
+ */
 export const MAP_SELECT = {
   id: true,
   title: true,
@@ -60,7 +57,6 @@ export const MAP_SELECT = {
   unitSize: true,
   images: { orderBy: { order: 'asc' } },
   user: { select: OWNER_SUMMARY_SELECT },
-  _count: ENGAGEMENT_COUNT,
 } as const;
 
 /** What strangers may see: published listings of accounts that are not deactivated. */

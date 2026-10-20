@@ -314,7 +314,8 @@ export class ChatService {
 
     return shown
       .filter((row) => partnerById.has(row.partnerId))
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      // Ties by the other person, so pages (conversation-pages.ts) are exact.
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.partnerId < b.partnerId ? -1 : 1))
       .map(({ partnerId, archivedAt: _archivedAt, clearedAt: _clearedAt, ...lastMessage }) => {
         const partner = partnerById.get(partnerId)!;
         return {

@@ -176,11 +176,27 @@ export class MessagePageQuery {
   before?: string;
 }
 
-/** `GET /chat/conversations`: the main list, or the archive. */
+/**
+ * `GET /chat/conversations`: the main list, or the archive. With `limit`, one
+ * page after `cursor` (the `nextCursor` of the page before); without, the
+ * whole list as an array, as before pages existed.
+ */
 export class ConversationListQuery {
   @IsOptional()
   @IsIn(['main', 'archived'])
   list?: 'main' | 'archived';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_PAGE_SIZE)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  cursor?: string;
 }
 
 /** `POST /chat/conversations/:participantId/delete`. */

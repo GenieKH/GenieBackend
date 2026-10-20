@@ -12,6 +12,7 @@ export class FakeRedis {
   }
 
   get = (key: string) => this.run(() => this.values.get(key) ?? null);
+  mget = (...keys: string[]) => this.run(() => keys.map((key) => this.values.get(key) ?? null));
   set = (key: string, value: string) => this.run(() => void this.values.set(key, value));
   del = (key: string) => this.run(() => void this.values.delete(key));
   incr = (key: string) => this.run(() => void this.values.set(key, String(Number(this.values.get(key) ?? 0) + 1)));

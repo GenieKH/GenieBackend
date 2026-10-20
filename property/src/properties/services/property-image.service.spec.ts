@@ -148,7 +148,7 @@ describe('PropertyImageService', () => {
 
       await images.removeImages(ME, LISTING, [drop]);
 
-      expect(publicCache.changed).toHaveBeenCalledWith(LISTING);
+      expect(publicCache.changed).toHaveBeenCalledWith(expect.objectContaining({ id: LISTING }));
     });
 
     it('still succeeds when the file cannot be deleted', async () => {

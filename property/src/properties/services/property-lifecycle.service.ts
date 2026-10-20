@@ -12,7 +12,7 @@ import { toCreateData, toUpdateData } from '../property-write-data';
 import { PropertyStatusService } from '../property-status.service';
 import { NO_ENGAGEMENT, PropertyEngagementCounts, withEngagement } from './property-engagement-counts.service';
 import { PropertyQueryService } from './property-query.service';
-import { PublicPropertyCache } from './public-property-cache.service';
+import { CachedListing, Position, PublicPropertyCache } from './public-property-cache.service';
 
 /** The keyword codes of a property read with PROPERTY_WITH_RELATIONS. */
 const keywordCodes = (property: { keywords?: { keyword: string }[] }) =>
@@ -39,7 +39,7 @@ export class PropertyLifecycleService {
       data: toCreateData(userId, dto),
       include: PROPERTY_WITH_RELATIONS,
     });
-    await this.refreshPublicView(property.id, property.status);
+    await this.refreshPublicView(property, [property.status]);
     // Nobody can have saved, opened or messaged about it yet.
     return { ...property, _count: NO_ENGAGEMENT };
   }
@@ -66,7 +66,7 @@ export class PropertyLifecycleService {
       }),
       this.counts.of([id]),
     ]);
-    await this.refreshPublicView(id, before.status);
+    await this.refreshPublicView(property, [before.status]);
     if (dto.keywords) {
       this.nearby.keywordsChanged(id, keywordCodes(before), dto.keywords);
     }
@@ -74,16 +74,16 @@ export class PropertyLifecycleService {
   }
 
   async updatePin(userId: string, id: string, pin: PinDto) {
-    const { status } = await this.query.findOwned(userId, id);
+    const before = await this.query.findOwned(userId, id);
     const property = await this.prisma.property.update({ where: { id }, data: { lat: pin.lat, lng: pin.lng } });
-    await this.refreshPublicView(id, status);
+    await this.refreshPublicView(property, [before.status], before);
     this.nearby.locationChanged(id);
     return property;
   }
 
   /** Saves the drawn boundary and re-centres the pin on it. */
   async updateBoundary(userId: string, id: string, dto: BoundaryDto) {
-    const { status } = await this.query.findOwned(userId, id);
+    const before = await this.query.findOwned(userId, id);
     const boundaryPoints = dto.boundaryPoints.map(({ lat, lng }) => ({ lat, lng }));
     const center = boundaryCentroid(boundaryPoints);
 
@@ -94,7 +94,7 @@ export class PropertyLifecycleService {
         ...(center && { lat: center.lat, lng: center.lng }),
       },
     });
-    await this.refreshPublicView(id, status);
+    await this.refreshPublicView(property, [before.status], before);
     if (center) this.nearby.locationChanged(id);
     return property;
   }
@@ -129,7 +129,7 @@ export class PropertyLifecycleService {
 
   private async setStatus(id: string, from: string, to: string) {
     const property = await this.prisma.property.update({ where: { id }, data: { status: to } });
-    await this.refreshPublicView(id, from, to);
+    await this.refreshPublicView(property, [from, to]);
     return property;
   }
 
@@ -137,9 +137,9 @@ export class PropertyLifecycleService {
    * Drops the cached public copies when the public could see this listing
    * before or can see it now. Work on a draft changes nothing anyone else sees.
    */
-  private async refreshPublicView(id: string, ...statuses: string[]) {
+  private async refreshPublicView(listing: CachedListing, statuses: string[], movedFrom?: Position) {
     if (statuses.includes(PUBLIC_STATUS)) {
-      await this.publicCache.changed(id);
+      await this.publicCache.changed(listing, movedFrom);
     }
   }
 }

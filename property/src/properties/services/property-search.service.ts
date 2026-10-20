@@ -20,7 +20,7 @@ export class PropertySearchService {
   matching(terms: string[], limit: number) {
     if (terms.length === 0) return Promise.resolve([]);
 
-    return this.publicCache.listings(`text:${limit}:${terms.join(' ')}`, async () =>
+    return this.publicCache.textSearch(`${limit}:${terms.join(' ')}`, async () =>
       this.counts.attach(
         await this.prisma.property.findMany({
           where: {
@@ -42,7 +42,7 @@ export class PropertySearchService {
 
   /** One owner's published listings, newest first. */
   byOwner(ownerId: string, limit: number) {
-    return this.publicCache.listings(`owner:${limit}:${ownerId}`, async () =>
+    return this.publicCache.ownerListings(ownerId, `${limit}`, async () =>
       this.counts.attach(
         await this.prisma.property.findMany({
           where: { ...PUBLISHED, userId: ownerId },

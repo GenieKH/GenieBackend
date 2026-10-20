@@ -58,7 +58,7 @@ export class PropertyImageService {
 
       // New photos of a published listing should show up right away.
       if (property.status === 'Active') {
-        await this.publicCache.changed(propertyId);
+        await this.publicCache.changed(property);
       }
     }
     return this.query.findOwned(userId, propertyId);
@@ -77,7 +77,7 @@ export class PropertyImageService {
 
     await this.prisma.propertyImage.deleteMany({ where: { propertyId, url: { in: removed } } });
     if (property.status === 'Active') {
-      await this.publicCache.changed(propertyId);
+      await this.publicCache.changed(property);
     }
 
     const stillShown = await this.prisma.propertyImage.findMany({

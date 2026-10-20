@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
 import { PropertyStatusService } from '../property-status.service';
 import { PropertyQueryService } from './property-query.service';
-import { PublicPropertyCache } from './public-property-cache.service';
+import { CACHED_LISTING_SELECT, PublicPropertyCache } from './public-property-cache.service';
 
 /** How a payment ended, as far as the listing is concerned. */
 export type PublishOutcome = 'Active' | 'Draft';
@@ -45,7 +45,8 @@ export class PropertyPublicationService {
     });
     // The listing just went live: let the map show it without waiting for the cache to expire.
     if (outcome === 'Active' && count > 0) {
-      await this.publicCache.changed(propertyId);
+      const listing = await this.prisma.property.findUnique({ where: { id: propertyId }, select: CACHED_LISTING_SELECT });
+      if (listing) await this.publicCache.changed(listing);
     }
   }
 

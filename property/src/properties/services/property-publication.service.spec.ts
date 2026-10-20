@@ -4,9 +4,11 @@ import { PropertyPublicationService } from './property-publication.service';
 
 const ME = '11111111-1111-4111-8111-111111111111';
 const LISTING = '33333333-3333-4333-8333-333333333333';
+/** Whose the listing is and where: what the cache needs to drop its copies. */
+const PLACE = { id: LISTING, userId: ME, lat: 11.56, lng: 104.92 };
 
 describe('PropertyPublicationService', () => {
-  const propertyTable = { update: jest.fn(), updateMany: jest.fn() };
+  const propertyTable = { update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn() };
   const query = { findOwned: jest.fn() };
   const publicCache = { changed: jest.fn() };
   let service: PropertyPublicationService;
@@ -15,6 +17,7 @@ describe('PropertyPublicationService', () => {
     jest.clearAllMocks();
     query.findOwned.mockResolvedValue({ id: LISTING, status: 'Draft' });
     propertyTable.updateMany.mockResolvedValue({ count: 1 });
+    propertyTable.findUnique.mockResolvedValue(PLACE);
     service = new PropertyPublicationService(
       { property: propertyTable } as never,
       query as never,
@@ -61,7 +64,7 @@ describe('PropertyPublicationService', () => {
         where: { id: LISTING, status: 'Pending' },
         data: { status: 'Active' },
       });
-      expect(publicCache.changed).toHaveBeenCalledWith(LISTING);
+      expect(publicCache.changed).toHaveBeenCalledWith(PLACE);
     });
 
     it('returns an unpaid listing to Draft without touching the public cache', async () => {

@@ -190,6 +190,7 @@ export class PropertyNearbyService {
       return now.status;
     });
 
-    if (status === 'Active') await this.publicCache.changed(propertyId);
+    // Only the listing's own page shows its nearby places.
+    if (status === 'Active') await this.publicCache.detailChanged(propertyId);
   }
 }

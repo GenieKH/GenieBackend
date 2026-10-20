@@ -2,7 +2,7 @@ import { Controller, Delete, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, U
 import { ApiExcludeController } from '@nestjs/swagger';
 import { PrismaService, serviceCallGuard } from '@genie/shared';
 import { PropertyImageService } from '../services/property-image.service';
-import { PublicPropertyCache } from '../services/public-property-cache.service';
+import { CACHED_LISTING_SELECT, PublicPropertyCache } from '../services/public-property-cache.service';
 
 /**
  * What the property service keeps for an account, acted on when the user
@@ -36,8 +36,8 @@ export class InternalAccountsController {
   async visibilityChanged(@Param('userId', ParseUUIDPipe) userId: string): Promise<void> {
     const listings = await this.prisma.property.findMany({
       where: { userId, status: 'Active' },
-      select: { id: true },
+      select: CACHED_LISTING_SELECT,
     });
-    await Promise.all(listings.map((listing) => this.publicCache.changed(listing.id)));
+    await Promise.all(listings.map((listing) => this.publicCache.changed(listing)));
   }
 }

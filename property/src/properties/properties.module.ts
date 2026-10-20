@@ -8,7 +8,9 @@ import { PropertyNearbyService } from './nearby/property-nearby.service';
 import { PropertiesController } from './properties.controller';
 import { PropertyStatusService } from './property-status.service';
 import { PublicPropertiesController } from './public-properties.controller';
+import { FavoriteListingsService } from './services/favorite-listings.service';
 import { GuestSessionService } from './services/guest-session.service';
+import { OwnerListingsService } from './services/owner-listings.service';
 import { PropertyEngagementCounts } from './services/property-engagement-counts.service';
 import { PropertyEngagementService } from './services/property-engagement.service';
 import { PropertyImageService } from './services/property-image.service';
@@ -27,6 +29,8 @@ import { PropertyPhotoStorage } from './storage/property-photo-storage';
     PublicPropertyCache,
     PropertyEngagementCounts,
     PropertyQueryService,
+    FavoriteListingsService,
+    OwnerListingsService,
     PropertySearchService,
     PropertyLifecycleService,
     PropertyPublicationService,

@@ -17,9 +17,6 @@ import {
 /** The most listings one map search returns: the newest ones in the area. */
 export const MAP_RESULT_LIMIT = 500;
 
-/** Statuses a saved listing is hidden in: the owner has not published it, or removed it. */
-const HIDDEN_STATUSES = ['Draft', 'Pending', 'Deleted'];
-
 @Injectable()
 export class PropertyQueryService {
   constructor(
@@ -27,16 +24,6 @@ export class PropertyQueryService {
     private readonly publicCache: PublicPropertyCache,
     private readonly counts: PropertyEngagementCounts,
   ) {}
-
-  /** All of a user's properties except deleted ones, newest first. */
-  async findAllForOwner(userId: string) {
-    const properties = await this.prisma.property.findMany({
-      where: { userId, status: { not: 'Deleted' } },
-      include: PROPERTY_WITH_RELATIONS,
-      orderBy: { createdAt: 'desc' },
-    });
-    return this.counts.attach(properties);
-  }
 
   /** One property owned by `userId`; 404 if it is missing, deleted or not theirs. */
   async findOwned(userId: string, id: string) {
@@ -69,19 +56,6 @@ export class PropertyQueryService {
       }
       return withEngagement(property, counts);
     });
-  }
-
-  /**
-   * Saved listings. One whose owner deactivated their account is left out until they return,
-   * and so is one its owner took back to a draft or deleted since it was saved.
-   */
-  async listFavorites(userId: string) {
-    const favorites = await this.prisma.propertyFavorite.findMany({
-      where: { userId, property: { user: { deactivatedAt: null }, status: { notIn: HIDDEN_STATUSES } } },
-      include: { property: { include: PROPERTY_WITH_RELATIONS } },
-      orderBy: { createdAt: 'desc' },
-    });
-    return this.counts.attach(favorites.map((favorite) => favorite.property));
   }
 
   /**

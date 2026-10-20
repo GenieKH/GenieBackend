@@ -1,13 +1,18 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
 import { CurrentUserId } from '@genie/shared';
 import { BoundaryDto } from './dto/boundary.dto';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { CreatePropertyDto } from './dto/create-property.dto';
+import { FavoritesPageQuery } from './dto/favorites-page.query';
 import { ImageFileNamesDto } from './dto/image-file-names.dto';
 import { ImageUrlsDto } from './dto/image-urls.dto';
+import { MapBoundsQuery } from './dto/map-bounds.query';
+import { PageQuery } from './dto/page.query';
 import { PinDto } from './dto/pin.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
+import { FavoriteListingsService } from './services/favorite-listings.service';
+import { OwnerListingsService } from './services/owner-listings.service';
 import { PropertyEngagementService } from './services/property-engagement.service';
 import { PropertyImageService } from './services/property-image.service';
 import { PropertyLifecycleService } from './services/property-lifecycle.service';
@@ -23,6 +28,8 @@ export class PropertiesController {
     private readonly lifecycle: PropertyLifecycleService,
     private readonly images: PropertyImageService,
     private readonly engagement: PropertyEngagementService,
+    private readonly favorites: FavoriteListingsService,
+    private readonly owned: OwnerListingsService,
   ) {}
 
   @Post()
@@ -30,14 +37,37 @@ export class PropertiesController {
     return this.lifecycle.create(userId, dto);
   }
 
+  /**
+   * The user's own listings, newest first. With `limit`: one page
+   * `{ items, nextOffset }`; without: all of them, as an array.
+   */
   @Get()
-  findAll(@CurrentUserId() userId: string) {
-    return this.query.findAllForOwner(userId);
+  findAll(@CurrentUserId() userId: string, @Query() page: PageQuery) {
+    if (page.limit === undefined) return this.owned.all(userId);
+    return this.owned.page(userId, { limit: page.limit, offset: page.offset ?? 0 });
   }
 
+  /** The user's own listings (drafts too) inside a map area, newest 500. */
+  @Get('my/in-area')
+  findOwnInArea(@CurrentUserId() userId: string, @Query() bounds: MapBoundsQuery) {
+    return this.owned.inArea(userId, bounds);
+  }
+
+  /**
+   * Saved listings. With `limit`: one page `{ items, nextOffset }` in `sort`
+   * order (most recently saved first by default); without: all of them, as an
+   * array, most recently saved first.
+   */
   @Get('my/favorites')
-  getFavorites(@CurrentUserId() userId: string) {
-    return this.query.listFavorites(userId);
+  getFavorites(@CurrentUserId() userId: string, @Query() page: FavoritesPageQuery) {
+    if (page.limit === undefined) return this.favorites.all(userId);
+    return this.favorites.page(userId, { limit: page.limit, offset: page.offset ?? 0, sort: page.sort ?? 'saved' });
+  }
+
+  /** The ids of every saved listing: what the heart on each card shows. */
+  @Get('my/favorites/ids')
+  getFavoriteIds(@CurrentUserId() userId: string) {
+    return this.favorites.ids(userId);
   }
 
   @Get(':id')

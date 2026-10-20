@@ -227,6 +227,7 @@ model PropertyLike {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, propertyId])
+  @@index([propertyId])
   @@map("property_likes")
 }
 

@@ -163,6 +163,8 @@ model Property {
   @@index([status, lat, lng])
   @@index([status, propertyType, lat, lng])
   @@index([status, listingType, lat, lng])
+  /// The map's newest published listings first (migration 25).
+  @@index([createdAt(sort: Desc)], map: "properties_active_newest_idx", where: raw("(status = 'Active'::text)"))
   @@map("properties")
 }
 

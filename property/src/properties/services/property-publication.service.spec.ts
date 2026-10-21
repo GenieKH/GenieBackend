@@ -42,11 +42,15 @@ describe('PropertyPublicationService', () => {
       expect(result).toEqual({ previousStatus: 'Draft' });
     });
 
-    it('lets an expired listing be published again', async () => {
+    it('lets an expired listing be published again, to be dated anew once paid', async () => {
       query.findOwned.mockResolvedValue({ id: LISTING, status: 'Expired' });
 
       await expect(service.beginPublish(ME, LISTING)).resolves.toEqual({
         previousStatus: 'Expired',
+      });
+      expect(propertyTable.update).toHaveBeenCalledWith({
+        where: { id: LISTING },
+        data: { status: 'Pending', publishedAt: null },
       });
     });
 
@@ -75,12 +79,27 @@ describe('PropertyPublicationService', () => {
   });
 
   describe('settlePublish', () => {
-    it('publishes a Pending listing, dated now for the feed, and refreshes what visitors see', async () => {
+    it('publishes a Pending listing never live before, dated now, and refreshes what visitors see', async () => {
       await service.settlePublish(LISTING, 'Active');
 
+      expect(propertyTable.updateMany).toHaveBeenCalledTimes(1);
       expect(propertyTable.updateMany).toHaveBeenCalledWith({
-        where: { id: LISTING, status: 'Pending' },
+        where: { id: LISTING, status: 'Pending', publishedAt: null },
         data: { status: 'Active', publishedAt: expect.any(Date) },
+      });
+      expect(listingChanges.changed).toHaveBeenCalledWith(PLACE);
+    });
+
+    it('keeps the first date of a draft that was live before and is paid for again', async () => {
+      propertyTable.updateMany
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValueOnce({ count: 1 });
+
+      await service.settlePublish(LISTING, 'Active');
+
+      expect(propertyTable.updateMany).toHaveBeenLastCalledWith({
+        where: { id: LISTING, status: 'Pending' },
+        data: { status: 'Active' },
       });
       expect(listingChanges.changed).toHaveBeenCalledWith(PLACE);
     });

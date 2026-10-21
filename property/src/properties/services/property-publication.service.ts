@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
 import { PropertyStatusService } from '../property-status.service';
+import { datesAnew } from '../published-at';
 import { PropertyQueryService } from './property-query.service';
 import { ListingChanges } from './listing-changes.service';
 import { CACHED_LISTING_SELECT } from './public-property-cache.service';
@@ -36,7 +37,12 @@ export class PropertyPublicationService {
 
     await this.prisma.property.update({
       where: { id: propertyId },
-      data: { status: 'Pending' },
+      // Paying to put a sold or expired listing back on the market dates it
+      // anew once paid (see settlePublish); a draft keeps its first date.
+      data: {
+        status: 'Pending',
+        ...(datesAnew(property.status) && { publishedAt: null }),
+      },
     });
     return { previousStatus: property.status };
   }
@@ -49,13 +55,13 @@ export class PropertyPublicationService {
     propertyId: string,
     outcome: PublishOutcome,
   ): Promise<void> {
-    const { count } = await this.prisma.property.updateMany({
-      where: { id: propertyId, status: 'Pending' },
-      data: {
-        status: outcome,
-        ...(outcome === 'Active' && { publishedAt: new Date() }),
-      },
-    });
+    const { count } =
+      outcome === 'Active'
+        ? await this.goLive(propertyId)
+        : await this.prisma.property.updateMany({
+            where: { id: propertyId, status: 'Pending' },
+            data: { status: outcome },
+          });
     // The listing just went live: let the map show it without waiting for the cache to expire.
     if (outcome === 'Active' && count > 0) {
       const listing = await this.prisma.property.findUnique({
@@ -64,6 +70,23 @@ export class PropertyPublicationService {
       });
       if (listing) await this.listingChanges.changed(listing);
     }
+  }
+
+  /**
+   * A paid Pending listing goes live. Dated now when it has no date (never
+   * live, or back on the market: see beginPublish); a draft that was live
+   * before keeps its first date.
+   */
+  private async goLive(propertyId: string) {
+    const dated = await this.prisma.property.updateMany({
+      where: { id: propertyId, status: 'Pending', publishedAt: null },
+      data: { status: 'Active', publishedAt: new Date() },
+    });
+    if (dated.count > 0) return dated;
+    return this.prisma.property.updateMany({
+      where: { id: propertyId, status: 'Pending' },
+      data: { status: 'Active' },
+    });
   }
 
   /** The payment could not be started: the listing returns to the status it had. */

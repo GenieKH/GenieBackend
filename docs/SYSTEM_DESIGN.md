@@ -313,8 +313,11 @@ Redis and dropped on every follow/unfollow) and reads the feed itself, so it nev
 | `DELETE /users/:id/follow` | the same, after unfollowing; allowed for a deactivated account; twice changes nothing | 400, 401 |
 | `GET /feed?limit=&cursor=` | `{ items, nextCursor }`: `Active` listings of followed, not deactivated owners, newest `publishedAt` first (ties by id); send `nextCursor` back as `cursor`; `limit` 1-50, default 20. Items are card fields only: no description, nearby places, keywords, counts or owner contact; at most 5 photos. Open a listing with `GET /public/properties/:id` | 400 (bad `limit` or a cursor this server did not hand out), 401, 503 (user service down) |
 
-`published_at` (migration 27) is set each time a listing goes live: created live, published,
-relisted, or paid for. Listings live before it existed got their `created_at`. The feed reads each
+`published_at` (migration 27) is set the first time a listing goes live (created live, published,
+or paid for), and again only when it comes back on the market after being Sold or Expired. A
+listing taken back to a draft and published again keeps its first date, so unpublishing cannot
+push it to the top of the feed (`published-at.ts`). Listings live before the column existed got
+their `created_at`. The feed reads each
 followed owner's newest listings from the index `(user_id, published_at DESC, id)` and merges
 them, so a page costs at most 500 x 21 index rows however many listings those owners have
 (measured: 60 agents x 2 500 live listings, 271 ms for one `IN (...) ORDER BY` against 14 ms).

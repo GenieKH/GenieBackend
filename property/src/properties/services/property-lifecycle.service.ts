@@ -10,6 +10,7 @@ import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { PROPERTY_WITH_RELATIONS } from '../property-includes';
 import { toCreateData, toUpdateData } from '../property-write-data';
 import { PropertyStatusService } from '../property-status.service';
+import { publishedAtGoingLive } from '../published-at';
 import {
   NO_ENGAGEMENT,
   PropertyEngagementCounts,
@@ -113,42 +114,48 @@ export class PropertyLifecycleService {
 
   async remove(userId: string, id: string) {
     const property = await this.query.findOwned(userId, id);
-    return this.setStatus(id, property.status, 'Deleted');
+    return this.setStatus(property, 'Deleted');
   }
 
   async unpublish(userId: string, id: string) {
     const property = await this.query.findOwned(userId, id);
-    return this.setStatus(id, property.status, 'Draft');
+    return this.setStatus(property, 'Draft');
   }
 
   async publish(userId: string, id: string) {
     const property = await this.query.findOwned(userId, id);
     this.status.canPublish(property.status);
-    return this.setStatus(id, property.status, 'Active');
+    return this.setStatus(property, 'Active');
   }
 
   async markSold(userId: string, id: string) {
     const property = await this.query.findOwned(userId, id);
     this.status.canMarkSold(property.status);
-    return this.setStatus(id, property.status, 'Sold');
+    return this.setStatus(property, 'Sold');
   }
 
   async relist(userId: string, id: string) {
     const property = await this.query.findOwned(userId, id);
     this.status.canRelist(property.status);
-    return this.setStatus(id, property.status, 'Active');
+    return this.setStatus(property, 'Active');
   }
 
-  private async setStatus(id: string, from: string, to: string) {
+  private async setStatus(
+    before: { id: string; status: string; publishedAt: Date | null },
+    to: string,
+  ) {
     const property = await this.prisma.property.update({
-      where: { id },
-      // Going live (publish, relist) dates it in the feed as new.
+      where: { id: before.id },
+      // Going live dates it in the feed only the first time, or when it is
+      // back on the market (see publishedAtGoingLive).
       data: {
         status: to,
-        ...(to === PUBLIC_STATUS && { publishedAt: new Date() }),
+        ...(to === PUBLIC_STATUS && {
+          publishedAt: publishedAtGoingLive(before.status, before.publishedAt),
+        }),
       },
     });
-    await this.refreshPublicView(property, [from, to]);
+    await this.refreshPublicView(property, [before.status, to]);
     return property;
   }
 

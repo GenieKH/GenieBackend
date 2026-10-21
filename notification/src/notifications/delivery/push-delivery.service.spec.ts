@@ -1,17 +1,30 @@
 import { PushDeliveryService } from './push-delivery.service';
-import { PushContent, PushOutcome, PushSender, PushTarget } from './push-sender';
+import {
+  PushContent,
+  PushOutcome,
+  PushSender,
+  PushTarget,
+} from './push-sender';
 
-const content: PushContent = { data: { type: 'x' }, channel: 'security', urgent: true };
+const content: PushContent = {
+  data: { type: 'x' },
+  channel: 'security',
+  urgent: true,
+};
 
 const targets = (count: number): PushTarget[] =>
-  Array.from({ length: count }, (_, i) => ({ id: `d${i}`, token: `t${i}`, platform: 'android', locale: 'en' }));
+  Array.from({ length: count }, (_, i) => ({
+    id: `d${i}`,
+    token: `t${i}`,
+    platform: 'android',
+    locale: 'en',
+  }));
 
 class FakeSender extends PushSender {
   batches: number[] = [];
   outcomeOf: (token: string) => PushOutcome = () => 'sent';
   error?: Error;
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async send(pushes: { token: string }[]): Promise<PushOutcome[]> {
     if (this.error) throw this.error;
     this.batches.push(pushes.length);
@@ -21,7 +34,9 @@ class FakeSender extends PushSender {
 
 describe('PushDeliveryService', () => {
   let sender: FakeSender;
-  const devices = { forget: jest.fn((ids: string[]) => Promise.resolve(ids.length)) };
+  const devices = {
+    forget: jest.fn((ids: string[]) => Promise.resolve(ids.length)),
+  };
   let delivery: PushDeliveryService;
 
   beforeEach(() => {
@@ -38,7 +53,8 @@ describe('PushDeliveryService', () => {
   });
 
   it('forgets the devices whose token is gone, and only those', async () => {
-    sender.outcomeOf = (token) => (token === 't1' ? 'unregistered' : token === 't2' ? 'failed' : 'sent');
+    sender.outcomeOf = (token) =>
+      token === 't1' ? 'unregistered' : token === 't2' ? 'failed' : 'sent';
 
     const report = await delivery.deliver(targets(3), () => content);
 
@@ -47,7 +63,9 @@ describe('PushDeliveryService', () => {
   });
 
   it('skips devices with nothing to say to them', async () => {
-    const report = await delivery.deliver(targets(3), (target) => (target.id === 'd0' ? content : null));
+    const report = await delivery.deliver(targets(3), (target) =>
+      target.id === 'd0' ? content : null,
+    );
 
     expect(sender.batches).toEqual([1]);
     expect(report.sent).toBe(1);

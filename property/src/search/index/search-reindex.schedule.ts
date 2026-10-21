@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { SearchEngine } from './search-engine';
 import { SearchIndexSync } from './search-index-sync.service';
 
@@ -20,7 +25,9 @@ export function msUntilHour(now: Date, hourUtc: number): number {
  * complete by itself, so two at once only cost time.
  */
 @Injectable()
-export class SearchReindexSchedule implements OnApplicationBootstrap, OnModuleDestroy {
+export class SearchReindexSchedule
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
   private readonly logger = new Logger(SearchReindexSchedule.name);
   private timer?: NodeJS.Timeout;
   private running = false;
@@ -32,7 +39,9 @@ export class SearchReindexSchedule implements OnApplicationBootstrap, OnModuleDe
 
   onApplicationBootstrap(): void {
     if (!this.engine.isConfigured) {
-      this.logger.log('No search engine is configured: search reads the database');
+      this.logger.log(
+        'No search engine is configured: search reads the database',
+      );
       return;
     }
     void this.prepare();
@@ -50,9 +59,13 @@ export class SearchReindexSchedule implements OnApplicationBootstrap, OnModuleDe
     const started = Date.now();
     try {
       await this.sync.reindexAll();
-      this.logger.log(`Search index rebuilt (${reason}) in ${Date.now() - started} ms`);
+      this.logger.log(
+        `Search index rebuilt (${reason}) in ${Date.now() - started} ms`,
+      );
     } catch (error) {
-      this.logger.error(`Rebuilding the search index failed: ${(error as Error).message}`);
+      this.logger.error(
+        `Rebuilding the search index failed: ${(error as Error).message}`,
+      );
     } finally {
       this.running = false;
     }
@@ -61,17 +74,23 @@ export class SearchReindexSchedule implements OnApplicationBootstrap, OnModuleDe
   private async prepare(): Promise<void> {
     try {
       await this.engine.prepare();
-      if (await this.engine.isEmpty()) await this.reindex('the index was empty');
+      if (await this.engine.isEmpty())
+        await this.reindex('the index was empty');
     } catch (error) {
       // Search keeps working from the database; the nightly rebuild retries.
-      this.logger.error(`The search engine could not be set up: ${(error as Error).message}`);
+      this.logger.error(
+        `The search engine could not be set up: ${(error as Error).message}`,
+      );
     }
   }
 
   private scheduleNext(): void {
-    this.timer = setTimeout(() => {
-      void this.reindex('nightly').finally(() => this.scheduleNext());
-    }, msUntilHour(new Date(), REINDEX_HOUR_UTC));
+    this.timer = setTimeout(
+      () => {
+        void this.reindex('nightly').finally(() => this.scheduleNext());
+      },
+      msUntilHour(new Date(), REINDEX_HOUR_UTC),
+    );
     this.timer.unref();
   }
 }

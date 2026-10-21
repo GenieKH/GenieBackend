@@ -37,5 +37,11 @@ export abstract class PushSender {
   static readonly maxBatch = 500;
 
   /** One outcome per push, in the same order. Never throws for a single bad token. */
-  abstract send(pushes: { token: string; platform: PushTarget['platform']; content: PushContent }[]): Promise<PushOutcome[]>;
+  abstract send(
+    pushes: {
+      token: string;
+      platform: PushTarget['platform'];
+      content: PushContent;
+    }[],
+  ): Promise<PushOutcome[]>;
 }

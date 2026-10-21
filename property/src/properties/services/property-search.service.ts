@@ -20,23 +20,30 @@ export class PropertySearchService {
   matching(terms: string[], limit: number) {
     if (terms.length === 0) return Promise.resolve([]);
 
-    return this.publicCache.textSearch(`${limit}:${terms.join(' ')}`, async () =>
-      this.counts.attach(
-        await this.prisma.property.findMany({
-          where: {
-            ...PUBLISHED,
-            AND: terms.map((term) => ({
-              OR: [
-                { title: { contains: term, mode: 'insensitive' as const } },
-                { description: { contains: term, mode: 'insensitive' as const } },
-              ],
-            })),
-          },
-          select: MAP_SELECT,
-          orderBy: { createdAt: 'desc' },
-          take: limit,
-        }),
-      ),
+    return this.publicCache.textSearch(
+      `${limit}:${terms.join(' ')}`,
+      async () =>
+        this.counts.attach(
+          await this.prisma.property.findMany({
+            where: {
+              ...PUBLISHED,
+              AND: terms.map((term) => ({
+                OR: [
+                  { title: { contains: term, mode: 'insensitive' as const } },
+                  {
+                    description: {
+                      contains: term,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                ],
+              })),
+            },
+            select: MAP_SELECT,
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+          }),
+        ),
     );
   }
 
@@ -70,7 +77,12 @@ export class PropertySearchService {
 }
 
 /** `rows` sorted as their ids are in `ids`. */
-export function inOrderOf<T extends { id: string }>(ids: string[], rows: T[]): T[] {
+export function inOrderOf<T extends { id: string }>(
+  ids: string[],
+  rows: T[],
+): T[] {
   const position = new Map(ids.map((id, index) => [id, index]));
-  return [...rows].sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
+  return [...rows].sort(
+    (a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0),
+  );
 }

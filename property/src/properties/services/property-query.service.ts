@@ -1,14 +1,22 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService, ReadPrisma } from '@genie/shared';
 import {
   MAP_SELECT,
   PROPERTY_WITH_RELATIONS,
   PUBLISHED,
 } from '../property-includes';
-import { PropertyEngagementCounts, withEngagement } from './property-engagement-counts.service';
+import {
+  PropertyEngagementCounts,
+  withEngagement,
+} from './property-engagement-counts.service';
+import { MapFilter, mapFilterWhere, withoutPrice } from '../map-filter';
+import { PRICE_HISTOGRAM_SAMPLE, priceHistogram } from '../map-price-histogram';
 import {
   MapBounds,
-  MapFilter,
   PublicPropertyCache,
   widenToGrid,
 } from './public-property-cache.service';
@@ -66,19 +74,14 @@ export class PropertyQueryService {
    * area and `filter`; only the flag is looked up per user.
    */
   async searchMap(bounds: MapBounds, userId?: string, filter: MapFilter = {}) {
-    if (bounds.minLat > bounds.maxLat || bounds.minLng > bounds.maxLng) {
-      throw new BadRequestException('The map bounds are the wrong way round');
-    }
-    const box = widenToGrid(bounds);
+    const box = gridBox(bounds);
     const properties = await this.publicCache.map(box, filter, async () =>
       this.counts.attach(
         await this.publicReads.property.findMany({
           where: {
             ...PUBLISHED,
-            ...(filter.propertyType && { propertyType: filter.propertyType }),
-            ...(filter.listingType && { listingType: filter.listingType }),
-            lat: { gte: box.minLat, lte: box.maxLat },
-            lng: { gte: box.minLng, lte: box.maxLng },
+            ...mapFilterWhere(filter),
+            ...inBox(box),
           },
           select: MAP_SELECT,
           // A zoomed-out map would otherwise receive every listing there is.
@@ -98,6 +101,33 @@ export class PropertyQueryService {
     }));
   }
 
+  /**
+   * How the asking prices of the listings `searchMap` would find spread from
+   * 0 to `upTo`, whatever price range `filter` asks for: the bars behind the
+   * filter's price slider.
+   */
+  async priceHistogram(bounds: MapBounds, filter: MapFilter, upTo: number) {
+    const box = gridBox(bounds);
+    const unpriced = withoutPrice(filter);
+    const counts = await this.publicCache.map(
+      box,
+      unpriced,
+      async () => {
+        const rows = await this.publicReads.property.findMany({
+          where: { ...PUBLISHED, ...mapFilterWhere(unpriced), ...inBox(box) },
+          select: { price: true },
+          take: PRICE_HISTOGRAM_SAMPLE,
+        });
+        return priceHistogram(
+          rows.map((row) => Number(row.price)),
+          upTo,
+        );
+      },
+      `prices:${upTo}`,
+    );
+    return { counts };
+  }
+
   private async visitedAmong(
     userId: string | undefined,
     propertyIds: string[],
@@ -110,4 +140,18 @@ export class PropertyQueryService {
     });
     return new Set(views.map((view) => view.propertyId));
   }
+}
+
+function gridBox(bounds: MapBounds): MapBounds {
+  if (bounds.minLat > bounds.maxLat || bounds.minLng > bounds.maxLng) {
+    throw new BadRequestException('The map bounds are the wrong way round');
+  }
+  return widenToGrid(bounds);
+}
+
+function inBox(box: MapBounds) {
+  return {
+    lat: { gte: box.minLat, lte: box.maxLat },
+    lng: { gte: box.minLng, lte: box.maxLng },
+  };
 }

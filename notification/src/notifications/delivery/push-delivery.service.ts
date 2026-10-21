@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PushDevicesService } from '../devices/push-devices.service';
-import { PushContent, PushOutcome, PushSender, PushTarget } from './push-sender';
+import {
+  PushContent,
+  PushOutcome,
+  PushSender,
+  PushTarget,
+} from './push-sender';
 
 /** How a delivery went, for logs and for a promotion's counts. */
 export interface DeliveryReport {
@@ -25,15 +30,20 @@ export class PushDeliveryService {
   ) {}
 
   /** [contentFor] writes each device's push (in its language); null skips the device. */
-  async deliver(targets: PushTarget[], contentFor: (target: PushTarget) => PushContent | null): Promise<DeliveryReport> {
+  async deliver(
+    targets: PushTarget[],
+    contentFor: (target: PushTarget) => PushContent | null,
+  ): Promise<DeliveryReport> {
     const report: DeliveryReport = { sent: 0, failed: 0, removed: 0 };
     const gone: string[] = [];
 
     for (let start = 0; start < targets.length; start += PushSender.maxBatch) {
-      const batch = targets.slice(start, start + PushSender.maxBatch).flatMap((target) => {
-        const content = contentFor(target);
-        return content ? [{ target, content }] : [];
-      });
+      const batch = targets
+        .slice(start, start + PushSender.maxBatch)
+        .flatMap((target) => {
+          const content = contentFor(target);
+          return content ? [{ target, content }] : [];
+        });
       if (batch.length === 0) continue;
 
       const outcomes = await this.sendBatch(batch);
@@ -54,13 +64,21 @@ export class PushDeliveryService {
   }
 
   /** A provider outage fails the batch; it does not stop the next one. */
-  private async sendBatch(batch: { target: PushTarget; content: PushContent }[]): Promise<PushOutcome[]> {
+  private async sendBatch(
+    batch: { target: PushTarget; content: PushContent }[],
+  ): Promise<PushOutcome[]> {
     try {
       return await this.sender.send(
-        batch.map(({ target, content }) => ({ token: target.token, platform: target.platform, content })),
+        batch.map(({ target, content }) => ({
+          token: target.token,
+          platform: target.platform,
+          content,
+        })),
       );
     } catch (error) {
-      this.logger.error(`A batch of ${batch.length} pushes failed: ${(error as Error).message}`);
+      this.logger.error(
+        `A batch of ${batch.length} pushes failed: ${(error as Error).message}`,
+      );
       return batch.map(() => 'failed');
     }
   }

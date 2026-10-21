@@ -13,7 +13,10 @@ export interface PromotionMessage {
 }
 
 /** In Khmer where the device is set to Khmer and the text was written in it. */
-export function promotionPush(promotion: PromotionMessage, target: PushTarget): PushContent {
+export function promotionPush(
+  promotion: PromotionMessage,
+  target: PushTarget,
+): PushContent {
   const khmer = target.locale === 'km';
   return {
     alert: {

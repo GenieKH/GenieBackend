@@ -2,7 +2,12 @@ import { NotFoundException } from '@nestjs/common';
 import { ConversationStateService } from './conversation-state.service';
 
 describe('ConversationStateService', () => {
-  const stateTable = { upsert: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn(), findUnique: jest.fn() };
+  const stateTable = {
+    upsert: jest.fn(),
+    updateMany: jest.fn(),
+    deleteMany: jest.fn(),
+    findUnique: jest.fn(),
+  };
   const messageTable = { deleteMany: jest.fn() };
   const callLogTable = { deleteMany: jest.fn() };
   const userTable = { findUnique: jest.fn() };
@@ -11,7 +16,9 @@ describe('ConversationStateService', () => {
     message: messageTable,
     callLog: callLogTable,
     user: userTable,
-    $transaction: jest.fn(async (operations: unknown[]) => Promise.all(operations)),
+    $transaction: jest.fn(async (operations: unknown[]) =>
+      Promise.all(operations),
+    ),
   };
   const attachments = { removeConversation: jest.fn() };
   let states: ConversationStateService;
@@ -19,21 +26,28 @@ describe('ConversationStateService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     userTable.findUnique.mockResolvedValue({ id: 'bob' });
-    states = new ConversationStateService(prisma as never, attachments as never);
+    states = new ConversationStateService(
+      prisma as never,
+      attachments as never,
+    );
   });
 
   it('archives a conversation for the caller only', async () => {
     await states.archive('alice', 'bob');
 
     const call = stateTable.upsert.mock.calls[0][0];
-    expect(call.where).toEqual({ userId_partnerId: { userId: 'alice', partnerId: 'bob' } });
+    expect(call.where).toEqual({
+      userId_partnerId: { userId: 'alice', partnerId: 'bob' },
+    });
     expect(call.update.archivedAt).toBeInstanceOf(Date);
   });
 
   it('refuses a conversation with someone who does not exist', async () => {
     userTable.findUnique.mockResolvedValue(null);
 
-    await expect(states.archive('alice', 'nobody')).rejects.toThrow(NotFoundException);
+    await expect(states.archive('alice', 'nobody')).rejects.toThrow(
+      NotFoundException,
+    );
     expect(stateTable.upsert).not.toHaveBeenCalled();
   });
 
@@ -77,10 +91,14 @@ describe('ConversationStateService', () => {
   });
 
   it('still deletes the messages when the files cannot be deleted', async () => {
-    attachments.removeConversation.mockRejectedValueOnce(new Error('storage down'));
+    attachments.removeConversation.mockRejectedValueOnce(
+      new Error('storage down'),
+    );
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    await expect(states.deleteForEveryone('alice', 'bob')).resolves.toBeUndefined();
+    await expect(
+      states.deleteForEveryone('alice', 'bob'),
+    ).resolves.toBeUndefined();
     expect(messageTable.deleteMany).toHaveBeenCalled();
   });
 });

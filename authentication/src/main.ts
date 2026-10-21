@@ -22,4 +22,4 @@ async function bootstrap() {
   await app.listen(port, host);
   Logger.log(`Listening on ${host}:${port}`, 'Bootstrap');
 }
-bootstrap();
+void bootstrap();

@@ -9,9 +9,13 @@ type Locale = PushTarget['locale'];
 export const texts = {
   newMessage: { en: 'New message', km: 'សារថ្មី' },
 
-  newSignInTitle: { en: 'New sign-in to your account', km: 'មានការចូលគណនីរបស់អ្នកថ្មី' },
+  newSignInTitle: {
+    en: 'New sign-in to your account',
+    km: 'មានការចូលគណនីរបស់អ្នកថ្មី',
+  },
   newSignInBody: {
-    en: (device: string) => `${device} signed in. If this wasn't you, sign it out and change your password.`,
+    en: (device: string) =>
+      `${device} signed in. If this wasn't you, sign it out and change your password.`,
     km: (device: string) =>
       `${device} បានចូលគណនីរបស់អ្នក។ ប្រសិនបើមិនមែនជាអ្នកទេ សូមចាកចេញពីឧបករណ៍នោះ ហើយប្តូរពាក្យសម្ងាត់។`,
   },

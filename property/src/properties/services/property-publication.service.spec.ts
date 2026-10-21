@@ -8,7 +8,11 @@ const LISTING = '33333333-3333-4333-8333-333333333333';
 const PLACE = { id: LISTING, userId: ME, lat: 11.56, lng: 104.92 };
 
 describe('PropertyPublicationService', () => {
-  const propertyTable = { update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn() };
+  const propertyTable = {
+    update: jest.fn(),
+    updateMany: jest.fn(),
+    findUnique: jest.fn(),
+  };
   const query = { findOwned: jest.fn() };
   const listingChanges = { changed: jest.fn() };
   let service: PropertyPublicationService;
@@ -31,36 +35,69 @@ describe('PropertyPublicationService', () => {
       const result = await service.beginPublish(ME, LISTING);
 
       expect(query.findOwned).toHaveBeenCalledWith(ME, LISTING);
-      expect(propertyTable.update).toHaveBeenCalledWith({ where: { id: LISTING }, data: { status: 'Pending' } });
+      expect(propertyTable.update).toHaveBeenCalledWith({
+        where: { id: LISTING },
+        data: { status: 'Pending' },
+      });
       expect(result).toEqual({ previousStatus: 'Draft' });
     });
 
-    it('lets an expired listing be published again', async () => {
+    it('lets an expired listing be published again, to be dated anew once paid', async () => {
       query.findOwned.mockResolvedValue({ id: LISTING, status: 'Expired' });
 
-      await expect(service.beginPublish(ME, LISTING)).resolves.toEqual({ previousStatus: 'Expired' });
+      await expect(service.beginPublish(ME, LISTING)).resolves.toEqual({
+        previousStatus: 'Expired',
+      });
+      expect(propertyTable.update).toHaveBeenCalledWith({
+        where: { id: LISTING },
+        data: { status: 'Pending', publishedAt: null },
+      });
     });
 
-    it.each(['Active', 'Pending', 'Sold'])('refuses a listing that is %s', async (status) => {
-      query.findOwned.mockResolvedValue({ id: LISTING, status });
+    it.each(['Active', 'Pending', 'Sold'])(
+      'refuses a listing that is %s',
+      async (status) => {
+        query.findOwned.mockResolvedValue({ id: LISTING, status });
 
-      await expect(service.beginPublish(ME, LISTING)).rejects.toThrow(BadRequestException);
-      expect(propertyTable.update).not.toHaveBeenCalled();
-    });
+        await expect(service.beginPublish(ME, LISTING)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(propertyTable.update).not.toHaveBeenCalled();
+      },
+    );
 
     it("refuses someone else's listing", async () => {
-      query.findOwned.mockRejectedValue(new NotFoundException('Property not found'));
+      query.findOwned.mockRejectedValue(
+        new NotFoundException('Property not found'),
+      );
 
-      await expect(service.beginPublish(ME, LISTING)).rejects.toThrow(NotFoundException);
+      await expect(service.beginPublish(ME, LISTING)).rejects.toThrow(
+        NotFoundException,
+      );
       expect(propertyTable.update).not.toHaveBeenCalled();
     });
   });
 
   describe('settlePublish', () => {
-    it('publishes a Pending listing and refreshes what visitors see', async () => {
+    it('publishes a Pending listing never live before, dated now, and refreshes what visitors see', async () => {
       await service.settlePublish(LISTING, 'Active');
 
+      expect(propertyTable.updateMany).toHaveBeenCalledTimes(1);
       expect(propertyTable.updateMany).toHaveBeenCalledWith({
+        where: { id: LISTING, status: 'Pending', publishedAt: null },
+        data: { status: 'Active', publishedAt: expect.any(Date) },
+      });
+      expect(listingChanges.changed).toHaveBeenCalledWith(PLACE);
+    });
+
+    it('keeps the first date of a draft that was live before and is paid for again', async () => {
+      propertyTable.updateMany
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValueOnce({ count: 1 });
+
+      await service.settlePublish(LISTING, 'Active');
+
+      expect(propertyTable.updateMany).toHaveBeenLastCalledWith({
         where: { id: LISTING, status: 'Pending' },
         data: { status: 'Active' },
       });

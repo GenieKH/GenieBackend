@@ -1,4 +1,11 @@
-import { IsNotEmpty, IsOptional, IsString, IsUrl, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 
 /** Longer than this is cut off by most phones anyway. */
 const MAX_TITLE_LENGTH = 65;

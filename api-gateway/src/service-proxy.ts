@@ -54,7 +54,8 @@ export function createServiceProxy(
         // Re-send the already-parsed body, otherwise the upstream request hangs.
         fixRequestBody(proxyReq, req as never);
       },
-      error: (error, _req, res) => respondUnavailable(service, error as NodeJS.ErrnoException, res),
+      error: (error, _req, res) =>
+        respondUnavailable(service, error as NodeJS.ErrnoException, res),
     },
   });
 }

@@ -12,13 +12,21 @@ describe('describeJwtPublicKey', () => {
   });
 
   it('gives one fingerprint however the newlines are written', () => {
-    const escaped = describeJwtPublicKey({ JWT_PUBLIC_KEY: PEM.replace(/\n/g, '\n') });
+    const escaped = describeJwtPublicKey({
+      JWT_PUBLIC_KEY: PEM.replace(/\n/g, '\n'),
+    });
     const real = describeJwtPublicKey({ JWT_PUBLIC_KEY: PEM });
-    expect(escaped.split('fingerprint ')[1]).toBe(real.split('fingerprint ')[1]);
+    expect(escaped.split('fingerprint ')[1]).toBe(
+      real.split('fingerprint ')[1],
+    );
   });
 
   it('gives different fingerprints for different keys', () => {
-    const other = describeJwtPublicKey({ JWT_PUBLIC_KEY: PEM.replace('AAAA', 'CCCC') });
-    expect(other.split('fingerprint ')[1]).not.toBe(describeJwtPublicKey({ JWT_PUBLIC_KEY: PEM }).split('fingerprint ')[1]);
+    const other = describeJwtPublicKey({
+      JWT_PUBLIC_KEY: PEM.replace('AAAA', 'CCCC'),
+    });
+    expect(other.split('fingerprint ')[1]).not.toBe(
+      describeJwtPublicKey({ JWT_PUBLIC_KEY: PEM }).split('fingerprint ')[1],
+    );
   });
 });

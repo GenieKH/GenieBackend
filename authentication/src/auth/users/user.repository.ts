@@ -1,4 +1,10 @@
-import { ConflictException, Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_CLIENT } from '../../supabase/supabase.module';
 
@@ -24,7 +30,8 @@ export interface UserRecord {
   deactivated_at: string | null;
 }
 
-export type NewUser = Partial<Omit<UserRecord, 'id' | 'username'>> & Pick<UserRecord, 'password_hash'>;
+export type NewUser = Partial<Omit<UserRecord, 'id' | 'username'>> &
+  Pick<UserRecord, 'password_hash'>;
 export type UserPatch = Partial<Omit<UserRecord, 'id'>>;
 
 const UNIQUE_VIOLATION = '23505';
@@ -54,7 +61,9 @@ function escapeLikePattern(value: string): string {
 export class UserRepository {
   private readonly logger = new Logger(UserRepository.name);
 
-  constructor(@Inject(SUPABASE_CLIENT) private readonly supabase: SupabaseClient) {}
+  constructor(
+    @Inject(SUPABASE_CLIENT) private readonly supabase: SupabaseClient,
+  ) {}
 
   findById(id: string): Promise<UserRecord | null> {
     return this.findOneBy('id', id);
@@ -66,7 +75,10 @@ export class UserRepository {
    */
   async findByEmail(email: string): Promise<UserRecord | null> {
     const normalized = normalizeEmail(email);
-    return (await this.findOneBy('email', normalized)) ?? this.findOneIgnoringCase('email', normalized);
+    return (
+      (await this.findOneBy('email', normalized)) ??
+      this.findOneIgnoringCase('email', normalized)
+    );
   }
 
   findByPhone(phone: string): Promise<UserRecord | null> {
@@ -85,14 +97,23 @@ export class UserRepository {
    * a new one, instead of failing the sign-up as if the email were in use.
    */
   async create(user: NewUser): Promise<UserRecord> {
-    const row = { ...user, ...(user.email ? { email: normalizeEmail(user.email) } : {}) };
+    const row = {
+      ...user,
+      ...(user.email ? { email: normalizeEmail(user.email) } : {}),
+    };
     for (let attempt = 1; ; attempt++) {
-      const { data, error } = await this.supabase.from('users').insert([row]).select().single();
-      if (!error) return data as UserRecord;
+      const { data, error } = await this.supabase
+        .from('users')
+        .insert([row])
+        .select()
+        .single<UserRecord>();
+      if (!error) return data;
 
       if (error.code === UNIQUE_VIOLATION) {
-        const handleCollided = `${error.message} ${error.details ?? ''}`.includes(USERNAME_INDEX);
-        if (!handleCollided) throw new ConflictException('Email or phone already exists');
+        const handleCollided =
+          `${error.message} ${error.details ?? ''}`.includes(USERNAME_INDEX);
+        if (!handleCollided)
+          throw new ConflictException('Email or phone already exists');
         if (attempt < MAX_CREATE_ATTEMPTS) continue;
       }
       this.logger.error(`Failed to create user: ${error.message}`);
@@ -101,7 +122,10 @@ export class UserRepository {
   }
 
   async update(id: string, patch: UserPatch): Promise<void> {
-    const { error } = await this.supabase.from('users').update(patch).eq('id', id);
+    const { error } = await this.supabase
+      .from('users')
+      .update(patch)
+      .eq('id', id);
     if (error) {
       this.logger.error(`Failed to update user ${id}: ${error.message}`);
       throw new InternalServerErrorException('Failed to update user');
@@ -120,33 +144,43 @@ export class UserRepository {
     }
   }
 
-  private async findOneIgnoringCase(column: string, value: string): Promise<UserRecord | null> {
+  private async findOneIgnoringCase(
+    column: string,
+    value: string,
+  ): Promise<UserRecord | null> {
     const { data, error } = await this.supabase
       .from('users')
       .select('*')
       .ilike(column, escapeLikePattern(value))
       .limit(1)
-      .maybeSingle();
+      .maybeSingle<UserRecord>();
 
     if (error) {
-      this.logger.error(`Failed to look up user by ${column}: ${error.message}`);
+      this.logger.error(
+        `Failed to look up user by ${column}: ${error.message}`,
+      );
       throw new InternalServerErrorException('Failed to look up user');
     }
-    return (data as UserRecord | null) ?? null;
+    return data ?? null;
   }
 
-  private async findOneBy(column: string, value: string): Promise<UserRecord | null> {
+  private async findOneBy(
+    column: string,
+    value: string,
+  ): Promise<UserRecord | null> {
     const { data, error } = await this.supabase
       .from('users')
       .select('*')
       .eq(column, value)
       .limit(1)
-      .maybeSingle();
+      .maybeSingle<UserRecord>();
 
     if (error) {
-      this.logger.error(`Failed to look up user by ${column}: ${error.message}`);
+      this.logger.error(
+        `Failed to look up user by ${column}: ${error.message}`,
+      );
       throw new InternalServerErrorException('Failed to look up user');
     }
-    return (data as UserRecord | null) ?? null;
+    return data ?? null;
   }
 }

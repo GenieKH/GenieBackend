@@ -1,4 +1,12 @@
-import { Body, Controller, Headers, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUserId, JwtAuthGuard } from '@genie/shared';
 import { CheckoutDto, PaymentWebhookDto } from './dto/payment.dto';
@@ -22,7 +30,10 @@ export class PaymentsController {
   /** Called by the payment provider, not by users. Authenticated by signature. */
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
-  handleWebhook(@Headers('x-signature') signature: string | undefined, @Body() dto: PaymentWebhookDto) {
+  handleWebhook(
+    @Headers('x-signature') signature: string | undefined,
+    @Body() dto: PaymentWebhookDto,
+  ) {
     return this.webhook.handle(dto, signature ?? '');
   }
 }

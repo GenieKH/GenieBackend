@@ -1,6 +1,6 @@
 import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { FakeRedis, fakeCache } from '@genie/shared/testing';
-import { PlaceArea, PlaceProvider } from './places/place-provider';
+import { PlaceArea } from './places/place-provider';
 import { SearchService } from './search.service';
 import { TextSearchService } from './text-search.service';
 
@@ -43,7 +43,7 @@ describe('SearchService', () => {
     };
     redis = new FakeRedis();
     service = new SearchService(
-      places as unknown as PlaceProvider,
+      places,
       propertySearch as never,
       propertyQuery as never,
       people as never,

@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { DeliveryReport, PushDeliveryService } from '../delivery/push-delivery.service';
+import {
+  DeliveryReport,
+  PushDeliveryService,
+} from '../delivery/push-delivery.service';
 import { PushDevicesService } from '../devices/push-devices.service';
 import { SignInEvent, signInAlertPush } from './sign-in-alert.push';
 
@@ -15,7 +18,11 @@ export class SignInAlertNotifier {
   ) {}
 
   async notify(event: SignInEvent): Promise<DeliveryReport> {
-    const targets = await this.devices.targetsOf(event.userId, { exceptSessionId: event.sessionId });
-    return this.delivery.deliver(targets, (target) => signInAlertPush(event, target));
+    const targets = await this.devices.targetsOf(event.userId, {
+      exceptSessionId: event.sessionId,
+    });
+    return this.delivery.deliver(targets, (target) =>
+      signInAlertPush(event, target),
+    );
   }
 }

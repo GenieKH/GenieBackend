@@ -1,7 +1,18 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { OptionalJwtAuthGuard } from '@genie/shared';
 import { GuestSessionDto } from './dto/guest-session.dto';
+import { MapPriceHistogramQuery } from './dto/map-price-histogram.query';
 import { MapSearchQuery } from './dto/map-search.query';
 import { GuestSessionService } from './services/guest-session.service';
 import { PropertyQueryService } from './services/property-query.service';
@@ -17,9 +28,25 @@ export class PublicPropertiesController {
 
   @Get('map')
   @UseGuards(OptionalJwtAuthGuard)
-  searchMap(@Req() req: { user?: { userId: string } | null }, @Query() search: MapSearchQuery) {
-    const { propertyType, listingType, ...bounds } = search;
-    return this.query.searchMap(bounds, req.user?.userId, { propertyType, listingType });
+  searchMap(
+    @Req() req: { user?: { userId: string } | null },
+    @Query() search: MapSearchQuery,
+  ) {
+    return this.query.searchMap(
+      search.bounds(),
+      req.user?.userId,
+      search.filter(),
+    );
+  }
+
+  /** The bars behind the filter's price slider, for the same area and filter. */
+  @Get('map/prices')
+  mapPrices(@Query() search: MapPriceHistogramQuery) {
+    return this.query.priceHistogram(
+      search.bounds(),
+      search.filter(),
+      search.upTo,
+    );
   }
 
   @Post('guest-session')

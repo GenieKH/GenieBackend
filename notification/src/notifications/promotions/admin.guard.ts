@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { AuthenticatedUser, PrismaService } from '@genie/shared';
 
 /**
@@ -11,7 +16,9 @@ export class AdminGuard implements CanActivate {
   constructor(private readonly prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const caller = context.switchToHttp().getRequest<{ user?: AuthenticatedUser }>().user;
+    const caller = context
+      .switchToHttp()
+      .getRequest<{ user?: AuthenticatedUser }>().user;
     const account = caller
       ? await this.prisma.user.findFirst({
           where: { id: caller.userId, deactivatedAt: null },

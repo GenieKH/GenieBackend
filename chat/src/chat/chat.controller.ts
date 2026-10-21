@@ -13,7 +13,11 @@ import {
 import { CurrentUserId, RateLimit, RateLimits } from '@genie/shared';
 import { requirePasswordProof } from './password-proof';
 import { ChatAttachmentService } from './chat-attachment.service';
-import { BackupOwnerProof, ChatBackupService, NewKeyBackup } from './chat-backup.service';
+import {
+  BackupOwnerProof,
+  ChatBackupService,
+  NewKeyBackup,
+} from './chat-backup.service';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { pageOfConversations } from './conversation-pages';
@@ -48,7 +52,11 @@ export class ChatController {
     private readonly gateway: ChatGateway,
     rateLimits: RateLimits,
   ) {
-    this.backupRateLimiter = rateLimits.create('chat-backup-lookup', 5, 15 * 60);
+    this.backupRateLimiter = rateLimits.create(
+      'chat-backup-lookup',
+      5,
+      15 * 60,
+    );
     this.uploadRateLimiter = rateLimits.create('chat-upload', 20, 60);
   }
 
@@ -79,7 +87,11 @@ export class ChatController {
   /** A new PIN replaces the backup, which needs the same proof as `resetKeys`. */
   @Post('backup')
   setBackup(@CurrentUserId() userId: string, @Body() dto: SetBackupDto) {
-    return this.backupService.save(userId, backupOf(dto), ownerProofOf(userId, dto));
+    return this.backupService.save(
+      userId,
+      backupOf(dto),
+      ownerProofOf(userId, dto),
+    );
   }
 
   @Get('backup')
@@ -87,7 +99,10 @@ export class ChatController {
     try {
       await this.backupRateLimiter.consume(userId);
     } catch {
-      throw new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        'Too Many Requests',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
     return this.backupService.describe(userId);
   }
@@ -101,25 +116,44 @@ export class ChatController {
 
   /** The main list by default; `?list=archived` for the archive. Paged with `limit`. */
   @Get('conversations')
-  async getConversations(@CurrentUserId() userId: string, @Query() query: ConversationListQuery) {
-    const conversations = await this.chatService.getConversations(userId, query.list ?? 'main');
+  async getConversations(
+    @CurrentUserId() userId: string,
+    @Query() query: ConversationListQuery,
+  ) {
+    const conversations = await this.chatService.getConversations(
+      userId,
+      query.list ?? 'main',
+    );
     if (query.limit === undefined) return conversations;
-    return pageOfConversations(conversations, { limit: query.limit, cursor: query.cursor });
+    return pageOfConversations(conversations, {
+      limit: query.limit,
+      cursor: query.cursor,
+    });
   }
 
   @Post('conversations/:participantId/archive')
   @HttpCode(HttpStatus.OK)
-  async archiveConversation(@CurrentUserId() userId: string, @Param('participantId', ParseUUIDPipe) participantId: string) {
+  async archiveConversation(
+    @CurrentUserId() userId: string,
+    @Param('participantId', ParseUUIDPipe) participantId: string,
+  ) {
     await this.conversationStates.archive(userId, participantId);
-    this.gateway.notifyConversationChanged(userId, participantId, { historyCleared: false });
+    this.gateway.notifyConversationChanged(userId, participantId, {
+      historyCleared: false,
+    });
     return { success: true };
   }
 
   @Post('conversations/:participantId/unarchive')
   @HttpCode(HttpStatus.OK)
-  async unarchiveConversation(@CurrentUserId() userId: string, @Param('participantId', ParseUUIDPipe) participantId: string) {
+  async unarchiveConversation(
+    @CurrentUserId() userId: string,
+    @Param('participantId', ParseUUIDPipe) participantId: string,
+  ) {
     await this.conversationStates.unarchive(userId, participantId);
-    this.gateway.notifyConversationChanged(userId, participantId, { historyCleared: false });
+    this.gateway.notifyConversationChanged(userId, participantId, {
+      historyCleared: false,
+    });
     return { success: true };
   }
 
@@ -137,7 +171,10 @@ export class ChatController {
     } else {
       await this.conversationStates.deleteForMe(userId, participantId);
     }
-    this.gateway.notifyConversationChanged(userId, participantId, { historyCleared: true, forPartner: forEveryone });
+    this.gateway.notifyConversationChanged(userId, participantId, {
+      historyCleared: true,
+      forPartner: forEveryone,
+    });
     return { success: true };
   }
 
@@ -148,21 +185,35 @@ export class ChatController {
     @Param('participantId', ParseUUIDPipe) participantId: string,
     @Query() page: MessagePageQuery,
   ) {
-    return this.chatService.getMessagesWith(userId, participantId, page.limit ?? DEFAULT_PAGE_SIZE, page.before);
+    return this.chatService.getMessagesWith(
+      userId,
+      participantId,
+      page.limit ?? DEFAULT_PAGE_SIZE,
+      page.before,
+    );
   }
 
   @Post('messages/:participantId/read')
-  markAsRead(@CurrentUserId() userId: string, @Param('participantId', ParseUUIDPipe) participantId: string) {
+  markAsRead(
+    @CurrentUserId() userId: string,
+    @Param('participantId', ParseUUIDPipe) participantId: string,
+  ) {
     return this.chatService.markAsRead(userId, participantId);
   }
 
   /** Where to upload one encrypted file for `recipientId`: `{ path, uploadUrl }`. */
   @Post('attachments')
-  async createAttachmentUpload(@CurrentUserId() userId: string, @Body() dto: CreateAttachmentDto) {
+  async createAttachmentUpload(
+    @CurrentUserId() userId: string,
+    @Body() dto: CreateAttachmentDto,
+  ) {
     try {
       await this.uploadRateLimiter.consume(userId);
     } catch {
-      throw new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        'Too Many Requests',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
     return this.attachmentService.createUpload(userId, dto.recipientId);
   }
@@ -175,12 +226,19 @@ export class ChatController {
     @Param('recipientId', ParseUUIDPipe) recipientId: string,
     @Param('fileId', ParseUUIDPipe) fileId: string,
   ) {
-    return this.attachmentService.createDownloadUrl(userId, { senderId, recipientId, fileId });
+    return this.attachmentService.createDownloadUrl(userId, {
+      senderId,
+      recipientId,
+      fileId,
+    });
   }
 }
 
 /** How the caller shows the backup is theirs to replace: the account password, else the current PIN. */
-function ownerProofOf(userId: string, dto: BackupOwnerProofDto): BackupOwnerProof {
+function ownerProofOf(
+  userId: string,
+  dto: BackupOwnerProofDto,
+): BackupOwnerProof {
   if (dto.passwordProofToken) {
     requirePasswordProof(userId, dto.passwordProofToken);
     return { provenByPassword: true };

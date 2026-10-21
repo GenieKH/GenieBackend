@@ -13,11 +13,18 @@ describe('InternalCallGuard', () => {
     privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
   });
   const originalKey = process.env.JWT_PUBLIC_KEY;
-  const sign = (typ: string, sub = ALICE, expiresIn: jwt.SignOptions['expiresIn'] = '5m') =>
-    jwt.sign({ sub, typ }, privateKey, { algorithm: 'RS256', expiresIn });
+  const sign = (
+    typ: string,
+    sub = ALICE,
+    expiresIn: jwt.SignOptions['expiresIn'] = '5m',
+  ) => jwt.sign({ sub, typ }, privateKey, { algorithm: 'RS256', expiresIn });
   const guard = new InternalCallGuard();
   const request = (authorization: string | undefined, userId = ALICE) =>
-    ({ switchToHttp: () => ({ getRequest: () => ({ headers: { authorization }, params: { userId } }) }) }) as never;
+    ({
+      switchToHttp: () => ({
+        getRequest: () => ({ headers: { authorization }, params: { userId } }),
+      }),
+    }) as never;
 
   beforeAll(() => {
     process.env.JWT_PUBLIC_KEY = publicKey;
@@ -39,6 +46,8 @@ describe('InternalCallGuard', () => {
     ["a user's access token", () => `Bearer ${sign('access')}`],
     ['an expired token', () => `Bearer ${sign('internal', ALICE, -10)}`],
   ])('refuses %s', (_case, authorization) => {
-    expect(() => guard.canActivate(request(authorization()))).toThrow(UnauthorizedException);
+    expect(() => guard.canActivate(request(authorization()))).toThrow(
+      UnauthorizedException,
+    );
   });
 });

@@ -91,6 +91,8 @@ model User {
   conversationStates      ChatConversationState[] @relation("ConversationStatesOwned")
   conversationStatesAbout ChatConversationState[] @relation("ConversationStatesAbout")
   hiddenMessages          ChatHiddenMessage[]
+  following               Follow[] @relation("Following")
+  followers               Follow[] @relation("Followers")
 
   @@index([email], map: "idx_users_email", where: raw("(email IS NOT NULL)"))
   @@index([phone], map: "idx_users_phone", where: raw("(phone IS NOT NULL)"))
@@ -145,6 +147,8 @@ model Property {
   lng              Float?
   boundaryPoints   Json?                @map("boundary_points")
   createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// When it last went live (Draft, Expired or Sold -> Active); null if never. The feed is ordered by it.
+  publishedAt      DateTime?            @map("published_at") @db.Timestamptz(6)
   updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
   payments         PaymentTransaction[]
   user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -165,6 +169,8 @@ model Property {
   @@index([status, listingType, lat, lng])
   /// The map's newest published listings first (migration 25).
   @@index([createdAt(sort: Desc)], map: "properties_active_newest_idx", where: raw("(status = 'Active'::text)"))
+  /// The feed: followed owners' live listings, newest published first (migration 27).
+  @@index([userId, publishedAt(sort: Desc), id], map: "properties_active_owner_published_idx", where: raw("(status = 'Active'::text)"))
   @@map("properties")
 }
 
@@ -501,4 +507,19 @@ model CallLog {
   @@index([callerId, createdAt])
   @@index([calleeId, createdAt])
   @@map("call_logs")
+}
+
+/// Who follows whom (migration 26). The pair is the key, so following twice
+/// changes nothing; the database refuses following yourself.
+model Follow {
+  followerId  String   @map("follower_id") @db.Uuid
+  followingId String   @map("following_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  follower  User @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+  @@index([followingId])
+  @@map("follows")
 }

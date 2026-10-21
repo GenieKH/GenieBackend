@@ -8,7 +8,9 @@ import { FirebaseService } from '../firebase/firebase.service';
 import { SUPABASE_CLIENT } from '../supabase/supabase.module';
 
 // firebase-admin pulls in ESM-only packages Jest cannot load.
-jest.mock('../firebase/firebase.service', () => ({ FirebaseService: class {} }));
+jest.mock('../firebase/firebase.service', () => ({
+  FirebaseService: class {},
+}));
 
 @Global()
 @Module({

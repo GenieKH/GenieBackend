@@ -16,9 +16,16 @@ describe('chat service wiring', () => {
   });
 
   it('resolves every controller and the chat gateway', async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
 
-    for (const type of [ChatController, InternalAccountsController, ChatGateway, HealthController]) {
+    for (const type of [
+      ChatController,
+      InternalAccountsController,
+      ChatGateway,
+      HealthController,
+    ]) {
       expect(moduleRef.get(type)).toBeDefined();
     }
 

@@ -20,7 +20,10 @@ export function hashRefreshToken(token: string): string {
  * switch still carry a bcrypt hash until they are next refreshed (at most 30
  * days); each refresh stores the new token's hash the new way.
  */
-export async function refreshTokenMatches(token: string, stored: string): Promise<boolean> {
+export async function refreshTokenMatches(
+  token: string,
+  stored: string,
+): Promise<boolean> {
   if (!stored.startsWith(SHA256_PREFIX)) {
     return bcrypt.compare(token, stored);
   }

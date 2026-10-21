@@ -1,7 +1,10 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
 import { PUBLISHED } from '../../properties/property-includes';
-import { ListingChangeListener, ListingChanges } from '../../properties/services/listing-changes.service';
+import {
+  ListingChangeListener,
+  ListingChanges,
+} from '../../properties/services/listing-changes.service';
 import { CachedListing } from '../../properties/services/public-property-cache.service';
 import { PUBLISHER } from '../people-search.service';
 import {
@@ -12,7 +15,11 @@ import {
   PUBLISHER_DOCUMENT_SELECT,
   publisherDocument,
 } from './search-documents';
-import { ListingDocument, PublisherDocument, SearchEngine } from './search-engine';
+import {
+  ListingDocument,
+  PublisherDocument,
+  SearchEngine,
+} from './search-engine';
 
 /** Rows read per batch of a full reindex. */
 const BATCH_SIZE = 1_000;
@@ -60,7 +67,10 @@ export class SearchIndexSync implements ListingChangeListener, OnModuleInit {
   async reindexAll(): Promise<void> {
     this.changedDuringReindex = new Map();
     try {
-      await this.engine.replaceAll(this.listingBatches(), this.publisherBatches());
+      await this.engine.replaceAll(
+        this.listingBatches(),
+        this.publisherBatches(),
+      );
     } finally {
       const missed = [...this.changedDuringReindex.values()];
       this.changedDuringReindex = null;

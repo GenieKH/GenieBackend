@@ -110,7 +110,12 @@ describe('public property cache', () => {
     redis = new FakeRedis();
     publicCache = new PublicPropertyCache(fakeCache(redis));
     const counts = new PropertyEngagementCounts(prisma as never);
-    query = new PropertyQueryService(prisma as never, publicCache, counts, prisma as never);
+    query = new PropertyQueryService(
+      prisma as never,
+      publicCache,
+      counts,
+      prisma as never,
+    );
     lifecycle = new PropertyLifecycleService(
       prisma as never,
       query,
@@ -118,7 +123,7 @@ describe('public property cache', () => {
         canPublish: () => true,
         canMarkSold: () => true,
         canRelist: () => true,
-      } as never,
+      },
       new ListingChanges(publicCache),
       { locationChanged: jest.fn(), keywordsChanged: jest.fn() } as never,
       counts,
@@ -185,13 +190,13 @@ describe('public property cache', () => {
     it('narrows the search to the filter pills, keeping the box', async () => {
       await query.searchMap(VIEWPORT, undefined, {
         propertyType: 'House',
-        listingType: 'Rent',
+        listingTypes: ['Rent'],
       });
 
       expect(propertyTable.findMany.mock.calls[0][0].where).toMatchObject({
         status: 'Active',
         propertyType: 'House',
-        listingType: 'Rent',
+        listingType: { in: ['Rent'] },
         lat: { gte: 11.55, lte: 11.57 },
       });
     });
@@ -199,15 +204,50 @@ describe('public property cache', () => {
     it('keeps one shared answer per filter, so a filtered map never shows unfiltered results', async () => {
       await query.searchMap(VIEWPORT);
       await query.searchMap(VIEWPORT, undefined, { propertyType: 'Land' });
-      await query.searchMap(VIEWPORT, undefined, { listingType: 'Sale' });
+      await query.searchMap(VIEWPORT, undefined, { listingTypes: ['Sale'] });
       await query.searchMap(VIEWPORT, undefined, { propertyType: 'Land' });
 
       expect(propertyTable.findMany).toHaveBeenCalledTimes(3);
     });
 
+    it('counts the prices of the same search, ignoring its own price range', async () => {
+      propertyTable.findMany.mockResolvedValue([
+        { price: '1000' },
+        { price: '99000' },
+        { price: '250000' },
+      ]);
+
+      const { counts } = await query.priceHistogram(
+        VIEWPORT,
+        { listingTypes: ['Sale'], minPrice: 50_000, maxPrice: 60_000 },
+        100_000,
+      );
+
+      const { where } = propertyTable.findMany.mock.calls[0][0];
+      expect(where.price).toBeUndefined();
+      expect(where.listingType).toEqual({ in: ['Sale'] });
+      expect(counts[0]).toBe(1);
+      expect(counts[counts.length - 1]).toBe(2);
+    });
+
+    it('keeps the histogram apart from the listings in the cache', async () => {
+      await query.searchMap(VIEWPORT);
+      await query.priceHistogram(VIEWPORT, {}, 100_000);
+      await query.priceHistogram(VIEWPORT, {}, 100_000);
+
+      expect(propertyTable.findMany).toHaveBeenCalledTimes(2);
+    });
+
     it.each([
       ['an unknown property type', { propertyType: 'Castle' }],
       ['an unknown listing type', { listingType: 'Auction' }],
+      [
+        'an unknown listing type among known ones',
+        { listingType: ['Rent', 'Auction'] },
+      ],
+      ['an unknown keyword', { keyword: 'pool' }],
+      ['a negative price', { minPrice: -1 }],
+      ['a size that is not a number', { maxSize: 'big' }],
     ])('rejects %s in the map filter', async (_case, change) => {
       const search = plainToInstance(MapSearchQuery, {
         ...VIEWPORT,

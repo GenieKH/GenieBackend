@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUserId, JwtAuthGuard } from '@genie/shared';
 import { AdminGuard } from './admin.guard';
@@ -15,7 +25,10 @@ export class PromotionsController {
   /** `202`: accepted and being sent; poll `GET /:id` for the counts. */
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
-  create(@CurrentUserId() adminId: string, @Body() dto: CreatePromotionDto): Promise<PromotionStatus> {
+  create(
+    @CurrentUserId() adminId: string,
+    @Body() dto: CreatePromotionDto,
+  ): Promise<PromotionStatus> {
     return this.promotions.create(adminId, dto);
   }
 

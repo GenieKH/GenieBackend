@@ -10,7 +10,10 @@ import { MapBounds } from './public-property-cache.service';
 export const OWN_MAP_LIMIT = 500;
 
 /** Newest first; ties broken by id, so a page never repeats or skips one. */
-const NEWEST_FIRST: Prisma.PropertyOrderByWithRelationInput[] = [{ createdAt: 'desc' }, { id: 'asc' }];
+const NEWEST_FIRST: Prisma.PropertyOrderByWithRelationInput[] = [
+  { createdAt: 'desc' },
+  { id: 'asc' },
+];
 
 /** A user's own listings, whatever their status, except deleted ones. */
 @Injectable()
@@ -43,13 +46,19 @@ export class OwnerListingsService {
         skip: page.offset,
         take: page.limit + 1,
       }),
-      this.prisma.property.groupBy({ by: ['status'], where: this.ownedBy(userId), _count: { _all: true } }),
+      this.prisma.property.groupBy({
+        by: ['status'],
+        where: this.ownedBy(userId),
+        _count: { _all: true },
+      }),
     ]);
     const listed = toPage(properties, page.offset, page.limit);
     return {
       ...listed,
       items: await this.counts.attach(listed.items),
-      countByStatus: Object.fromEntries(byStatus.map((group) => [group.status, group._count._all])),
+      countByStatus: Object.fromEntries(
+        byStatus.map((group) => [group.status, group._count._all]),
+      ),
     };
   }
 

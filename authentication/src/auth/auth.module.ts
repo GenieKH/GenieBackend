@@ -16,7 +16,10 @@ import { NotificationClient } from './notifications/notification.client';
 import { PasswordResetOtpRepository } from './password-reset/password-reset-otp.repository';
 import { PasswordResetService } from './password-reset/password-reset.service';
 import { EstablishedDeviceService } from './sessions/established-device.service';
-import { IpLocationProvider, IpWhoIsLocationProvider } from './sessions/ip-location.provider';
+import {
+  IpLocationProvider,
+  IpWhoIsLocationProvider,
+} from './sessions/ip-location.provider';
 import { RefreshTokenRepository } from './sessions/refresh-token.repository';
 import { RevokedSessionStore } from './sessions/revoked-session.store';
 import { SessionRevocationService } from './sessions/session-revocation.service';

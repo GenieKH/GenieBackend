@@ -10,7 +10,10 @@ import { PropertyEngagementCounts } from './property-engagement-counts.service';
 const HIDDEN_STATUSES = ['Draft', 'Pending', 'Deleted'];
 
 /** Ties are broken by listing id, so a page never repeats or skips one. */
-const ORDER: Record<FavoriteSort, Prisma.PropertyFavoriteOrderByWithRelationInput[]> = {
+const ORDER: Record<
+  FavoriteSort,
+  Prisma.PropertyFavoriteOrderByWithRelationInput[]
+> = {
   saved: [{ createdAt: 'desc' }, { propertyId: 'asc' }],
   newest: [{ property: { createdAt: 'desc' } }, { propertyId: 'asc' }],
   priceHigh: [{ property: { price: 'desc' } }, { propertyId: 'asc' }],
@@ -40,7 +43,10 @@ export class FavoriteListingsService {
   }
 
   /** One page of them, in `sort` order. */
-  async page(userId: string, page: { limit: number; offset: number; sort: FavoriteSort }) {
+  async page(
+    userId: string,
+    page: { limit: number; offset: number; sort: FavoriteSort },
+  ) {
     const favorites = await this.prisma.propertyFavorite.findMany({
       where: this.visibleOf(userId),
       include: { property: { include: PROPERTY_WITH_RELATIONS } },
@@ -49,7 +55,12 @@ export class FavoriteListingsService {
       take: page.limit + 1,
     });
     const listed = toPage(favorites, page.offset, page.limit);
-    return { ...listed, items: await this.counts.attach(listed.items.map((favorite) => favorite.property)) };
+    return {
+      ...listed,
+      items: await this.counts.attach(
+        listed.items.map((favorite) => favorite.property),
+      ),
+    };
   }
 
   /** Which listings are saved, for the heart on every card: ids only, and all of them. */
@@ -63,6 +74,12 @@ export class FavoriteListingsService {
   }
 
   private visibleOf(userId: string) {
-    return { userId, property: { user: { deactivatedAt: null }, status: { notIn: HIDDEN_STATUSES } } };
+    return {
+      userId,
+      property: {
+        user: { deactivatedAt: null },
+        status: { notIn: HIDDEN_STATUSES },
+      },
+    };
   }
 }

@@ -13,8 +13,11 @@ describe('requirePasswordProof', () => {
     privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
   });
   const originalKey = process.env.JWT_PUBLIC_KEY;
-  const sign = (typ: string, sub = ALICE, expiresIn: jwt.SignOptions['expiresIn'] = '5m') =>
-    jwt.sign({ sub, typ }, privateKey, { algorithm: 'RS256', expiresIn });
+  const sign = (
+    typ: string,
+    sub = ALICE,
+    expiresIn: jwt.SignOptions['expiresIn'] = '5m',
+  ) => jwt.sign({ sub, typ }, privateKey, { algorithm: 'RS256', expiresIn });
 
   beforeAll(() => {
     process.env.JWT_PUBLIC_KEY = publicKey;
@@ -26,7 +29,9 @@ describe('requirePasswordProof', () => {
   });
 
   it('passes for the user who typed their password', () => {
-    expect(() => requirePasswordProof(ALICE, sign('password-proof'))).not.toThrow();
+    expect(() =>
+      requirePasswordProof(ALICE, sign('password-proof')),
+    ).not.toThrow();
   });
 
   it.each([
@@ -34,9 +39,17 @@ describe('requirePasswordProof', () => {
     ['an expired proof', () => sign('password-proof', ALICE, -10)],
     // Being signed in is exactly what must not be enough.
     ['an access token', () => sign('access')],
-    ['a forged token', () => jwt.sign({ sub: ALICE, typ: 'password-proof' }, publicKey, { algorithm: 'HS256' })],
+    [
+      'a forged token',
+      () =>
+        jwt.sign({ sub: ALICE, typ: 'password-proof' }, publicKey, {
+          algorithm: 'HS256',
+        }),
+    ],
     ['nonsense', () => 'not-a-token'],
   ])('refuses %s', (_case, token) => {
-    expect(() => requirePasswordProof(ALICE, token())).toThrow(ForbiddenException);
+    expect(() => requirePasswordProof(ALICE, token())).toThrow(
+      ForbiddenException,
+    );
   });
 });

@@ -2,7 +2,8 @@
 export type CallStatus = 'ringing' | 'active';
 
 /** Why a call ended. `missed` and `cancelled` mean the callee never answered. */
-export type CallEndReason = 'ended' | 'declined' | 'missed' | 'cancelled' | 'disconnected';
+export type CallEndReason =
+  'ended' | 'declined' | 'missed' | 'cancelled' | 'disconnected';
 
 /**
  * A call in progress, shared by every instance of the chat service. Each

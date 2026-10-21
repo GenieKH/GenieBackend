@@ -8,7 +8,10 @@ export interface NotificationPreferences {
 }
 
 /** Everyone starts with everything on; the app lets them turn things off. */
-export const DEFAULT_PREFERENCES: NotificationPreferences = { chatMessages: true, promotions: true };
+export const DEFAULT_PREFERENCES: NotificationPreferences = {
+  chatMessages: true,
+  promotions: true,
+};
 
 @Injectable()
 export class NotificationPreferencesService {
@@ -22,7 +25,10 @@ export class NotificationPreferencesService {
     return row ?? DEFAULT_PREFERENCES;
   }
 
-  async update(userId: string, changes: Partial<NotificationPreferences>): Promise<NotificationPreferences> {
+  async update(
+    userId: string,
+    changes: Partial<NotificationPreferences>,
+  ): Promise<NotificationPreferences> {
     return this.prisma.notificationPreferences.upsert({
       where: { userId },
       create: { userId, ...DEFAULT_PREFERENCES, ...changes },

@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterDto } from '../dto/register.dto';
@@ -38,7 +44,8 @@ export class CredentialsAuthService {
     const user = await this.findByIdentifier(dto);
 
     // Same error for "unknown user" and "wrong password" so accounts can't be probed.
-    const passwordMatches = user && (await bcrypt.compare(dto.password, user.password_hash));
+    const passwordMatches =
+      user && (await bcrypt.compare(dto.password, user.password_hash));
     if (!user || !passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
     }

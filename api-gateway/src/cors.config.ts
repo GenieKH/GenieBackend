@@ -23,13 +23,16 @@ export const ALLOWED_REQUEST_HEADERS = [
   'If-None-Match', // asks again for a cached answer
 ];
 
-export function buildCorsOptions(env: NodeJS.ProcessEnv = process.env): CorsOptions {
+export function buildCorsOptions(
+  env: NodeJS.ProcessEnv = process.env,
+): CorsOptions {
   const allowedOrigins = (env.CORS_ORIGINS ?? '')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  const origin = allowedOrigins.length > 0 ? allowedOrigins : env.NODE_ENV !== 'production';
+  const origin =
+    allowedOrigins.length > 0 ? allowedOrigins : env.NODE_ENV !== 'production';
 
   return {
     origin,

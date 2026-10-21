@@ -1,4 +1,7 @@
-import { NO_ENGAGEMENT, PropertyEngagementCounts } from './property-engagement-counts.service';
+import {
+  NO_ENGAGEMENT,
+  PropertyEngagementCounts,
+} from './property-engagement-counts.service';
 
 describe('PropertyEngagementCounts', () => {
   const prisma = { $queryRaw: jest.fn() };
@@ -21,8 +24,16 @@ describe('PropertyEngagementCounts', () => {
     ]);
 
     expect(rows).toEqual([
-      { id: 'a', title: 'Villa', _count: { favorites: 3, views: 9, contacts: 2 } },
-      { id: 'b', title: 'Land', _count: { favorites: 1, views: 7, contacts: 0 } },
+      {
+        id: 'a',
+        title: 'Villa',
+        _count: { favorites: 3, views: 9, contacts: 2 },
+      },
+      {
+        id: 'b',
+        title: 'Land',
+        _count: { favorites: 1, views: 7, contacts: 0 },
+      },
     ]);
   });
 

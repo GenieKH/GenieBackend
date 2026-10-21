@@ -1,4 +1,8 @@
-import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NestMiddleware,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { RevokedSessions } from './revoked-sessions';
@@ -12,7 +16,10 @@ import { RevokedSessions } from './revoked-sessions';
  */
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
-  private readonly publicKey = process.env.JWT_PUBLIC_KEY?.replace(/\\n/g, '\n');
+  private readonly publicKey = process.env.JWT_PUBLIC_KEY?.replace(
+    /\\n/g,
+    '\n',
+  );
 
   constructor(private readonly revokedSessions: RevokedSessions) {}
 
@@ -23,7 +30,9 @@ export class AuthMiddleware implements NestMiddleware {
 
     const token = this.readBearerToken(req);
     if (!token || !this.publicKey) {
-      throw new UnauthorizedException('Missing or invalid Authorization header');
+      throw new UnauthorizedException(
+        'Missing or invalid Authorization header',
+      );
     }
 
     const { userId, sessionId } = this.verify(token);
@@ -38,11 +47,17 @@ export class AuthMiddleware implements NestMiddleware {
   /** `sessionId` is missing from tokens issued before sessions existed. */
   private verify(token: string): { userId: string; sessionId?: string } {
     try {
-      const payload = jwt.verify(token, this.publicKey!, { algorithms: ['RS256'] });
-      if (typeof payload === 'string' || !payload.sub) throw new Error('Token has no subject');
+      const payload = jwt.verify(token, this.publicKey!, {
+        algorithms: ['RS256'],
+      });
+      if (typeof payload === 'string' || !payload.sub)
+        throw new Error('Token has no subject');
       if (payload.typ !== 'access') throw new Error('Not an access token');
 
-      return { userId: payload.sub, sessionId: typeof payload.sid === 'string' ? payload.sid : undefined };
+      return {
+        userId: payload.sub,
+        sessionId: typeof payload.sid === 'string' ? payload.sid : undefined,
+      };
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }

@@ -1,4 +1,8 @@
-import { HttpStatus, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  HttpStatus,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { BackupSeal } from './backup-seal';
 import { ChatBackupService, lockDurationMs } from './chat-backup.service';
 
@@ -12,7 +16,12 @@ const MINUTE = 60 * 1000;
 describe('lockDurationMs', () => {
   it('locks on every 5th wrong PIN, twice as long each time, up to a day', () => {
     expect([1, 2, 3, 4, 6, 9].map(lockDurationMs)).toEqual([0, 0, 0, 0, 0, 0]);
-    expect([5, 10, 15, 20].map(lockDurationMs)).toEqual([15 * MINUTE, 30 * MINUTE, 60 * MINUTE, 120 * MINUTE]);
+    expect([5, 10, 15, 20].map(lockDurationMs)).toEqual([
+      15 * MINUTE,
+      30 * MINUTE,
+      60 * MINUTE,
+      120 * MINUTE,
+    ]);
     expect(lockDurationMs(40)).toBe(24 * 60 * MINUTE);
     expect(lockDurationMs(500)).toBe(24 * 60 * MINUTE);
   });
@@ -32,7 +41,12 @@ describe('BackupSeal', () => {
     expect(wrapped).not.toContain('device-ciphertext');
     expect(seal.unwrap(ALICE, wrapped)).toBe('device-ciphertext');
     expect(() => seal.unwrap(BOB, wrapped)).toThrow();
-    expect(() => new BackupSeal('another-secret-that-is-long-enough-00').unwrap(ALICE, wrapped)).toThrow();
+    expect(() =>
+      new BackupSeal('another-secret-that-is-long-enough-00').unwrap(
+        ALICE,
+        wrapped,
+      ),
+    ).toThrow();
   });
 
   it('recognises a PIN proof only with the same secret and user', () => {
@@ -42,7 +56,13 @@ describe('BackupSeal', () => {
     expect(seal.matches(ALICE, RIGHT, tag)).toBe(true);
     expect(seal.matches(ALICE, WRONG, tag)).toBe(false);
     expect(seal.matches(BOB, RIGHT, tag)).toBe(false);
-    expect(new BackupSeal('another-secret-that-is-long-enough-00').matches(ALICE, RIGHT, tag)).toBe(false);
+    expect(
+      new BackupSeal('another-secret-that-is-long-enough-00').matches(
+        ALICE,
+        RIGHT,
+        tag,
+      ),
+    ).toBe(false);
   });
 
   it('refuses a short secret', () => {
@@ -65,16 +85,24 @@ describe('ChatBackupService', () => {
   const tx = {
     $queryRaw: jest.fn(async () => (row ? [{ ...row }] : [])),
     chatKeyBackup: {
-      update: jest.fn(async ({ data }: { data: Partial<NonNullable<typeof row>> }) => {
-        row = { ...row!, ...data };
-      }),
+      update: jest.fn(
+        async ({ data }: { data: Partial<NonNullable<typeof row>> }) => {
+          row = { ...row!, ...data };
+        },
+      ),
     },
   };
   const prisma = {
     $transaction: jest.fn(async (work: unknown) =>
-      typeof work === 'function' ? (work as (client: typeof tx) => unknown)(tx) : Promise.all(work as unknown[]),
+      typeof work === 'function'
+        ? (work as (client: typeof tx) => unknown)(tx)
+        : Promise.all(work as unknown[]),
     ),
-    chatKeyBackup: { upsert: jest.fn(), findUnique: jest.fn(), deleteMany: jest.fn() },
+    chatKeyBackup: {
+      upsert: jest.fn(),
+      findUnique: jest.fn(),
+      deleteMany: jest.fn(),
+    },
     user: { update: jest.fn(), findUnique: jest.fn() },
   };
   const cache = { delete: jest.fn() };
@@ -160,15 +188,25 @@ describe('ChatBackupService', () => {
     it('reports a missing backup', async () => {
       row = null;
 
-      await expect(service.unlock(ALICE, RIGHT)).rejects.toThrow(NotFoundException);
+      await expect(service.unlock(ALICE, RIGHT)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   describe('save', () => {
-    const NEW_BACKUP = { blob: 'new-ciphertext', salt: 'salt', nonce: 'nonce', verifier: WRONG };
+    const NEW_BACKUP = {
+      blob: 'new-ciphertext',
+      salt: 'salt',
+      nonce: 'nonce',
+      verifier: WRONG,
+    };
     const saveStatus = async (currentVerifier?: string) => {
       try {
-        await service.save(ALICE, NEW_BACKUP, { currentVerifier, identityPublicKey: 'new-public-key' });
+        await service.save(ALICE, NEW_BACKUP, {
+          currentVerifier,
+          identityPublicKey: 'new-public-key',
+        });
         return HttpStatus.OK;
       } catch (error) {
         return (error as { getStatus(): number }).getStatus();
@@ -176,7 +214,9 @@ describe('ChatBackupService', () => {
     };
 
     describe('over an existing backup', () => {
-      beforeEach(() => prisma.chatKeyBackup.findUnique.mockResolvedValue({ userId: ALICE }));
+      beforeEach(() =>
+        prisma.chatKeyBackup.findUnique.mockResolvedValue({ userId: ALICE }),
+      );
 
       it('is refused without proof of the current PIN', async () => {
         expect(await saveStatus()).toBe(HttpStatus.FORBIDDEN);
@@ -202,17 +242,24 @@ describe('ChatBackupService', () => {
         expect(await saveStatus(RIGHT)).toBe(HttpStatus.OK);
 
         expect(prisma.chatKeyBackup.upsert).toHaveBeenCalledTimes(1);
-        expect(prisma.user.update.mock.calls[0][0].data).toMatchObject({ identityPublicKey: 'new-public-key' });
+        expect(prisma.user.update.mock.calls[0][0].data).toMatchObject({
+          identityPublicKey: 'new-public-key',
+        });
         // Other people must stop encrypting to the old key at once.
         expect(cache.delete).toHaveBeenCalledWith(`chat:public-key:${ALICE}`);
       });
     });
 
     describe('for an owner who forgot the PIN and proved their account password instead', () => {
-      beforeEach(() => prisma.chatKeyBackup.findUnique.mockResolvedValue({ userId: ALICE }));
+      beforeEach(() =>
+        prisma.chatKeyBackup.findUnique.mockResolvedValue({ userId: ALICE }),
+      );
 
       it('replaces the backup without the PIN', async () => {
-        await service.save(ALICE, NEW_BACKUP, { provenByPassword: true, identityPublicKey: 'new-public-key' });
+        await service.save(ALICE, NEW_BACKUP, {
+          provenByPassword: true,
+          identityPublicKey: 'new-public-key',
+        });
 
         expect(prisma.chatKeyBackup.upsert).toHaveBeenCalledTimes(1);
         expect(row!.failedAttempts).toBe(0);
@@ -224,7 +271,9 @@ describe('ChatBackupService', () => {
         await service.save(ALICE, NEW_BACKUP, { provenByPassword: true });
 
         // The new backup starts with a clean count.
-        expect(prisma.chatKeyBackup.upsert.mock.calls[0][0].update).toMatchObject({
+        expect(
+          prisma.chatKeyBackup.upsert.mock.calls[0][0].update,
+        ).toMatchObject({
           failedAttempts: 0,
           lockedUntil: null,
         });
@@ -238,10 +287,20 @@ describe('ChatBackupService', () => {
     });
 
     it('stores neither the PIN proof nor the device ciphertext as received', async () => {
-      await service.save(ALICE, { blob: 'device-ciphertext', salt: 'salt', nonce: 'nonce', verifier: RIGHT });
+      await service.save(ALICE, {
+        blob: 'device-ciphertext',
+        salt: 'salt',
+        nonce: 'nonce',
+        verifier: RIGHT,
+      });
 
       const { create, update } = prisma.chatKeyBackup.upsert.mock.calls[0][0];
-      expect(create).toMatchObject({ userId: ALICE, salt: 'salt', nonce: 'nonce', failedAttempts: 0 });
+      expect(create).toMatchObject({
+        userId: ALICE,
+        salt: 'salt',
+        nonce: 'nonce',
+        failedAttempts: 0,
+      });
       expect(update).toMatchObject({ failedAttempts: 0, lockedUntil: null });
       expect(seal.unwrap(ALICE, create.blob)).toBe('device-ciphertext');
       expect(create.verifier).not.toBe(RIGHT);
@@ -249,15 +308,33 @@ describe('ChatBackupService', () => {
     });
 
     it('records a new backup as PIN-locked, also in place of one the account password locked', async () => {
-      await service.save(ALICE, { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT });
-      await service.save(ALICE, { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT }, { provenByPassword: true });
+      await service.save(ALICE, {
+        blob: 'b',
+        salt: 's',
+        nonce: 'n',
+        verifier: RIGHT,
+      });
+      await service.save(
+        ALICE,
+        { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT },
+        { provenByPassword: true },
+      );
 
-      expect(prisma.chatKeyBackup.upsert.mock.calls[0][0].create.protectedBy).toBe('pin');
-      expect(prisma.chatKeyBackup.upsert.mock.calls[1][0].update.protectedBy).toBe('pin');
+      expect(
+        prisma.chatKeyBackup.upsert.mock.calls[0][0].create.protectedBy,
+      ).toBe('pin');
+      expect(
+        prisma.chatKeyBackup.upsert.mock.calls[1][0].update.protectedBy,
+      ).toBe('pin');
     });
 
     it('removes the backup from before PIN tries were counted', async () => {
-      await service.save(ALICE, { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT });
+      await service.save(ALICE, {
+        blob: 'b',
+        salt: 's',
+        nonce: 'n',
+        verifier: RIGHT,
+      });
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: ALICE },
@@ -267,20 +344,32 @@ describe('ChatBackupService', () => {
   });
 
   it('cannot remove a backup: the chat PIN is not optional', () => {
-    expect((service as unknown as Record<string, unknown>).remove).toBeUndefined();
+    expect(
+      (service as unknown as Record<string, unknown>).remove,
+    ).toBeUndefined();
   });
 
   describe('describe', () => {
     it('reveals only the salt of a protected backup, and what to ask for', async () => {
-      prisma.chatKeyBackup.findUnique.mockResolvedValue({ salt: 'salt', protectedBy: 'password' });
+      prisma.chatKeyBackup.findUnique.mockResolvedValue({
+        salt: 'salt',
+        protectedBy: 'password',
+      });
 
-      await expect(service.describe(ALICE)).resolves.toEqual({ backupSalt: 'salt', protectedBy: 'password' });
+      await expect(service.describe(ALICE)).resolves.toEqual({
+        backupSalt: 'salt',
+        protectedBy: 'password',
+      });
       expect(prisma.user.findUnique).not.toHaveBeenCalled();
     });
 
     it('still returns an older backup whole, so the app can upgrade it', async () => {
       prisma.chatKeyBackup.findUnique.mockResolvedValue(null);
-      prisma.user.findUnique.mockResolvedValue({ backupBlob: 'b', backupSalt: 's', backupNonce: 'n' });
+      prisma.user.findUnique.mockResolvedValue({
+        backupBlob: 'b',
+        backupSalt: 's',
+        backupNonce: 'n',
+      });
 
       await expect(service.describe(ALICE)).resolves.toEqual({
         backupSalt: 's',
@@ -292,7 +381,11 @@ describe('ChatBackupService', () => {
 
     it('reports a user without any backup', async () => {
       prisma.chatKeyBackup.findUnique.mockResolvedValue(null);
-      prisma.user.findUnique.mockResolvedValue({ backupBlob: null, backupSalt: null, backupNonce: null });
+      prisma.user.findUnique.mockResolvedValue({
+        backupBlob: null,
+        backupSalt: null,
+        backupNonce: null,
+      });
 
       await expect(service.describe(ALICE)).rejects.toThrow(NotFoundException);
     });
@@ -301,10 +394,17 @@ describe('ChatBackupService', () => {
   it('refuses to store or open backups without the server secret', async () => {
     delete process.env.CHAT_BACKUP_SECRET;
 
-    await expect(service.unlock(ALICE, RIGHT)).rejects.toThrow(ServiceUnavailableException);
-    await expect(service.save(ALICE, { blob: 'b', salt: 's', nonce: 'n', verifier: RIGHT })).rejects.toThrow(
+    await expect(service.unlock(ALICE, RIGHT)).rejects.toThrow(
       ServiceUnavailableException,
     );
+    await expect(
+      service.save(ALICE, {
+        blob: 'b',
+        salt: 's',
+        nonce: 'n',
+        verifier: RIGHT,
+      }),
+    ).rejects.toThrow(ServiceUnavailableException);
     expect(prisma.chatKeyBackup.upsert).not.toHaveBeenCalled();
   });
 });

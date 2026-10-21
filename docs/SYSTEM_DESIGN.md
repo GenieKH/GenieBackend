@@ -298,6 +298,37 @@ flowchart LR
 
 ---
 
+## 9a. Follow people, and the Feed tab
+
+Anyone can follow anyone (migration 26, table `follows`, one row per pair). Only the counts are
+shown: nobody can see who follows whom. The user service owns following; the property service
+asks it who a user follows (`GET /internal/follows/:userId/following`, service token, cached in
+Redis and dropped on every follow/unfollow) and reads the feed itself, so it never touches the
+`follows` table.
+
+| Endpoint | Answer | Errors |
+|---|---|---|
+| `GET /users/:id/follow` | `{ followerCount, followingCount, isFollowing }`; counts leave out deactivated accounts; `isFollowing` is false on your own | 400 (bad id), 401, 404 (missing or deactivated) |
+| `PUT /users/:id/follow` | the same, after following; twice changes nothing | 400 (yourself, bad id), 401, 404, 409 (already following 500) |
+| `DELETE /users/:id/follow` | the same, after unfollowing; allowed for a deactivated account; twice changes nothing | 400, 401 |
+| `GET /feed?limit=&cursor=` | `{ items, nextCursor }`: `Active` listings of followed, not deactivated owners, newest `publishedAt` first (ties by id); send `nextCursor` back as `cursor`; `limit` 1-50, default 20. Items are card fields only: no description, nearby places, keywords, counts or owner contact; at most 5 photos. Open a listing with `GET /public/properties/:id` | 400 (bad `limit` or a cursor this server did not hand out), 401, 503 (user service down) |
+
+`published_at` (migration 27) is set the first time a listing goes live (created live, published,
+or paid for), and again only when it comes back on the market after being Sold or Expired. A
+listing taken back to a draft and published again keeps its first date, so unpublishing cannot
+push it to the top of the feed (`published-at.ts`). Listings live before the column existed got
+their `created_at`. The feed reads each
+followed owner's newest listings from the index `(user_id, published_at DESC, id)` and merges
+them, so a page costs at most 500 x 21 index rows however many listings those owners have
+(measured: 60 agents x 2 500 live listings, 271 ms for one `IN (...) ORDER BY` against 14 ms).
+A cursor, not an offset: a listing published while someone scrolls neither repeats nor pushes
+one out of the next pages. The app keeps the first page per account on the device, shows it at
+once on the next start, and reads the feed again when the tab is shown after 5 minutes.
+Deleting an account deletes its follows (foreign keys). Not built yet: blocking (a block should
+remove follows both ways), feed events (price drop, sold) and pushes to followers.
+
+---
+
 ## 10. Chat: first use (create keys; every account has a chat PIN)
 
 ```mermaid

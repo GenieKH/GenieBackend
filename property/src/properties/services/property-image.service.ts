@@ -23,10 +23,17 @@ export class PropertyImageService {
   ) {}
 
   /** One upload URL per name, in the same order, inside this listing's own folder. */
-  async createUploadUrls(userId: string, propertyId: string, fileNames: string[]) {
+  async createUploadUrls(
+    userId: string,
+    propertyId: string,
+    fileNames: string[],
+  ) {
     const property = await this.query.findOwned(userId, propertyId);
     this.ensureRoomFor(property.images.length, fileNames.length);
-    return this.storage.createPresignedUrls(uploadFolder(userId, propertyId), fileNames);
+    return this.storage.createPresignedUrls(
+      uploadFolder(userId, propertyId),
+      fileNames,
+    );
   }
 
   /**
@@ -35,7 +42,11 @@ export class PropertyImageService {
    * someone else's photo is refused. Confirming the same file again changes
    * nothing.
    */
-  async confirmUploads(userId: string, propertyId: string, fileNames: string[]) {
+  async confirmUploads(
+    userId: string,
+    propertyId: string,
+    fileNames: string[],
+  ) {
     const property = await this.query.findOwned(userId, propertyId);
     const folder = `${uploadFolder(userId, propertyId)}/`;
     const isOwnUpload = (fileName: string) =>
@@ -51,9 +62,16 @@ export class PropertyImageService {
     this.ensureRoomFor(property.images.length, urls.length);
 
     if (urls.length > 0) {
-      const lastOrder = Math.max(0, ...property.images.map((image) => image.order));
+      const lastOrder = Math.max(
+        0,
+        ...property.images.map((image) => image.order),
+      );
       await this.prisma.propertyImage.createMany({
-        data: urls.map((url, index) => ({ propertyId, url, order: lastOrder + index + 1 })),
+        data: urls.map((url, index) => ({
+          propertyId,
+          url,
+          order: lastOrder + index + 1,
+        })),
       });
 
       // New photos of a published listing should show up right away.
@@ -72,10 +90,14 @@ export class PropertyImageService {
   async removeImages(userId: string, propertyId: string, urls: string[]) {
     const property = await this.query.findOwned(userId, propertyId);
     const wanted = new Set(urls);
-    const removed = property.images.map((image) => image.url).filter((url) => wanted.has(url));
+    const removed = property.images
+      .map((image) => image.url)
+      .filter((url) => wanted.has(url));
     if (removed.length === 0) return property;
 
-    await this.prisma.propertyImage.deleteMany({ where: { propertyId, url: { in: removed } } });
+    await this.prisma.propertyImage.deleteMany({
+      where: { propertyId, url: { in: removed } },
+    });
     if (property.status === 'Active') {
       await this.listingChanges.changed(property);
     }
@@ -133,7 +155,11 @@ export class PropertyImageService {
     return urls
       .map((url) => this.storage.uploadedFileNameOf(url))
       .filter((fileName): fileName is string => fileName !== null)
-      .filter((fileName) => this.storage.isLegacyFileName(fileName) || fileName.startsWith(`${userId}/`));
+      .filter(
+        (fileName) =>
+          this.storage.isLegacyFileName(fileName) ||
+          fileName.startsWith(`${userId}/`),
+      );
   }
 
   /**
@@ -145,13 +171,18 @@ export class PropertyImageService {
     try {
       await this.storage.removeUploadedFiles(fileNames);
     } catch (error) {
-      this.logger.error(`Could not delete ${fileNames.length} removed photo file(s)`, error);
+      this.logger.error(
+        `Could not delete ${fileNames.length} removed photo file(s)`,
+        error,
+      );
     }
   }
 
   private ensureRoomFor(existing: number, added: number) {
     if (existing + added > MAX_PROPERTY_IMAGES) {
-      throw new BadRequestException(`A listing can have at most ${MAX_PROPERTY_IMAGES} photos`);
+      throw new BadRequestException(
+        `A listing can have at most ${MAX_PROPERTY_IMAGES} photos`,
+      );
     }
   }
 }

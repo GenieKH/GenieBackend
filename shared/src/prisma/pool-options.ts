@@ -30,7 +30,12 @@ export function poolOptions(env: NodeJS.ProcessEnv = process.env): PoolOptions {
 
 function nonNegativeInt(value: string | undefined): number | undefined {
   const parsed = Number(value);
-  return value !== undefined && value !== '' && Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+  return value !== undefined &&
+    value !== '' &&
+    Number.isInteger(parsed) &&
+    parsed >= 0
+    ? parsed
+    : undefined;
 }
 
 function positiveInt(value: string | undefined): number | undefined {

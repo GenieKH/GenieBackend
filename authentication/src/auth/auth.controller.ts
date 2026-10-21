@@ -1,4 +1,11 @@
-import { Body, Controller, HttpCode, HttpStatus, Inject, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Post,
+} from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthAttemptLimits } from './attempt-limiter';
 import { CredentialsAuthService } from './credentials/credentials-auth.service';
@@ -24,10 +31,13 @@ import { FirebaseLoginService } from './social/firebase-login.service';
 @Controller('auth')
 export class AuthController {
   constructor(
-    @Inject(CredentialsAuthService) private readonly credentials: CredentialsAuthService,
-    @Inject(FirebaseLoginService) private readonly firebaseLogin: FirebaseLoginService,
+    @Inject(CredentialsAuthService)
+    private readonly credentials: CredentialsAuthService,
+    @Inject(FirebaseLoginService)
+    private readonly firebaseLogin: FirebaseLoginService,
     @Inject(SessionService) private readonly sessions: SessionService,
-    @Inject(PasswordResetService) private readonly passwordReset: PasswordResetService,
+    @Inject(PasswordResetService)
+    private readonly passwordReset: PasswordResetService,
     @Inject(AuthAttemptLimits) private readonly limits: AuthAttemptLimits,
   ) {}
 
@@ -44,7 +54,10 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Log in with credentials (email/phone + password)' })
-  @ApiResponse({ status: 200, description: 'Successfully logged in, returns tokens' })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully logged in, returns tokens',
+  })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body() dto: LoginDto, @Client() client: ClientContext) {
     const account = accountKey(dto.email ?? dto.phone);
@@ -59,9 +72,15 @@ export class AuthController {
   @Post('firebase-login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Log in or register using a Firebase ID token' })
-  @ApiResponse({ status: 200, description: 'Successfully logged in, returns tokens' })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully logged in, returns tokens',
+  })
   @ApiResponse({ status: 401, description: 'Invalid Firebase token' })
-  loginWithFirebase(@Body() dto: FirebaseLoginDto, @Client() client: ClientContext) {
+  loginWithFirebase(
+    @Body() dto: FirebaseLoginDto,
+    @Client() client: ClientContext,
+  ) {
     return this.firebaseLogin.login(dto.idToken, client);
   }
 
@@ -69,14 +88,19 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access and refresh tokens' })
   @ApiResponse({ status: 200, description: 'Tokens successfully rotated' })
-  @ApiResponse({ status: 401, description: 'Invalid, expired, or revoked refresh token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid, expired, or revoked refresh token',
+  })
   refresh(@Body() dto: RefreshDto, @Client() client: ClientContext) {
     return this.sessions.refresh(dto.refreshToken, client);
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Revoke a specific refresh token (single device logout)' })
+  @ApiOperation({
+    summary: 'Revoke a specific refresh token (single device logout)',
+  })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
   logout(@Body() dto: LogoutDto) {
     return this.sessions.logout(dto.refreshToken);
@@ -86,8 +110,14 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request a password reset OTP via email' })
   @ApiResponse({ status: 200, description: 'OTP sent if email exists' })
-  @ApiResponse({ status: 429, description: 'Too many reset requests for this address or from this caller' })
-  async forgotPassword(@Body() dto: ForgotPasswordDto, @Client() client: ClientContext) {
+  @ApiResponse({
+    status: 429,
+    description: 'Too many reset requests for this address or from this caller',
+  })
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+    @Client() client: ClientContext,
+  ) {
     await this.countResetRequest(dto.email, client.ipAddress);
     return this.passwordReset.requestReset(dto.email);
   }
@@ -107,7 +137,11 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Invalid or expired OTP' })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.countOtpAttempt(dto.email);
-    return this.passwordReset.resetPassword(dto.email, dto.otp, dto.newPassword);
+    return this.passwordReset.resetPassword(
+      dto.email,
+      dto.otp,
+      dto.newPassword,
+    );
   }
 
   /**
@@ -115,8 +149,15 @@ export class AuthController {
    * for unknown addresses and do not reveal which ones exist. The caller is
    * counted first: a refused flood does not use up a victim's own allowance.
    */
-  private async countResetRequest(email: string, clientIp: string | null): Promise<void> {
-    if (clientIp) await this.limits.resetRequestsPerClient.consumeOrReject(clientIp, 'in an hour');
+  private async countResetRequest(
+    email: string,
+    clientIp: string | null,
+  ): Promise<void> {
+    if (clientIp)
+      await this.limits.resetRequestsPerClient.consumeOrReject(
+        clientIp,
+        'in an hour',
+      );
     const account = accountKey(email);
     await this.limits.resetCooldown.consumeOrReject(account, 'in a minute');
     await this.limits.resetRequests.consumeOrReject(account);

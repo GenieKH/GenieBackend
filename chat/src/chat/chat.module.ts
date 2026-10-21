@@ -14,7 +14,11 @@ import { PresenceService } from './presence.service';
 
 @Module({
   imports: [SupabaseModule],
-  controllers: [ChatController, MessageActionsController, InternalAccountsController],
+  controllers: [
+    ChatController,
+    MessageActionsController,
+    InternalAccountsController,
+  ],
   providers: [
     ChatService,
     ChatBackupService,

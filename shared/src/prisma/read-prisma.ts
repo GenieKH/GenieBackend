@@ -17,11 +17,16 @@ import { PrismaService } from './prisma.service';
 export abstract class ReadPrisma extends PrismaClient {}
 
 /** A client of the read replica, with its own pool. */
-class ReplicaPrismaClient extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+class ReplicaPrismaClient
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger('ReadPrisma');
 
   constructor(connectionString: string) {
-    super({ adapter: new PrismaPg(new Pool({ connectionString, ...poolOptions() })) });
+    super({
+      adapter: new PrismaPg(new Pool({ connectionString, ...poolOptions() })),
+    });
   }
 
   async onModuleInit() {
@@ -30,7 +35,9 @@ class ReplicaPrismaClient extends PrismaClient implements OnModuleInit, OnModule
       this.logger.log('Public reads use the read replica (DATABASE_READ_URL)');
     } catch (error) {
       // Like the primary: an unreachable database delays the first read, not the start.
-      this.logger.warn(`Could not reach the read replica at start-up: ${(error as Error).message}`);
+      this.logger.warn(
+        `Could not reach the read replica at start-up: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -40,7 +47,10 @@ class ReplicaPrismaClient extends PrismaClient implements OnModuleInit, OnModule
 }
 
 /** The replica when `DATABASE_READ_URL` is set, otherwise `primary` itself. */
-export function readPrismaFor(primary: PrismaService, env: NodeJS.ProcessEnv = process.env): PrismaClient {
+export function readPrismaFor(
+  primary: PrismaService,
+  env: NodeJS.ProcessEnv = process.env,
+): PrismaClient {
   const url = env.DATABASE_READ_URL;
   return url ? new ReplicaPrismaClient(url) : primary;
 }

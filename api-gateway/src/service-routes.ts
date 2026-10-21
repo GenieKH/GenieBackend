@@ -10,7 +10,9 @@ export interface ServiceUrls {
   notification: string;
 }
 
-export function serviceUrlsFromEnv(env: NodeJS.ProcessEnv = process.env): ServiceUrls {
+export function serviceUrlsFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): ServiceUrls {
   return {
     auth: env.AUTH_SERVICE_URL || 'http://localhost:4001',
     user: env.USER_SERVICE_URL || 'http://localhost:4002',
@@ -22,7 +24,10 @@ export function serviceUrlsFromEnv(env: NodeJS.ProcessEnv = process.env): Servic
 }
 
 /** Called by the payment provider, so it cannot carry a user JWT. */
-export const PAYMENT_WEBHOOK = { path: '/payments/webhook', method: RequestMethod.POST };
+export const PAYMENT_WEBHOOK = {
+  path: '/payments/webhook',
+  method: RequestMethod.POST,
+};
 
 export interface ServiceRoute {
   service: keyof ServiceUrls;
@@ -48,13 +53,36 @@ export const SERVICE_ROUTES: ServiceRoute[] = [
   // Public browsing: listings and search without signing in.
   { service: 'property', prefixes: ['/public'], authenticated: false },
   // The payment provider's webhook: no JWT, authenticated by signature.
-  { service: 'payment', prefixes: [], authenticated: false, alsoPublic: [PAYMENT_WEBHOOK] },
+  {
+    service: 'payment',
+    prefixes: [],
+    authenticated: false,
+    alsoPublic: [PAYMENT_WEBHOOK],
+  },
   // Everything else needs a valid JWT of a device that is still signed in.
-  { service: 'property', prefixes: ['/properties', '/search'], authenticated: true },
-  { service: 'payment', prefixes: ['/payments'], authenticated: true, exclude: [PAYMENT_WEBHOOK] },
+  {
+    service: 'property',
+    prefixes: ['/properties', '/search', '/feed'],
+    authenticated: true,
+  },
+  {
+    service: 'payment',
+    prefixes: ['/payments'],
+    authenticated: true,
+    exclude: [PAYMENT_WEBHOOK],
+  },
   { service: 'user', prefixes: ['/users'], authenticated: true },
-  { service: 'chat', prefixes: ['/chat'], authenticated: true, websocket: true },
-  { service: 'notification', prefixes: ['/notifications'], authenticated: true },
+  {
+    service: 'chat',
+    prefixes: ['/chat'],
+    authenticated: true,
+    websocket: true,
+  },
+  {
+    service: 'notification',
+    prefixes: ['/notifications'],
+    authenticated: true,
+  },
 ];
 
 /** Each prefix as `/x` and `/x/...`, for every HTTP method. */

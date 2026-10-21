@@ -30,29 +30,42 @@ export class TextSearchService {
     if (!this.engine.isConfigured) return fromDatabase();
 
     return this.publicCache.textSearch(`engine:${limit}:${text}`, async () => {
-      const ids = await this.idsOrNull('listings', () => this.engine.findListings(text, limit));
+      const ids = await this.idsOrNull('listings', () =>
+        this.engine.findListings(text, limit),
+      );
       if (ids === null) return fromDatabase();
       const found = await this.propertySearch.byIds(ids);
       return toppedUp(text, found, limit, fromDatabase);
     });
   }
 
-  async people(text: string, terms: string[], limit: number): Promise<PublisherSummary[]> {
+  async people(
+    text: string,
+    terms: string[],
+    limit: number,
+  ): Promise<PublisherSummary[]> {
     const fromDatabase = () => this.peopleSearch.matching(terms, limit);
     if (!this.engine.isConfigured) return fromDatabase();
 
-    const ids = await this.idsOrNull('people', () => this.engine.findPublishers(text, limit));
+    const ids = await this.idsOrNull('people', () =>
+      this.engine.findPublishers(text, limit),
+    );
     if (ids === null) return fromDatabase();
     const found = await this.peopleSearch.byIds(ids);
     return toppedUp(text, found, limit, fromDatabase);
   }
 
   /** The engine's answer, or null when it failed (the database answers instead). */
-  private async idsOrNull(what: string, find: () => Promise<string[]>): Promise<string[] | null> {
+  private async idsOrNull(
+    what: string,
+    find: () => Promise<string[]>,
+  ): Promise<string[] | null> {
     try {
       return await find();
     } catch (error) {
-      this.logger.warn(`Searching ${what} fell back to the database: ${(error as Error).message}`);
+      this.logger.warn(
+        `Searching ${what} fell back to the database: ${(error as Error).message}`,
+      );
       return null;
     }
   }

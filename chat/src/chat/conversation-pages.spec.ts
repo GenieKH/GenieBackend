@@ -2,7 +2,11 @@ import { BadRequestException } from '@nestjs/common';
 import { Conversation } from './chat.service';
 import { pageOfConversations } from './conversation-pages';
 
-function conversation(participantId: string, minute: number, unreadCount = 0): Conversation {
+function conversation(
+  participantId: string,
+  minute: number,
+  unreadCount = 0,
+): Conversation {
   return {
     participantId,
     participantName: participantId,
@@ -50,8 +54,14 @@ describe('pageOfConversations', () => {
     const first = pageOfConversations(LIST, { limit: 2 });
 
     // "d" gets a new message: it is now the most recent.
-    const moved = [conversation('d', 59), ...LIST.filter((c) => c.participantId !== 'd')];
-    const second = pageOfConversations(moved, { limit: 2, cursor: first.nextCursor! });
+    const moved = [
+      conversation('d', 59),
+      ...LIST.filter((c) => c.participantId !== 'd'),
+    ];
+    const second = pageOfConversations(moved, {
+      limit: 2,
+      cursor: first.nextCursor!,
+    });
 
     expect(second.items.map((c) => c.participantId)).toEqual(['c', 'e']);
   });
@@ -59,13 +69,21 @@ describe('pageOfConversations', () => {
   it('counts the unread messages of the whole list on every page', () => {
     expect(pageOfConversations(LIST, { limit: 1 }).unreadTotal).toBe(7);
     const last = pageOfConversations(LIST, { limit: 4 });
-    expect(pageOfConversations(LIST, { limit: 4, cursor: last.nextCursor! }).unreadTotal).toBe(7);
+    expect(
+      pageOfConversations(LIST, { limit: 4, cursor: last.nextCursor! })
+        .unreadTotal,
+    ).toBe(7);
   });
 
   it('refuses a cursor it did not write', () => {
-    expect(() => pageOfConversations(LIST, { limit: 2, cursor: 'not-a-cursor' })).toThrow(BadRequestException);
-    expect(() => pageOfConversations(LIST, { limit: 2, cursor: Buffer.from('a|b|c').toString('base64url') })).toThrow(
-      BadRequestException,
-    );
+    expect(() =>
+      pageOfConversations(LIST, { limit: 2, cursor: 'not-a-cursor' }),
+    ).toThrow(BadRequestException);
+    expect(() =>
+      pageOfConversations(LIST, {
+        limit: 2,
+        cursor: Buffer.from('a|b|c').toString('base64url'),
+      }),
+    ).toThrow(BadRequestException);
   });
 });

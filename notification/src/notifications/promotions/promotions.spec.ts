@@ -20,18 +20,32 @@ describe('PromotionsService', () => {
   it('records the promotion and starts sending it', async () => {
     promotionTable.create.mockResolvedValue({ id: 'p1', status: 'queued' });
 
-    const result = await promotions.create('admin', { title: 'Sale', body: 'Now' });
+    const result = await promotions.create('admin', {
+      title: 'Sale',
+      body: 'Now',
+    });
 
-    expect(promotionTable.create.mock.calls[0][0].data).toMatchObject({ createdBy: 'admin', title: 'Sale' });
+    expect(promotionTable.create.mock.calls[0][0].data).toMatchObject({
+      createdBy: 'admin',
+      title: 'Sale',
+    });
     expect(sender.startInBackground).toHaveBeenCalledWith('p1');
     expect(result.status).toBe('queued');
   });
 
   it('a repeated request with the same id is not sent twice', async () => {
     promotionTable.create.mockRejectedValue(UNIQUE);
-    promotionTable.findUnique.mockResolvedValue({ id: 'p1', status: 'sending', createdBy: 'admin' });
+    promotionTable.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'sending',
+      createdBy: 'admin',
+    });
 
-    const result = await promotions.create('admin', { id: 'p1', title: 'Sale', body: 'Now' });
+    const result = await promotions.create('admin', {
+      id: 'p1',
+      title: 'Sale',
+      body: 'Now',
+    });
 
     expect(result).toEqual({ id: 'p1', status: 'sending' });
     expect(sender.startInBackground).not.toHaveBeenCalled();
@@ -39,11 +53,15 @@ describe('PromotionsService', () => {
 
   it("another admin cannot reuse someone else's id", async () => {
     promotionTable.create.mockRejectedValue(UNIQUE);
-    promotionTable.findUnique.mockResolvedValue({ id: 'p1', status: 'sent', createdBy: 'other-admin' });
+    promotionTable.findUnique.mockResolvedValue({
+      id: 'p1',
+      status: 'sent',
+      createdBy: 'other-admin',
+    });
 
-    await expect(promotions.create('admin', { id: 'p1', title: 'Sale', body: 'Now' })).rejects.toThrow(
-      ConflictException,
-    );
+    await expect(
+      promotions.create('admin', { id: 'p1', title: 'Sale', body: 'Now' }),
+    ).rejects.toThrow(ConflictException);
   });
 });
 
@@ -63,13 +81,30 @@ describe('PromotionSender', () => {
   };
   const delivered: PushContent[] = [];
   const delivery = {
-    deliver: jest.fn((targets: PushTarget[], contentFor: (t: PushTarget) => PushContent | null) => {
-      targets.forEach((target) => delivered.push(contentFor(target)!));
-      return Promise.resolve({ sent: targets.length - 1, failed: 1, removed: 0 });
-    }),
+    deliver: jest.fn(
+      (
+        targets: PushTarget[],
+        contentFor: (t: PushTarget) => PushContent | null,
+      ) => {
+        targets.forEach((target) => delivered.push(contentFor(target)!));
+        return Promise.resolve({
+          sent: targets.length - 1,
+          failed: 1,
+          removed: 0,
+        });
+      },
+    ),
   };
-  const device = (id: string): PushTarget => ({ id, token: id, platform: 'web', locale: 'en' });
-  const lastUpdate = () => promotionTable.update.mock.calls[promotionTable.update.mock.calls.length - 1][0];
+  const device = (id: string): PushTarget => ({
+    id,
+    token: id,
+    platform: 'web',
+    locale: 'en',
+  });
+  const lastUpdate = () =>
+    promotionTable.update.mock.calls[
+      promotionTable.update.mock.calls.length - 1
+    ][0];
   let sender: PromotionSender;
 
   beforeEach(() => {
@@ -86,7 +121,11 @@ describe('PromotionSender', () => {
       url: 'https://genie.example/sale',
       imageUrl: null,
     });
-    sender = new PromotionSender(prisma as never, devices as never, delivery as never);
+    sender = new PromotionSender(
+      prisma as never,
+      devices as never,
+      delivery as never,
+    );
   });
 
   it('sends to every page of the audience and keeps the counts', async () => {
@@ -96,8 +135,15 @@ describe('PromotionSender', () => {
     await sender.send('p1');
 
     expect(delivered).toHaveLength(3);
-    expect(delivered[0].data).toEqual({ type: 'promotion', promotionId: 'p1', url: 'https://genie.example/sale' });
-    expect(promotionTable.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { sentCount: 1, failedCount: 2 } });
+    expect(delivered[0].data).toEqual({
+      type: 'promotion',
+      promotionId: 'p1',
+      url: 'https://genie.example/sale',
+    });
+    expect(promotionTable.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { sentCount: 1, failedCount: 2 },
+    });
     expect(lastUpdate().data.status).toBe('sent');
   });
 
@@ -133,19 +179,27 @@ describe('AdminGuard', () => {
   it('lets an admin in', async () => {
     userTable.findFirst.mockResolvedValue({ role: 'admin' });
 
-    await expect(guard.canActivate(request({ userId: 'a' }))).resolves.toBe(true);
+    await expect(guard.canActivate(request({ userId: 'a' }))).resolves.toBe(
+      true,
+    );
   });
 
   it('keeps everyone else out', async () => {
     userTable.findFirst.mockResolvedValue({ role: 'user' });
 
-    await expect(guard.canActivate(request({ userId: 'u' }))).rejects.toThrow(ForbiddenException);
+    await expect(guard.canActivate(request({ userId: 'u' }))).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('keeps out a deactivated or unknown account', async () => {
     userTable.findFirst.mockResolvedValue(null);
 
-    await expect(guard.canActivate(request({ userId: 'gone' }))).rejects.toThrow(ForbiddenException);
-    await expect(guard.canActivate(request())).rejects.toThrow(ForbiddenException);
+    await expect(
+      guard.canActivate(request({ userId: 'gone' })),
+    ).rejects.toThrow(ForbiddenException);
+    await expect(guard.canActivate(request())).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 });

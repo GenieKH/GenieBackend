@@ -55,6 +55,8 @@ export const MAP_SELECT = {
   landSize: true,
   buildingSize: true,
   unitSize: true,
+  // The app filters by them too, while a newly filtered list is on its way.
+  keywords: { select: { keyword: true } },
   images: { orderBy: { order: 'asc' } },
   user: { select: OWNER_SUMMARY_SELECT },
 } as const;

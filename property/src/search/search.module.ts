@@ -30,7 +30,10 @@ import { TextSearchService } from './text-search.service';
     SearchIndexSync,
     SearchReindexSchedule,
     { provide: PlaceProvider, useClass: GooglePlacesProvider },
-    { provide: SearchEngine, useFactory: () => MeilisearchEngine.fromEnvironment() },
+    {
+      provide: SearchEngine,
+      useFactory: () => MeilisearchEngine.fromEnvironment(),
+    },
   ],
 })
 export class SearchModule {}

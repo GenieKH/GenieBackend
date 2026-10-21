@@ -1,35 +1,66 @@
-import { callEndedPush, incomingCallPush, RING_SECONDS } from './calls/call.push';
-import { chatMessagePush, MAX_SEALED_PUSH_LENGTH } from './chat/chat-message.push';
+import {
+  callEndedPush,
+  incomingCallPush,
+  RING_SECONDS,
+} from './calls/call.push';
+import {
+  chatMessagePush,
+  MAX_SEALED_PUSH_LENGTH,
+} from './chat/chat-message.push';
 import { toFirebaseMessage } from './delivery/firebase-push-sender';
 import { PushTarget } from './delivery/push-sender';
 import { promotionPush } from './promotions/promotion.push';
 import { signInAlertPush } from './security/sign-in-alert.push';
 
-const device = (platform: PushTarget['platform'], locale: PushTarget['locale'] = 'en'): PushTarget => ({
+const device = (
+  platform: PushTarget['platform'],
+  locale: PushTarget['locale'] = 'en',
+): PushTarget => ({
   id: `d-${platform}-${locale}`,
   token: `token-${platform}`,
   platform,
   locale,
 });
 
-const call = { callId: 'c1', callerId: 'alice', callerName: 'Alice', calleeId: 'bob' };
+const call = {
+  callId: 'c1',
+  callerId: 'alice',
+  callerName: 'Alice',
+  calleeId: 'bob',
+};
 
 describe('what each push says', () => {
   it('a chat message names the sender but never its text, one per sender', () => {
     const push = chatMessagePush(
-      { recipientId: 'bob', senderId: 'alice', senderName: 'Alice', messageId: 'm1' },
+      {
+        recipientId: 'bob',
+        senderId: 'alice',
+        senderName: 'Alice',
+        messageId: 'm1',
+      },
       device('android', 'km'),
     );
 
     expect(push.alert).toEqual({ title: 'Alice', body: 'សារថ្មី' });
-    expect(push.data).toEqual({ type: 'chat_message', senderId: 'alice', senderName: 'Alice', messageId: 'm1' });
+    expect(push.data).toEqual({
+      type: 'chat_message',
+      senderId: 'alice',
+      senderName: 'Alice',
+      messageId: 'm1',
+    });
     expect(push.tag).toBe('chat:alice');
     expect(push.channel).toBe('chat_messages');
   });
 
   describe('a chat message with its sealed text', () => {
     const sealed = { ciphertext: 'c'.repeat(100), nonce: 'n'.repeat(32) };
-    const event = { recipientId: 'bob', senderId: 'alice', senderName: 'Alice', messageId: 'm1', ...sealed };
+    const event = {
+      recipientId: 'bob',
+      senderId: 'alice',
+      senderName: 'Alice',
+      messageId: 'm1',
+      ...sealed,
+    };
 
     it('goes to Android with no notification of its own, for the app to open and show', () => {
       const push = chatMessagePush(event, device('android'));
@@ -66,17 +97,28 @@ describe('what each push says', () => {
     });
 
     it('stays within what Firebase accepts at the largest size it attaches', () => {
-      const biggest = { ...event, ciphertext: 'c'.repeat(MAX_SEALED_PUSH_LENGTH - 32) };
+      const biggest = {
+        ...event,
+        ciphertext: 'c'.repeat(MAX_SEALED_PUSH_LENGTH - 32),
+      };
 
-      const message = toFirebaseMessage('t', chatMessagePush(biggest, device('android')));
+      const message = toFirebaseMessage(
+        't',
+        chatMessagePush(biggest, device('android')),
+      );
 
-      expect(Buffer.byteLength(JSON.stringify(message.data))).toBeLessThan(4096);
+      expect(Buffer.byteLength(JSON.stringify(message.data))).toBeLessThan(
+        4096,
+      );
       expect(message.notification).toBeUndefined();
       expect(message.android?.priority).toBe('high');
     });
 
     it('is the generic notification when the chat service sent no sealed text', () => {
-      const push = chatMessagePush({ ...event, ciphertext: undefined }, device('android'));
+      const push = chatMessagePush(
+        { ...event, ciphertext: undefined },
+        device('android'),
+      );
 
       expect(push.alert).toEqual({ title: 'Alice', body: 'New message' });
     });
@@ -84,7 +126,12 @@ describe('what each push says', () => {
 
   it('a sign-in alert names the device that signed in', () => {
     const push = signInAlertPush(
-      { userId: 'u', sessionId: 's2', deviceName: 'Pixel 8', platform: 'Android 15' },
+      {
+        userId: 'u',
+        sessionId: 's2',
+        deviceName: 'Pixel 8',
+        platform: 'Android 15',
+      },
       device('ios'),
     );
 
@@ -94,7 +141,10 @@ describe('what each push says', () => {
   });
 
   it('a sign-in alert from an unnamed device still reads well', () => {
-    const push = signInAlertPush({ userId: 'u', sessionId: 's2' }, device('web', 'km'));
+    const push = signInAlertPush(
+      { userId: 'u', sessionId: 's2' },
+      device('web', 'km'),
+    );
 
     expect(push.alert!.body.startsWith('ឧបករណ៍ថ្មីមួយ')).toBe(true);
   });
@@ -104,16 +154,27 @@ describe('what each push says', () => {
     const ios = incomingCallPush(call, device('ios'));
 
     expect(android.alert).toBeUndefined();
-    expect(android.data).toMatchObject({ type: 'call_incoming', callId: 'c1', callerName: 'Alice' });
-    expect(ios.alert).toEqual({ title: 'Alice is calling', body: 'Tap to answer' });
+    expect(android.data).toMatchObject({
+      type: 'call_incoming',
+      callId: 'c1',
+      callerName: 'Alice',
+    });
+    expect(ios.alert).toEqual({
+      title: 'Alice is calling',
+      body: 'Tap to answer',
+    });
     expect(android.timeToLiveSeconds).toBe(RING_SECONDS);
     expect(android.urgent).toBe(true);
   });
 
   it('an ended call stops Android ringing; elsewhere only a missed call is told', () => {
-    expect(callEndedPush({ ...call, missed: false }, device('android'))!.data.type).toBe('call_ended');
+    expect(
+      callEndedPush({ ...call, missed: false }, device('android'))!.data.type,
+    ).toBe('call_ended');
     expect(callEndedPush({ ...call, missed: false }, device('web'))).toBeNull();
-    expect(callEndedPush({ ...call, missed: true }, device('web'))!.alert).toEqual({
+    expect(
+      callEndedPush({ ...call, missed: true }, device('web'))!.alert,
+    ).toEqual({
       title: 'Missed call',
       body: 'Alice called you',
     });
@@ -134,9 +195,17 @@ describe('what each push says', () => {
     const khmer = promotionPush(promotion, device('android', 'km'));
     const english = promotionPush(promotion, device('android', 'en'));
 
-    expect(khmer.alert).toEqual({ title: 'លក់ធំ', body: 'Half off', imageUrl: 'https://img.example/a.png' });
+    expect(khmer.alert).toEqual({
+      title: 'លក់ធំ',
+      body: 'Half off',
+      imageUrl: 'https://img.example/a.png',
+    });
     expect(english.alert!.title).toBe('Big sale');
-    expect(khmer.data).toEqual({ type: 'promotion', promotionId: 'p1', propertyId: 'prop-1' });
+    expect(khmer.data).toEqual({
+      type: 'promotion',
+      promotionId: 'p1',
+      propertyId: 'prop-1',
+    });
     expect(khmer.urgent).toBe(false);
   });
 });
@@ -151,14 +220,24 @@ describe('the Firebase message', () => {
       urgent: true,
     });
 
-    expect(message.notification).toEqual({ title: 'Hi', body: 'There', imageUrl: undefined });
+    expect(message.notification).toEqual({
+      title: 'Hi',
+      body: 'There',
+      imageUrl: undefined,
+    });
     expect(message.android).toMatchObject({
       priority: 'high',
       collapseKey: 'chat:a',
       notification: { channelId: 'chat_messages', tag: 'chat:a' },
     });
-    expect(message.apns!.headers).toMatchObject({ 'apns-priority': '10', 'apns-collapse-id': 'chat:a' });
-    expect(message.webpush!.notification).toMatchObject({ title: 'Hi', body: 'There' });
+    expect(message.apns!.headers).toMatchObject({
+      'apns-priority': '10',
+      'apns-collapse-id': 'chat:a',
+    });
+    expect(message.webpush!.notification).toMatchObject({
+      title: 'Hi',
+      body: 'There',
+    });
   });
 
   it('a silent push wakes the app instead, and expires when asked', () => {

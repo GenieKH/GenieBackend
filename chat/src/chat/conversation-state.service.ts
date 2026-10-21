@@ -90,7 +90,10 @@ export class ConversationStateService {
     try {
       await this.attachments.removeConversation(userId, partnerId);
     } catch (error) {
-      this.logger.error('Could not delete the files of a deleted conversation', error);
+      this.logger.error(
+        'Could not delete the files of a deleted conversation',
+        error,
+      );
     }
   }
 
@@ -104,7 +107,10 @@ export class ConversationStateService {
   }
 
   private async ensureUser(id: string): Promise<void> {
-    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true },
+    });
     if (!user) throw new NotFoundException('Conversation not found');
   }
 }

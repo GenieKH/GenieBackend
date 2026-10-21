@@ -7,6 +7,11 @@ import { PropertyPublishingClient } from './property/property-publishing.client'
 
 @Module({
   controllers: [PaymentsController],
-  providers: [AbaPaywayProvider, PaymentCheckoutService, PaymentWebhookService, PropertyPublishingClient],
+  providers: [
+    AbaPaywayProvider,
+    PaymentCheckoutService,
+    PaymentWebhookService,
+    PropertyPublishingClient,
+  ],
 })
 export class PaymentsModule {}

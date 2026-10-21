@@ -33,7 +33,9 @@ describe('ListingChanges', () => {
 
   it('never fails the change when a listener does', async () => {
     const other = { listingChanged: jest.fn().mockResolvedValue(undefined) };
-    changes.listen({ listingChanged: jest.fn().mockRejectedValue(new Error('search is down')) });
+    changes.listen({
+      listingChanged: jest.fn().mockRejectedValue(new Error('search is down')),
+    });
     changes.listen(other);
 
     await expect(changes.changed(LISTING)).resolves.toBeUndefined();

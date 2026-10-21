@@ -1,5 +1,12 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { EDIT_WINDOW_MS, MessageActionsService } from './message-actions.service';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  EDIT_WINDOW_MS,
+  MessageActionsService,
+} from './message-actions.service';
 
 describe('MessageActionsService', () => {
   const messageTable = {
@@ -21,7 +28,12 @@ describe('MessageActionsService', () => {
     jest.clearAllMocks();
     messageTable.findUnique.mockResolvedValue(fromAliceToBob);
     messageTable.updateMany.mockResolvedValue({ count: 1 });
-    messageTable.findUniqueOrThrow.mockResolvedValue({ id: 'm-1', ...fromAliceToBob, ...edit, editedAt: now });
+    messageTable.findUniqueOrThrow.mockResolvedValue({
+      id: 'm-1',
+      ...fromAliceToBob,
+      ...edit,
+      editedAt: now,
+    });
     messageTable.deleteMany.mockResolvedValue({ count: 1 });
     service = new MessageActionsService(prisma as never, attachments as never);
   });
@@ -31,10 +43,18 @@ describe('MessageActionsService', () => {
       const edited = await service.edit('alice', 'm-1', edit, now);
 
       expect(messageTable.updateMany).toHaveBeenCalledWith({
-        where: { id: 'm-1', senderId: 'alice', createdAt: { gt: new Date(now.getTime() - EDIT_WINDOW_MS) } },
+        where: {
+          id: 'm-1',
+          senderId: 'alice',
+          createdAt: { gt: new Date(now.getTime() - EDIT_WINDOW_MS) },
+        },
         data: { ciphertext: 'new-cipher', nonce: 'new-nonce', editedAt: now },
       });
-      expect(edited).toMatchObject({ id: 'm-1', ciphertext: 'new-cipher', editedAt: now });
+      expect(edited).toMatchObject({
+        id: 'm-1',
+        ciphertext: 'new-cipher',
+        editedAt: now,
+      });
     });
 
     it('allows an hour after sending', () => {
@@ -44,29 +64,39 @@ describe('MessageActionsService', () => {
     it('refuses once the hour has passed', async () => {
       messageTable.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.edit('alice', 'm-1', edit, now)).rejects.toThrow(ForbiddenException);
+      await expect(service.edit('alice', 'm-1', edit, now)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it("refuses the other person's message", async () => {
-      await expect(service.edit('bob', 'm-1', edit, now)).rejects.toThrow(ForbiddenException);
+      await expect(service.edit('bob', 'm-1', edit, now)).rejects.toThrow(
+        ForbiddenException,
+      );
       expect(messageTable.updateMany).not.toHaveBeenCalled();
     });
 
     it('says a message of another conversation does not exist', async () => {
-      await expect(service.edit('mallory', 'm-1', edit, now)).rejects.toThrow(NotFoundException);
+      await expect(service.edit('mallory', 'm-1', edit, now)).rejects.toThrow(
+        NotFoundException,
+      );
       expect(messageTable.updateMany).not.toHaveBeenCalled();
     });
 
     it('says an unknown message does not exist', async () => {
       messageTable.findUnique.mockResolvedValue(null);
 
-      await expect(service.edit('alice', 'm-1', edit, now)).rejects.toThrow(NotFoundException);
+      await expect(service.edit('alice', 'm-1', edit, now)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   describe('delete for me', () => {
     it('hides a message from the caller only, whoever sent it', async () => {
-      await expect(service.deleteForMe('bob', 'm-1')).resolves.toEqual(fromAliceToBob);
+      await expect(service.deleteForMe('bob', 'm-1')).resolves.toEqual(
+        fromAliceToBob,
+      );
 
       expect(hiddenTable.createMany).toHaveBeenCalledWith({
         data: [{ userId: 'bob', messageId: 'm-1' }],
@@ -76,7 +106,9 @@ describe('MessageActionsService', () => {
     });
 
     it('cannot hide a message of another conversation', async () => {
-      await expect(service.deleteForMe('mallory', 'm-1')).rejects.toThrow(NotFoundException);
+      await expect(service.deleteForMe('mallory', 'm-1')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(hiddenTable.createMany).not.toHaveBeenCalled();
     });
   });
@@ -85,10 +117,17 @@ describe('MessageActionsService', () => {
     const file = 'alice/bob/33333333-3333-4333-8333-333333333333';
 
     it('deletes the message itself, and its file', async () => {
-      await expect(service.deleteForEveryone('alice', 'm-1', file)).resolves.toEqual(fromAliceToBob);
+      await expect(
+        service.deleteForEveryone('alice', 'm-1', file),
+      ).resolves.toEqual(fromAliceToBob);
 
-      expect(attachments.requireSentFile).toHaveBeenCalledWith(fromAliceToBob, file);
-      expect(messageTable.deleteMany).toHaveBeenCalledWith({ where: { id: 'm-1', senderId: 'alice' } });
+      expect(attachments.requireSentFile).toHaveBeenCalledWith(
+        fromAliceToBob,
+        file,
+      );
+      expect(messageTable.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'm-1', senderId: 'alice' },
+      });
       expect(attachments.removeFile).toHaveBeenCalledWith(file);
     });
 
@@ -99,17 +138,23 @@ describe('MessageActionsService', () => {
       expect(attachments.removeFile).not.toHaveBeenCalled();
     });
 
-    it("only lets the sender delete for everyone", async () => {
-      await expect(service.deleteForEveryone('bob', 'm-1')).rejects.toThrow(ForbiddenException);
+    it('only lets the sender delete for everyone', async () => {
+      await expect(service.deleteForEveryone('bob', 'm-1')).rejects.toThrow(
+        ForbiddenException,
+      );
       expect(messageTable.deleteMany).not.toHaveBeenCalled();
     });
 
-    it('deletes nothing when the file named is not the message\'s', async () => {
+    it("deletes nothing when the file named is not the message's", async () => {
       attachments.requireSentFile.mockImplementationOnce(() => {
-        throw new BadRequestException('This file does not belong to the message');
+        throw new BadRequestException(
+          'This file does not belong to the message',
+        );
       });
 
-      await expect(service.deleteForEveryone('alice', 'm-1', 'bob/alice/x')).rejects.toThrow(BadRequestException);
+      await expect(
+        service.deleteForEveryone('alice', 'm-1', 'bob/alice/x'),
+      ).rejects.toThrow(BadRequestException);
       expect(messageTable.deleteMany).not.toHaveBeenCalled();
       expect(attachments.removeFile).not.toHaveBeenCalled();
     });
@@ -117,14 +162,18 @@ describe('MessageActionsService', () => {
     it('still deletes the message when its file cannot be deleted', async () => {
       attachments.removeFile.mockRejectedValue(new Error('storage down'));
 
-      await expect(service.deleteForEveryone('alice', 'm-1', file)).resolves.toEqual(fromAliceToBob);
+      await expect(
+        service.deleteForEveryone('alice', 'm-1', file),
+      ).resolves.toEqual(fromAliceToBob);
       expect(messageTable.deleteMany).toHaveBeenCalled();
     });
 
     it('says a message already deleted does not exist', async () => {
       messageTable.findUnique.mockResolvedValue(null);
 
-      await expect(service.deleteForEveryone('alice', 'm-1')).rejects.toThrow(NotFoundException);
+      await expect(service.deleteForEveryone('alice', 'm-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

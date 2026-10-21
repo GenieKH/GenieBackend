@@ -27,7 +27,9 @@ function row(label: string, value: string): string {
 
 /** HTML body of the "someone signed in to your account" email. */
 export function signInAlertEmailHtml(details: SignInAlertDetails): string {
-  const device = [details.deviceName, details.platform].filter(Boolean).join(', ') || 'Unknown device';
+  const device =
+    [details.deviceName, details.platform].filter(Boolean).join(', ') ||
+    'Unknown device';
   const time = `${details.signedInAt.toISOString().replace('T', ' ').slice(0, 16)} UTC`;
 
   return `<!DOCTYPE html>

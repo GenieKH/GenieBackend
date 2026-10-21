@@ -2,8 +2,14 @@ import { Module } from '@nestjs/common';
 import { SupabaseModule } from '@genie/shared';
 import { InternalAccountsController } from './internal/internal-accounts.controller';
 import { InternalPublicationController } from './internal/internal-publication.controller';
-import { GoogleNearbyPlaceProvider, GoogleRouteDistanceProvider } from './nearby/google-nearby.providers';
-import { NearbyPlaceProvider, RouteDistanceProvider } from './nearby/nearby-providers';
+import {
+  GoogleNearbyPlaceProvider,
+  GoogleRouteDistanceProvider,
+} from './nearby/google-nearby.providers';
+import {
+  NearbyPlaceProvider,
+  RouteDistanceProvider,
+} from './nearby/nearby-providers';
 import { PropertyNearbyService } from './nearby/property-nearby.service';
 import { PropertiesController } from './properties.controller';
 import { PropertyStatusService } from './property-status.service';
@@ -24,7 +30,12 @@ import { PropertyPhotoStorage } from './storage/property-photo-storage';
 
 @Module({
   imports: [SupabaseModule],
-  controllers: [PropertiesController, PublicPropertiesController, InternalPublicationController, InternalAccountsController],
+  controllers: [
+    PropertiesController,
+    PublicPropertiesController,
+    InternalPublicationController,
+    InternalAccountsController,
+  ],
   providers: [
     PropertyStatusService,
     PublicPropertyCache,

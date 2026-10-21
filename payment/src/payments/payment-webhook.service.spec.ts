@@ -13,7 +13,12 @@ describe('PaymentWebhookService', () => {
   const property = { settle: jest.fn() };
   let service: PaymentWebhookService;
 
-  const pending = { id: 'tx-1', propertyId: 'p-1', status: 'Pending', amount: { equals: (n: number) => n === 50 } };
+  const pending = {
+    id: 'tx-1',
+    propertyId: 'p-1',
+    status: 'Pending',
+    amount: { equals: (n: number) => n === 50 },
+  };
   const webhook = { transactionId: 'tx-1', status: 'SUCCESS' as const };
 
   beforeEach(() => {
@@ -22,20 +27,28 @@ describe('PaymentWebhookService', () => {
     transactionTable.findUnique.mockResolvedValue(pending);
     transactionTable.updateMany.mockResolvedValue({ count: 1 });
     property.settle.mockResolvedValue(undefined);
-    service = new PaymentWebhookService(prisma as never, provider as never, property as never);
+    service = new PaymentWebhookService(
+      prisma as never,
+      provider as never,
+      property as never,
+    );
   });
 
   it('rejects an unsigned/forged webhook before touching the database', async () => {
     provider.verifyWebhook.mockReturnValue(false);
 
-    await expect(service.handle(webhook, 'bad')).rejects.toThrow(UnauthorizedException);
+    await expect(service.handle(webhook, 'bad')).rejects.toThrow(
+      UnauthorizedException,
+    );
     expect(transactionTable.findUnique).not.toHaveBeenCalled();
   });
 
   it('404s for an unknown transaction', async () => {
     transactionTable.findUnique.mockResolvedValue(null);
 
-    await expect(service.handle(webhook, 'sig')).rejects.toThrow(NotFoundException);
+    await expect(service.handle(webhook, 'sig')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('publishes the property when the payment succeeds', async () => {
@@ -50,14 +63,20 @@ describe('PaymentWebhookService', () => {
   });
 
   it('returns the property to Draft when the payment fails', async () => {
-    const result = await service.handle({ ...webhook, status: 'FAILED' }, 'sig');
+    const result = await service.handle(
+      { ...webhook, status: 'FAILED' },
+      'sig',
+    );
 
     expect(result).toEqual({ success: false });
     expect(property.settle).toHaveBeenCalledWith('p-1', 'Draft');
   });
 
   it('ignores a repeated webhook for an already settled transaction', async () => {
-    transactionTable.findUnique.mockResolvedValue({ ...pending, status: 'Success' });
+    transactionTable.findUnique.mockResolvedValue({
+      ...pending,
+      status: 'Success',
+    });
 
     const result = await service.handle(webhook, 'sig');
 
@@ -67,9 +86,15 @@ describe('PaymentWebhookService', () => {
   });
 
   it('does not let a late FAILED webhook undo a successful payment', async () => {
-    transactionTable.findUnique.mockResolvedValue({ ...pending, status: 'Success' });
+    transactionTable.findUnique.mockResolvedValue({
+      ...pending,
+      status: 'Success',
+    });
 
-    const result = await service.handle({ ...webhook, status: 'FAILED' }, 'sig');
+    const result = await service.handle(
+      { ...webhook, status: 'FAILED' },
+      'sig',
+    );
 
     expect(result.success).toBe(true);
     expect(property.settle).not.toHaveBeenCalled();
@@ -85,7 +110,9 @@ describe('PaymentWebhookService', () => {
   });
 
   it('rejects a webhook whose amount differs from the transaction', async () => {
-    await expect(service.handle({ ...webhook, amount: 1 }, 'sig')).rejects.toThrow(BadRequestException);
+    await expect(
+      service.handle({ ...webhook, amount: 1 }, 'sig'),
+    ).rejects.toThrow(BadRequestException);
     expect(transactionTable.updateMany).not.toHaveBeenCalled();
   });
 
@@ -93,7 +120,9 @@ describe('PaymentWebhookService', () => {
     it('fails the webhook and undoes the switch, so the provider sends it again', async () => {
       property.settle.mockRejectedValue(new ServiceUnavailableException());
 
-      await expect(service.handle(webhook, 'sig')).rejects.toThrow(ServiceUnavailableException);
+      await expect(service.handle(webhook, 'sig')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
 
       expect(transactionTable.updateMany).toHaveBeenLastCalledWith({
         where: { id: 'tx-1', status: 'Success' },
@@ -113,9 +142,13 @@ describe('PaymentWebhookService', () => {
 
     it('still reports the original failure when the switch cannot be undone', async () => {
       property.settle.mockRejectedValue(new ServiceUnavailableException());
-      transactionTable.updateMany.mockResolvedValueOnce({ count: 1 }).mockRejectedValueOnce(new Error('db down'));
+      transactionTable.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockRejectedValueOnce(new Error('db down'));
 
-      await expect(service.handle(webhook, 'sig')).rejects.toThrow(ServiceUnavailableException);
+      await expect(service.handle(webhook, 'sig')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
   });
 });

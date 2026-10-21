@@ -1,5 +1,10 @@
 import { Module } from '@nestjs/common';
-import { HealthController, JwtStrategy, PrismaModule, RedisModule } from '@genie/shared';
+import {
+  HealthController,
+  JwtStrategy,
+  PrismaModule,
+  RedisModule,
+} from '@genie/shared';
 import { NotificationsModule } from './notifications/notifications.module';
 
 /** The notification service: push devices, preferences, alerts from other services, promotions. */

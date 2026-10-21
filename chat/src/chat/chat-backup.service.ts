@@ -22,7 +22,8 @@ const LONGEST_LOCK_MS = 24 * 60 * 60 * 1000;
  * A 6-digit PIN therefore cannot be guessed by trying them all.
  */
 export function lockDurationMs(failedAttempts: number): number {
-  if (failedAttempts === 0 || failedAttempts % ATTEMPTS_PER_ROUND !== 0) return 0;
+  if (failedAttempts === 0 || failedAttempts % ATTEMPTS_PER_ROUND !== 0)
+    return 0;
   const round = failedAttempts / ATTEMPTS_PER_ROUND;
   return Math.min(FIRST_LOCK_MS * 2 ** (round - 1), LONGEST_LOCK_MS);
 }
@@ -92,7 +93,11 @@ export class ChatBackupService {
    * account password: otherwise anyone holding an unlocked phone could swap in
    * keys of their own and read the account's chats from then on.
    */
-  async save(userId: string, backup: NewKeyBackup, options: SaveBackupOptions = {}) {
+  async save(
+    userId: string,
+    backup: NewKeyBackup,
+    options: SaveBackupOptions = {},
+  ) {
     const seal = this.requireSeal();
     if (!options.provenByPassword) {
       await this.requireCurrentPin(seal, userId, options.currentVerifier);
@@ -109,7 +114,11 @@ export class ChatBackupService {
     };
 
     await this.prisma.$transaction([
-      this.prisma.chatKeyBackup.upsert({ where: { userId }, create: { userId, ...stored }, update: stored }),
+      this.prisma.chatKeyBackup.upsert({
+        where: { userId },
+        create: { userId, ...stored },
+        update: stored,
+      }),
       // A backup from before PIN attempts were counted is replaced, not kept beside the new one.
       this.prisma.user.update({
         where: { id: userId },
@@ -117,7 +126,9 @@ export class ChatBackupService {
           backupBlob: null,
           backupSalt: null,
           backupNonce: null,
-          ...(options.identityPublicKey && { identityPublicKey: options.identityPublicKey }),
+          ...(options.identityPublicKey && {
+            identityPublicKey: options.identityPublicKey,
+          }),
         },
       }),
     ]);
@@ -138,7 +149,8 @@ export class ChatBackupService {
       where: { userId },
       select: { salt: true, protectedBy: true },
     });
-    if (backup) return { backupSalt: backup.salt, protectedBy: backup.protectedBy };
+    if (backup)
+      return { backupSalt: backup.salt, protectedBy: backup.protectedBy };
 
     const legacy = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -159,23 +171,39 @@ export class ChatBackupService {
   async unlock(userId: string, verifier: string) {
     const seal = this.requireSeal();
     // The attempt is recorded inside the transaction, so the answer is thrown only after it commits.
-    const outcome = await this.prisma.$transaction((tx) => this.attempt(tx, seal, userId, verifier));
+    const outcome = await this.prisma.$transaction((tx) =>
+      this.attempt(tx, seal, userId, verifier),
+    );
     if (outcome.kind === 'missing') {
       throw new NotFoundException('No backup found');
     }
     const opened = this.openOrThrow(outcome);
-    return { backupBlob: seal.unwrap(userId, opened.blob), backupNonce: opened.nonce };
+    return {
+      backupBlob: seal.unwrap(userId, opened.blob),
+      backupNonce: opened.nonce,
+    };
   }
 
   /** Passes when there is no backup yet, or `currentVerifier` proves its PIN. A wrong one is counted. */
-  private async requireCurrentPin(seal: BackupSeal, userId: string, currentVerifier?: string): Promise<void> {
-    const existing = await this.prisma.chatKeyBackup.findUnique({ where: { userId }, select: { userId: true } });
+  private async requireCurrentPin(
+    seal: BackupSeal,
+    userId: string,
+    currentVerifier?: string,
+  ): Promise<void> {
+    const existing = await this.prisma.chatKeyBackup.findUnique({
+      where: { userId },
+      select: { userId: true },
+    });
     if (!existing) return;
     if (!currentVerifier) {
-      throw new ForbiddenException('The current PIN is required to replace or remove the chat key backup');
+      throw new ForbiddenException(
+        'The current PIN is required to replace or remove the chat key backup',
+      );
     }
 
-    const outcome = await this.prisma.$transaction((tx) => this.attempt(tx, seal, userId, currentVerifier));
+    const outcome = await this.prisma.$transaction((tx) =>
+      this.attempt(tx, seal, userId, currentVerifier),
+    );
     // Deleted in between: there is nothing left to protect.
     if (outcome.kind !== 'missing') this.openOrThrow(outcome);
   }
@@ -224,7 +252,10 @@ export class ChatBackupService {
 
     if (seal.matches(userId, verifier, row.verifier)) {
       if (row.failedAttempts > 0) {
-        await tx.chatKeyBackup.update({ where: { userId }, data: { failedAttempts: 0, lockedUntil: null } });
+        await tx.chatKeyBackup.update({
+          where: { userId },
+          data: { failedAttempts: 0, lockedUntil: null },
+        });
       }
       return { kind: 'open', blob: row.blob, nonce: row.nonce };
     }
@@ -233,11 +264,18 @@ export class ChatBackupService {
     const lockMs = lockDurationMs(failedAttempts);
     await tx.chatKeyBackup.update({
       where: { userId },
-      data: { failedAttempts, lockedUntil: lockMs > 0 ? new Date(now + lockMs) : null },
+      data: {
+        failedAttempts,
+        lockedUntil: lockMs > 0 ? new Date(now + lockMs) : null,
+      },
     });
     return lockMs > 0
       ? { kind: 'locked', retryAfterMs: lockMs }
-      : { kind: 'wrong', attemptsLeft: ATTEMPTS_PER_ROUND - (failedAttempts % ATTEMPTS_PER_ROUND) };
+      : {
+          kind: 'wrong',
+          attemptsLeft:
+            ATTEMPTS_PER_ROUND - (failedAttempts % ATTEMPTS_PER_ROUND),
+        };
   }
 
   /** Backups are refused rather than stored unsealed when the secret is missing. */
@@ -246,7 +284,9 @@ export class ChatBackupService {
 
     const secret = process.env.CHAT_BACKUP_SECRET;
     if (!secret || secret.length < MIN_BACKUP_SECRET_LENGTH) {
-      this.logger.error(`CHAT_BACKUP_SECRET is missing or shorter than ${MIN_BACKUP_SECRET_LENGTH} characters`);
+      this.logger.error(
+        `CHAT_BACKUP_SECRET is missing or shorter than ${MIN_BACKUP_SECRET_LENGTH} characters`,
+      );
       throw new ServiceUnavailableException('Chat backup is not available');
     }
     return (this.seal = new BackupSeal(secret));

@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { PromotionSender } from './promotion-sender';
@@ -38,7 +42,10 @@ export class PromotionsService {
    * Queues [dto] and starts sending it. Repeating a request with the same id
    * returns the first one's status instead of sending it again.
    */
-  async create(adminId: string, dto: CreatePromotionDto): Promise<PromotionStatus> {
+  async create(
+    adminId: string,
+    dto: CreatePromotionDto,
+  ): Promise<PromotionStatus> {
     let promotion: PromotionStatus;
     try {
       promotion = await this.prisma.promotion.create({
@@ -56,7 +63,11 @@ export class PromotionsService {
         select: STATUS_FIELDS,
       });
     } catch (error) {
-      if (!dto.id || (error as { code?: string }).code !== UNIQUE_CONSTRAINT_VIOLATION) throw error;
+      if (
+        !dto.id ||
+        (error as { code?: string }).code !== UNIQUE_CONSTRAINT_VIOLATION
+      )
+        throw error;
       return this.statusOfRepeat(adminId, dto.id);
     }
 
@@ -65,13 +76,19 @@ export class PromotionsService {
   }
 
   async status(id: string): Promise<PromotionStatus> {
-    const promotion = await this.prisma.promotion.findUnique({ where: { id }, select: STATUS_FIELDS });
+    const promotion = await this.prisma.promotion.findUnique({
+      where: { id },
+      select: STATUS_FIELDS,
+    });
     if (!promotion) throw new NotFoundException('Promotion not found');
     return promotion;
   }
 
   /** Only the admin who sent it may repeat a request: an id is not a password. */
-  private async statusOfRepeat(adminId: string, id: string): Promise<PromotionStatus> {
+  private async statusOfRepeat(
+    adminId: string,
+    id: string,
+  ): Promise<PromotionStatus> {
     const existing = await this.prisma.promotion.findUnique({
       where: { id },
       select: { ...STATUS_FIELDS, createdBy: true },

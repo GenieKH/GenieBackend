@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
 import { CurrentUserId } from '@genie/shared';
 import { BoundaryDto } from './dto/boundary.dto';
@@ -44,12 +54,18 @@ export class PropertiesController {
   @Get()
   findAll(@CurrentUserId() userId: string, @Query() page: PageQuery) {
     if (page.limit === undefined) return this.owned.all(userId);
-    return this.owned.page(userId, { limit: page.limit, offset: page.offset ?? 0 });
+    return this.owned.page(userId, {
+      limit: page.limit,
+      offset: page.offset ?? 0,
+    });
   }
 
   /** The user's own listings (drafts too) inside a map area, newest 500. */
   @Get('my/in-area')
-  findOwnInArea(@CurrentUserId() userId: string, @Query() bounds: MapBoundsQuery) {
+  findOwnInArea(
+    @CurrentUserId() userId: string,
+    @Query() bounds: MapBoundsQuery,
+  ) {
     return this.owned.inArea(userId, bounds);
   }
 
@@ -59,9 +75,16 @@ export class PropertiesController {
    * array, most recently saved first.
    */
   @Get('my/favorites')
-  getFavorites(@CurrentUserId() userId: string, @Query() page: FavoritesPageQuery) {
+  getFavorites(
+    @CurrentUserId() userId: string,
+    @Query() page: FavoritesPageQuery,
+  ) {
     if (page.limit === undefined) return this.favorites.all(userId);
-    return this.favorites.page(userId, { limit: page.limit, offset: page.offset ?? 0, sort: page.sort ?? 'saved' });
+    return this.favorites.page(userId, {
+      limit: page.limit,
+      offset: page.offset ?? 0,
+      sort: page.sort ?? 'saved',
+    });
   }
 
   /** The ids of every saved listing: what the heart on each card shows. */
@@ -71,92 +94,153 @@ export class PropertiesController {
   }
 
   @Get(':id')
-  findOne(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  findOne(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.query.findOwned(userId, id);
   }
 
   @Patch(':id')
-  update(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePropertyDto) {
+  update(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePropertyDto,
+  ) {
     return this.lifecycle.update(userId, id, dto);
   }
 
   @Patch(':id/pin')
-  updatePin(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PinDto) {
+  updatePin(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PinDto,
+  ) {
     return this.lifecycle.updatePin(userId, id, dto);
   }
 
   @Patch(':id/boundary')
-  updateBoundary(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BoundaryDto) {
+  updateBoundary(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BoundaryDto,
+  ) {
     return this.lifecycle.updateBoundary(userId, id, dto);
   }
 
   @Patch(':id/publish')
-  publish(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  publish(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.lifecycle.publish(userId, id);
   }
 
   @Patch(':id/unpublish')
-  unpublish(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  unpublish(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.lifecycle.unpublish(userId, id);
   }
 
   @Patch(':id/mark-sold')
-  markSold(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  markSold(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.lifecycle.markSold(userId, id);
   }
 
   @Patch(':id/relist')
-  relist(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  relist(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.lifecycle.relist(userId, id);
   }
 
   @Delete(':id')
-  remove(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  remove(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.lifecycle.remove(userId, id);
   }
 
   @Post(':id/images/presigned-url')
-  getPresignedUrls(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ImageFileNamesDto) {
+  getPresignedUrls(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ImageFileNamesDto,
+  ) {
     return this.images.createUploadUrls(userId, id, dto.fileNames);
   }
 
   @Post(':id/images/confirm')
-  confirmUploadedImages(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ImageFileNamesDto) {
+  confirmUploadedImages(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ImageFileNamesDto,
+  ) {
     return this.images.confirmUploads(userId, id, dto.fileNames);
   }
 
   @Post(':id/images/remove')
-  removeImages(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ImageUrlsDto) {
+  removeImages(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ImageUrlsDto,
+  ) {
     return this.images.removeImages(userId, id, dto.urls);
   }
 
   @Post(':id/like')
-  like(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  like(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.engagement.like(userId, id);
   }
 
   @Delete(':id/like')
-  unlike(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  unlike(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.engagement.unlike(userId, id);
   }
 
   @Post(':id/favorite')
-  favorite(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  favorite(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.engagement.favorite(userId, id);
   }
 
   @Delete(':id/favorite')
-  unfavorite(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  unfavorite(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.engagement.unfavorite(userId, id);
   }
 
   @Post(':id/view')
-  logView(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  logView(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.engagement.logView(userId, id);
   }
 
   @Post(':id/contact')
-  contact(@CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateContactDto) {
+  contact(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateContactDto,
+  ) {
     return this.engagement.contact(userId, id, dto);
   }
 }

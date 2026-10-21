@@ -13,7 +13,10 @@ export const INTERNAL_TOKEN = 'internal';
  * `type` it accepts: a 30-day refresh token must never pass as an access token.
  * Throws when the token is invalid, expired or of another type.
  */
-export function verifySignedToken(token: string, type: string): jwt.JwtPayload & { sub: string } {
+export function verifySignedToken(
+  token: string,
+  type: string,
+): jwt.JwtPayload & { sub: string } {
   const publicKey = process.env.JWT_PUBLIC_KEY?.replace(/\\n/g, '\n') || '';
   const payload = jwt.verify(token, publicKey, { algorithms: ['RS256'] });
   if (typeof payload === 'string' || !payload.sub) {

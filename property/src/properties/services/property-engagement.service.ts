@@ -1,4 +1,9 @@
-import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService, RateLimit, RateLimits } from '@genie/shared';
 import { CreateContactDto } from '../dto/create-contact.dto';
 import { PUBLISHED } from '../property-includes';
@@ -16,7 +21,11 @@ export class PropertyEngagementService {
     private readonly prisma: PrismaService,
     rateLimits: RateLimits,
   ) {
-    this.contactLimiter = rateLimits.create('property-contact', CONTACT_LIMIT, CONTACT_WINDOW_SECONDS);
+    this.contactLimiter = rateLimits.create(
+      'property-contact',
+      CONTACT_LIMIT,
+      CONTACT_WINDOW_SECONDS,
+    );
   }
 
   /**
@@ -27,24 +36,38 @@ export class PropertyEngagementService {
   async like(userId: string, propertyId: string) {
     await this.assertVisible(propertyId);
     const key = { userId, propertyId };
-    await this.prisma.propertyLike.createMany({ data: [key], skipDuplicates: true });
-    return this.prisma.propertyLike.findUniqueOrThrow({ where: { userId_propertyId: key } });
+    await this.prisma.propertyLike.createMany({
+      data: [key],
+      skipDuplicates: true,
+    });
+    return this.prisma.propertyLike.findUniqueOrThrow({
+      where: { userId_propertyId: key },
+    });
   }
 
   async unlike(userId: string, propertyId: string) {
-    await this.prisma.propertyLike.deleteMany({ where: { userId, propertyId } });
+    await this.prisma.propertyLike.deleteMany({
+      where: { userId, propertyId },
+    });
     return { success: true };
   }
 
   async favorite(userId: string, propertyId: string) {
     await this.assertVisible(propertyId);
     const key = { userId, propertyId };
-    await this.prisma.propertyFavorite.createMany({ data: [key], skipDuplicates: true });
-    return this.prisma.propertyFavorite.findUniqueOrThrow({ where: { userId_propertyId: key } });
+    await this.prisma.propertyFavorite.createMany({
+      data: [key],
+      skipDuplicates: true,
+    });
+    return this.prisma.propertyFavorite.findUniqueOrThrow({
+      where: { userId_propertyId: key },
+    });
   }
 
   async unfavorite(userId: string, propertyId: string) {
-    await this.prisma.propertyFavorite.deleteMany({ where: { userId, propertyId } });
+    await this.prisma.propertyFavorite.deleteMany({
+      where: { userId, propertyId },
+    });
     return { success: true };
   }
 
@@ -55,7 +78,10 @@ export class PropertyEngagementService {
   async logView(userId: string, propertyId: string) {
     const ownerId = await this.visibleOwnerId(propertyId);
     if (ownerId === userId) return { success: true };
-    await this.prisma.propertyView.createMany({ data: [{ userId, propertyId }], skipDuplicates: true });
+    await this.prisma.propertyView.createMany({
+      data: [{ userId, propertyId }],
+      skipDuplicates: true,
+    });
     return { success: true };
   }
 
@@ -64,9 +90,14 @@ export class PropertyEngagementService {
     try {
       await this.contactLimiter.consume(userId);
     } catch {
-      throw new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        'Too Many Requests',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
-    return this.prisma.propertyContact.create({ data: { ...dto, propertyId, userId } });
+    return this.prisma.propertyContact.create({
+      data: { ...dto, propertyId, userId },
+    });
   }
 
   /** Strangers can only act on a published listing: a draft or deleted one is "not found" to them. */

@@ -28,7 +28,10 @@ export const MAX_SEALED_PUSH_LENGTH = 3000;
  * only carries what the server stores anyway. iOS and browsers cannot do that
  * while the app is closed, so they get the generic notification.
  */
-export function chatMessagePush(event: ChatMessageEvent, target: PushTarget): PushContent {
+export function chatMessagePush(
+  event: ChatMessageEvent,
+  target: PushTarget,
+): PushContent {
   const common = {
     channel: 'chat_messages' as const,
     tag: `chat:${event.senderId}`,
@@ -41,15 +44,28 @@ export function chatMessagePush(event: ChatMessageEvent, target: PushTarget): Pu
     messageId: event.messageId,
   };
 
-  if (target.platform === 'android' && event.ciphertext && event.nonce && fitsInPush(event.ciphertext, event.nonce)) {
+  if (
+    target.platform === 'android' &&
+    event.ciphertext &&
+    event.nonce &&
+    fitsInPush(event.ciphertext, event.nonce)
+  ) {
     return {
       ...common,
-      data: { ...data, recipientId: event.recipientId, ciphertext: event.ciphertext, nonce: event.nonce },
+      data: {
+        ...data,
+        recipientId: event.recipientId,
+        ciphertext: event.ciphertext,
+        nonce: event.nonce,
+      },
     };
   }
   return {
     ...common,
-    alert: { title: event.senderName, body: inLocale(texts.newMessage, target.locale) },
+    alert: {
+      title: event.senderName,
+      body: inLocale(texts.newMessage, target.locale),
+    },
     data,
   };
 }

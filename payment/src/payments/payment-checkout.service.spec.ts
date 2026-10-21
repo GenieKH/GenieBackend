@@ -17,7 +17,11 @@ describe('PaymentCheckoutService', () => {
     property.revert.mockResolvedValue(undefined);
     transactionTable.create.mockResolvedValue({ id: 'tx-1' });
     provider.initiateCheckout.mockResolvedValue('https://pay.test/checkout');
-    service = new PaymentCheckoutService(prisma as never, provider as never, property as never);
+    service = new PaymentCheckoutService(
+      prisma as never,
+      provider as never,
+      property as never,
+    );
   });
 
   it('records a Pending transaction and returns where to pay', async () => {
@@ -25,16 +29,29 @@ describe('PaymentCheckoutService', () => {
 
     expect(property.begin).toHaveBeenCalledWith(ME, LISTING);
     expect(transactionTable.create).toHaveBeenCalledWith({
-      data: { userId: ME, propertyId: LISTING, provider: 'ABA_PAYWAY', amount: 50, status: 'Pending' },
+      data: {
+        userId: ME,
+        propertyId: LISTING,
+        provider: 'ABA_PAYWAY',
+        amount: 50,
+        status: 'Pending',
+      },
     });
     expect(provider.initiateCheckout).toHaveBeenCalledWith('tx-1', 50);
-    expect(result).toEqual({ checkoutUrl: 'https://pay.test/checkout', transactionId: 'tx-1' });
+    expect(result).toEqual({
+      checkoutUrl: 'https://pay.test/checkout',
+      transactionId: 'tx-1',
+    });
   });
 
   it('starts no payment when the property service refuses (not the owner, wrong status)', async () => {
-    property.begin.mockRejectedValue(new BadRequestException('Cannot publish a property with status Active'));
+    property.begin.mockRejectedValue(
+      new BadRequestException('Cannot publish a property with status Active'),
+    );
 
-    await expect(service.initiate(ME, LISTING)).rejects.toThrow('Cannot publish');
+    await expect(service.initiate(ME, LISTING)).rejects.toThrow(
+      'Cannot publish',
+    );
     expect(transactionTable.create).not.toHaveBeenCalled();
     expect(provider.initiateCheckout).not.toHaveBeenCalled();
   });

@@ -3,12 +3,17 @@ import { PublicPropertyCache } from '../properties/services/public-property-cach
 import { TextSearchService } from './text-search.service';
 
 describe('TextSearchService', () => {
-  let engine: { isConfigured: boolean; findListings: jest.Mock; findPublishers: jest.Mock };
+  let engine: {
+    isConfigured: boolean;
+    findListings: jest.Mock;
+    findPublishers: jest.Mock;
+  };
   let propertySearch: { matching: jest.Mock; byIds: jest.Mock };
   let peopleSearch: { matching: jest.Mock; byIds: jest.Mock };
   let service: TextSearchService;
 
-  const byIdsInOrder = (ids: string[]) => Promise.resolve(ids.map((id) => ({ id })));
+  const byIdsInOrder = (ids: string[]) =>
+    Promise.resolve(ids.map((id) => ({ id })));
 
   beforeEach(() => {
     engine = {
@@ -35,7 +40,9 @@ describe('TextSearchService', () => {
   it('reads the database alone when no engine is configured', async () => {
     engine.isConfigured = false;
 
-    expect(await service.listings('villa', ['villa'], 8)).toEqual([{ id: 'db-1' }]);
+    expect(await service.listings('villa', ['villa'], 8)).toEqual([
+      { id: 'db-1' },
+    ]);
     expect(await service.people('dara', ['dara'], 5)).toEqual([{ id: 'db-u' }]);
     expect(engine.findListings).not.toHaveBeenCalled();
   });
@@ -53,7 +60,9 @@ describe('TextSearchService', () => {
     engine.findListings.mockRejectedValue(new Error('connection refused'));
     engine.findPublishers.mockRejectedValue(new Error('connection refused'));
 
-    expect(await service.listings('villa', ['villa'], 8)).toEqual([{ id: 'db-1' }]);
+    expect(await service.listings('villa', ['villa'], 8)).toEqual([
+      { id: 'db-1' },
+    ]);
     expect(await service.people('dara', ['dara'], 5)).toEqual([{ id: 'db-u' }]);
   });
 
@@ -64,7 +73,11 @@ describe('TextSearchService', () => {
 
   it('fills up a short answer to Khmer text from the database, without repeats', async () => {
     engine.findListings.mockResolvedValue(['p-1']);
-    propertySearch.matching.mockResolvedValue([{ id: 'p-1' }, { id: 'db-2' }, { id: 'db-3' }]);
+    propertySearch.matching.mockResolvedValue([
+      { id: 'p-1' },
+      { id: 'db-2' },
+      { id: 'db-3' },
+    ]);
 
     const found = await service.listings('ពេញ', ['ពេញ'], 3);
 
@@ -74,7 +87,9 @@ describe('TextSearchService', () => {
   it('fills up people found by Khmer text too', async () => {
     engine.findPublishers.mockResolvedValue([]);
 
-    expect(await service.people('ដារ៉ា', ['ដារ៉ា'], 5)).toEqual([{ id: 'db-u' }]);
+    expect(await service.people('ដារ៉ា', ['ដារ៉ា'], 5)).toEqual([
+      { id: 'db-u' },
+    ]);
   });
 
   it('keeps a full answer to Khmer text as the engine ranked it', async () => {

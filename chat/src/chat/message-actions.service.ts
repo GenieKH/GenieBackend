@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
 import { ChatAttachmentService } from './chat-attachment.service';
 
@@ -42,7 +47,12 @@ export class MessageActionsService {
   ) {}
 
   /** Replaces the text of the sender's own message, within an hour of sending it. */
-  async edit(userId: string, messageId: string, edit: MessageEdit, now = new Date()) {
+  async edit(
+    userId: string,
+    messageId: string,
+    edit: MessageEdit,
+    now = new Date(),
+  ) {
     const message = await this.findFor(userId, messageId);
     if (message.senderId !== userId) {
       throw new ForbiddenException('Only the sender can edit a message');
@@ -51,17 +61,29 @@ export class MessageActionsService {
     // The window is checked in the update itself, so a late edit cannot slip in.
     const editableSince = new Date(now.getTime() - EDIT_WINDOW_MS);
     const { count } = await this.prisma.message.updateMany({
-      where: { id: messageId, senderId: userId, createdAt: { gt: editableSince } },
+      where: {
+        id: messageId,
+        senderId: userId,
+        createdAt: { gt: editableSince },
+      },
       data: { ciphertext: edit.ciphertext, nonce: edit.nonce, editedAt: now },
     });
     if (count === 0) {
-      throw new ForbiddenException('A message can only be edited within an hour of sending it');
+      throw new ForbiddenException(
+        'A message can only be edited within an hour of sending it',
+      );
     }
-    return this.prisma.message.findUniqueOrThrow({ where: { id: messageId }, select: EDITED_FIELDS });
+    return this.prisma.message.findUniqueOrThrow({
+      where: { id: messageId },
+      select: EDITED_FIELDS,
+    });
   }
 
   /** Hides the message from [userId] only; the other person keeps it. */
-  async deleteForMe(userId: string, messageId: string): Promise<MessageParties> {
+  async deleteForMe(
+    userId: string,
+    messageId: string,
+  ): Promise<MessageParties> {
     const message = await this.findFor(userId, messageId);
     await this.prisma.chatHiddenMessage.createMany({
       data: [{ userId, messageId }],
@@ -75,15 +97,24 @@ export class MessageActionsService {
    * its place. Replies to it no longer quote it. [attachmentPath] is the
    * file it carried, named by the app: only the app can read which one.
    */
-  async deleteForEveryone(userId: string, messageId: string, attachmentPath?: string): Promise<MessageParties> {
+  async deleteForEveryone(
+    userId: string,
+    messageId: string,
+    attachmentPath?: string,
+  ): Promise<MessageParties> {
     const message = await this.findFor(userId, messageId);
     if (message.senderId !== userId) {
-      throw new ForbiddenException('Only the sender can delete a message for everyone');
+      throw new ForbiddenException(
+        'Only the sender can delete a message for everyone',
+      );
     }
     // Checked before anything is deleted, so a wrong path changes nothing.
-    if (attachmentPath) this.attachments.requireSentFile(message, attachmentPath);
+    if (attachmentPath)
+      this.attachments.requireSentFile(message, attachmentPath);
 
-    await this.prisma.message.deleteMany({ where: { id: messageId, senderId: userId } });
+    await this.prisma.message.deleteMany({
+      where: { id: messageId, senderId: userId },
+    });
 
     if (attachmentPath) {
       // The message is gone, so the file can no longer be opened; one left
@@ -91,19 +122,28 @@ export class MessageActionsService {
       try {
         await this.attachments.removeFile(attachmentPath);
       } catch (error) {
-        this.logger.error('Could not delete the file of a deleted message', error);
+        this.logger.error(
+          'Could not delete the file of a deleted message',
+          error,
+        );
       }
     }
     return message;
   }
 
   /** The message, if [userId] is one of its two people. Anyone else is told it does not exist. */
-  private async findFor(userId: string, messageId: string): Promise<MessageParties> {
+  private async findFor(
+    userId: string,
+    messageId: string,
+  ): Promise<MessageParties> {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
       select: { senderId: true, recipientId: true },
     });
-    if (!message || (message.senderId !== userId && message.recipientId !== userId)) {
+    if (
+      !message ||
+      (message.senderId !== userId && message.recipientId !== userId)
+    ) {
       throw new NotFoundException('Message not found');
     }
     return message;

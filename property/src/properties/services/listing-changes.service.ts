@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CachedListing, Position, PublicPropertyCache } from './public-property-cache.service';
+import {
+  CachedListing,
+  Position,
+  PublicPropertyCache,
+} from './public-property-cache.service';
 
 /** Told about every change to what the public can see of a listing. */
 export interface ListingChangeListener {
@@ -33,7 +37,9 @@ export class ListingChanges {
     await Promise.all(
       this.listeners.map((listener) =>
         listener.listingChanged(listing).catch((error: Error) => {
-          this.logger.error(`A listener missed the change to listing ${listing.id}: ${error.message}`);
+          this.logger.error(
+            `A listener missed the change to listing ${listing.id}: ${error.message}`,
+          );
         }),
       ),
     );

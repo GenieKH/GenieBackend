@@ -1,9 +1,18 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
 import { AbaPaywayProvider } from './aba-payway.provider';
 import { PaymentWebhookDto } from './dto/payment.dto';
 import { PaymentStatus } from './payment-status';
-import { PropertyPublishingClient, PublishOutcome } from './property/property-publishing.client';
+import {
+  PropertyPublishingClient,
+  PublishOutcome,
+} from './property/property-publishing.client';
 
 export interface WebhookResult {
   success: boolean;
@@ -25,7 +34,10 @@ export class PaymentWebhookService {
     private readonly property: PropertyPublishingClient,
   ) {}
 
-  async handle(dto: PaymentWebhookDto, signature: string): Promise<WebhookResult> {
+  async handle(
+    dto: PaymentWebhookDto,
+    signature: string,
+  ): Promise<WebhookResult> {
     if (!this.provider.verifyWebhook(dto, signature)) {
       throw new UnauthorizedException('Invalid webhook signature');
     }
@@ -42,13 +54,26 @@ export class PaymentWebhookService {
     }
 
     if (transaction.status !== PaymentStatus.Pending) {
-      return { success: transaction.status === PaymentStatus.Success, alreadyProcessed: true };
+      return {
+        success: transaction.status === PaymentStatus.Success,
+        alreadyProcessed: true,
+      };
     }
 
     if (dto.status !== 'SUCCESS') {
-      return this.settle(transaction.id, transaction.propertyId, PaymentStatus.Failed, 'Draft');
+      return this.settle(
+        transaction.id,
+        transaction.propertyId,
+        PaymentStatus.Failed,
+        'Draft',
+      );
     }
-    return this.settle(transaction.id, transaction.propertyId, PaymentStatus.Success, 'Active');
+    return this.settle(
+      transaction.id,
+      transaction.propertyId,
+      PaymentStatus.Success,
+      'Active',
+    );
   }
 
   /**
@@ -78,7 +103,10 @@ export class PaymentWebhookService {
       await this.property.settle(propertyId, outcome);
     } catch (error) {
       await this.prisma.paymentTransaction
-        .updateMany({ where: { id: transactionId, status: finalStatus }, data: { status: PaymentStatus.Pending } })
+        .updateMany({
+          where: { id: transactionId, status: finalStatus },
+          data: { status: PaymentStatus.Pending },
+        })
         .catch((undoError: Error) => {
           this.logger.error(
             `Transaction ${transactionId} stayed ${finalStatus} but its listing was not updated: ${undoError.message}`,

@@ -20,7 +20,11 @@ export class SessionSignOutListener implements OnModuleInit {
     this.revokedSessions.onRevoked((sessionId) => {
       this.devices
         .forgetSession(sessionId)
-        .catch((error: Error) => this.logger.error(`Devices of a signed-out session kept: ${error.message}`));
+        .catch((error: Error) =>
+          this.logger.error(
+            `Devices of a signed-out session kept: ${error.message}`,
+          ),
+        );
     });
   }
 }

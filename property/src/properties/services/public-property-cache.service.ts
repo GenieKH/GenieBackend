@@ -1,17 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { JsonCache } from '@genie/shared';
+import { MapFilter, mapFilterKey } from '../map-filter';
 
 export interface MapBounds {
   minLat: number;
   maxLat: number;
   minLng: number;
   maxLng: number;
-}
-
-/** What the map filter pills narrow the listings to; unset means any. */
-export interface MapFilter {
-  propertyType?: string;
-  listingType?: string;
 }
 
 /** What the cache needs to know of a listing that changed: whose it is, and where. */
@@ -23,7 +18,12 @@ export interface CachedListing {
 }
 
 /** Reads a `CachedListing` from the database. */
-export const CACHED_LISTING_SELECT = { id: true, userId: true, lat: true, lng: true } as const;
+export const CACHED_LISTING_SELECT = {
+  id: true,
+  userId: true,
+  lat: true,
+  lng: true,
+} as const;
 
 /** Where a listing was before it moved. */
 export interface Position {
@@ -66,10 +66,13 @@ const WIDE_VERSION_KEY = 'properties:public:wide-version';
 /** The smallest box on the grid that contains `bounds`. */
 export function widenToGrid(bounds: MapBounds): MapBounds {
   const down = (value: number) =>
-    Math.floor(value * GRID_STEPS_PER_DEGREE + ON_GRID_TOLERANCE) / GRID_STEPS_PER_DEGREE;
+    Math.floor(value * GRID_STEPS_PER_DEGREE + ON_GRID_TOLERANCE) /
+    GRID_STEPS_PER_DEGREE;
   // `+ 0` turns the -0 that rounding up a tiny negative gives into 0.
   const up = (value: number) =>
-    Math.ceil(value * GRID_STEPS_PER_DEGREE - ON_GRID_TOLERANCE) / GRID_STEPS_PER_DEGREE + 0;
+    Math.ceil(value * GRID_STEPS_PER_DEGREE - ON_GRID_TOLERANCE) /
+      GRID_STEPS_PER_DEGREE +
+    0;
   return {
     minLat: down(bounds.minLat),
     maxLat: up(bounds.maxLat),
@@ -90,26 +93,46 @@ export function widenToGrid(bounds: MapBounds): MapBounds {
 export class PublicPropertyCache {
   constructor(private readonly cache: JsonCache) {}
 
-  /** Map results for a box already widened with `widenToGrid`, one entry per filter. */
-  async map<T>(box: MapBounds, filter: MapFilter, load: () => Promise<T>): Promise<T> {
+  /**
+   * Map answers for a box already widened with `widenToGrid`, one entry per
+   * filter and `kind` (the listings, or their price histogram).
+   */
+  async map<T>(
+    box: MapBounds,
+    filter: MapFilter,
+    load: () => Promise<T>,
+    kind = 'map',
+  ): Promise<T> {
     const cells = cellsIn(box);
     const version = cells
       ? `c${(await this.cache.getMany<number>(cells)).reduce<number>((sum, v) => sum + (v ?? 0), 0)}`
       : `w${await this.version(WIDE_VERSION_KEY)}`;
     const name =
-      `map:${box.minLat}:${box.maxLat}:${box.minLng}:${box.maxLng}` +
-      `:${filter.propertyType ?? ''}:${filter.listingType ?? ''}`;
-    return this.cache.remember(`properties:list:${name}:${version}`, LIST_TTL_SECONDS, load);
+      `${kind}:${box.minLat}:${box.maxLat}:${box.minLng}:${box.maxLng}` +
+      `:${mapFilterKey(filter)}`;
+    return this.cache.remember(
+      `properties:list:${name}:${version}`,
+      LIST_TTL_SECONDS,
+      load,
+    );
   }
 
   /** Published listings found by a text, named by what selects them (limit, terms). */
   async textSearch<T>(name: string, load: () => Promise<T>): Promise<T> {
     const version = await this.version(TEXT_VERSION_KEY);
-    return this.cache.remember(`properties:list:v${version}:text:${name}`, LIST_TTL_SECONDS, load);
+    return this.cache.remember(
+      `properties:list:v${version}:text:${name}`,
+      LIST_TTL_SECONDS,
+      load,
+    );
   }
 
   /** One owner's published listings, named by what else selects them (a limit). */
-  async ownerListings<T>(ownerId: string, name: string, load: () => Promise<T>): Promise<T> {
+  async ownerListings<T>(
+    ownerId: string,
+    name: string,
+    load: () => Promise<T>,
+  ): Promise<T> {
     const version = await this.version(ownerVersionKey(ownerId));
     return this.cache.remember(
       `properties:list:owner:${ownerId}:${name}:v${version}`,
@@ -119,7 +142,11 @@ export class PublicPropertyCache {
   }
 
   detail<T>(propertyId: string, load: () => Promise<T>): Promise<T> {
-    return this.cache.remember(this.detailKey(propertyId), DETAIL_TTL_SECONDS, load);
+    return this.cache.remember(
+      this.detailKey(propertyId),
+      DETAIL_TTL_SECONDS,
+      load,
+    );
   }
 
   /**
@@ -166,7 +193,12 @@ function cellKey(row: number, column: number): string {
 /** The version key of the cell a listing at `place` is in; none without a position. */
 function cellOf(place: Position): string[] {
   if (place.lat == null || place.lng == null) return [];
-  return [cellKey(Math.floor(place.lat * CELLS_PER_DEGREE), Math.floor(place.lng * CELLS_PER_DEGREE))];
+  return [
+    cellKey(
+      Math.floor(place.lat * CELLS_PER_DEGREE),
+      Math.floor(place.lng * CELLS_PER_DEGREE),
+    ),
+  ];
 }
 
 /**
@@ -174,13 +206,22 @@ function cellOf(place: Position): string[] {
  * when there are too many to read for one map.
  */
 function cellsIn(box: MapBounds): string[] | null {
-  const [firstRow, lastRow] = [box.minLat, box.maxLat].map((lat) => Math.floor(lat * CELLS_PER_DEGREE));
-  const [firstColumn, lastColumn] = [box.minLng, box.maxLng].map((lng) => Math.floor(lng * CELLS_PER_DEGREE));
-  if ((lastRow - firstRow + 1) * (lastColumn - firstColumn + 1) > MAX_CELLS_PER_MAP) return null;
+  const [firstRow, lastRow] = [box.minLat, box.maxLat].map((lat) =>
+    Math.floor(lat * CELLS_PER_DEGREE),
+  );
+  const [firstColumn, lastColumn] = [box.minLng, box.maxLng].map((lng) =>
+    Math.floor(lng * CELLS_PER_DEGREE),
+  );
+  if (
+    (lastRow - firstRow + 1) * (lastColumn - firstColumn + 1) >
+    MAX_CELLS_PER_MAP
+  )
+    return null;
 
   const cells: string[] = [];
   for (let row = firstRow; row <= lastRow; row++) {
-    for (let column = firstColumn; column <= lastColumn; column++) cells.push(cellKey(row, column));
+    for (let column = firstColumn; column <= lastColumn; column++)
+      cells.push(cellKey(row, column));
   }
   return cells;
 }

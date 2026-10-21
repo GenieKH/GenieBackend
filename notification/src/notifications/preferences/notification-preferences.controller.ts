@@ -2,7 +2,10 @@ import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUserId, JwtAuthGuard } from '@genie/shared';
 import { UpdateNotificationPreferencesDto } from './dto/notification-preferences.dto';
-import { NotificationPreferences, NotificationPreferencesService } from './notification-preferences.service';
+import {
+  NotificationPreferences,
+  NotificationPreferencesService,
+} from './notification-preferences.service';
 
 @ApiTags('notifications')
 @UseGuards(JwtAuthGuard)

@@ -1,11 +1,23 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { serviceCallGuard } from '@genie/shared';
 import { CallNotifier } from '../calls/call-notifier';
 import { ChatMessageNotifier } from '../chat/chat-message-notifier';
 import { DeliveryReport } from '../delivery/push-delivery.service';
 import { SignInAlertNotifier } from '../security/sign-in-alert-notifier';
-import { CallEndedEventDto, CallEventDto, ChatMessageEventDto, SignInEventDto } from './dto/notification-events.dto';
+import {
+  CallEndedEventDto,
+  CallEventDto,
+  ChatMessageEventDto,
+  SignInEventDto,
+} from './dto/notification-events.dto';
 
 /**
  * What other services ask to be notified. Never reached by the app: the

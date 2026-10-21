@@ -12,7 +12,9 @@ describe('payment service wiring', () => {
   });
 
   it('resolves every controller', async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
 
     for (const type of [PaymentsController, HealthController]) {
       expect(moduleRef.get(type)).toBeDefined();

@@ -7,7 +7,10 @@ import {
 import { JsonCache, PrismaService } from '@genie/shared';
 import { isGooglePhotoUrl } from './avatar-url';
 import { UpdateProfileDto, USERNAME_PATTERN } from './dto/update-profile.dto';
-import { PROPERTY_CONTENT, RemoteAccountContent } from './remote-account-content';
+import {
+  PROPERTY_CONTENT,
+  RemoteAccountContent,
+} from './remote-account-content';
 
 /** The columns the owner's own profile is built from. Never the password hash. */
 const PROFILE_SELECT = {

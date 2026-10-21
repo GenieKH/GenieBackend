@@ -10,7 +10,11 @@ import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { PROPERTY_WITH_RELATIONS } from '../property-includes';
 import { toCreateData, toUpdateData } from '../property-write-data';
 import { PropertyStatusService } from '../property-status.service';
-import { NO_ENGAGEMENT, PropertyEngagementCounts, withEngagement } from './property-engagement-counts.service';
+import {
+  NO_ENGAGEMENT,
+  PropertyEngagementCounts,
+  withEngagement,
+} from './property-engagement-counts.service';
 import { PropertyQueryService } from './property-query.service';
 import { ListingChanges } from './listing-changes.service';
 import { CachedListing, Position } from './public-property-cache.service';
@@ -50,7 +54,8 @@ export class PropertyLifecycleService {
     // The discount must still fit the price after the edit, whichever changed.
     assertValidDiscount({
       price: dto.price ?? Number(before.price),
-      discountType: dto.discountType !== undefined ? dto.discountType : before.discountType,
+      discountType:
+        dto.discountType !== undefined ? dto.discountType : before.discountType,
       discountValue:
         dto.discountValue !== undefined
           ? dto.discountValue
@@ -76,7 +81,10 @@ export class PropertyLifecycleService {
 
   async updatePin(userId: string, id: string, pin: PinDto) {
     const before = await this.query.findOwned(userId, id);
-    const property = await this.prisma.property.update({ where: { id }, data: { lat: pin.lat, lng: pin.lng } });
+    const property = await this.prisma.property.update({
+      where: { id },
+      data: { lat: pin.lat, lng: pin.lng },
+    });
     await this.refreshPublicView(property, [before.status], before);
     this.nearby.locationChanged(id);
     return property;
@@ -85,7 +93,10 @@ export class PropertyLifecycleService {
   /** Saves the drawn boundary and re-centres the pin on it. */
   async updateBoundary(userId: string, id: string, dto: BoundaryDto) {
     const before = await this.query.findOwned(userId, id);
-    const boundaryPoints = dto.boundaryPoints.map(({ lat, lng }) => ({ lat, lng }));
+    const boundaryPoints = dto.boundaryPoints.map(({ lat, lng }) => ({
+      lat,
+      lng,
+    }));
     const center = boundaryCentroid(boundaryPoints);
 
     const property = await this.prisma.property.update({
@@ -129,7 +140,14 @@ export class PropertyLifecycleService {
   }
 
   private async setStatus(id: string, from: string, to: string) {
-    const property = await this.prisma.property.update({ where: { id }, data: { status: to } });
+    const property = await this.prisma.property.update({
+      where: { id },
+      // Going live (publish, relist) dates it in the feed as new.
+      data: {
+        status: to,
+        ...(to === PUBLIC_STATUS && { publishedAt: new Date() }),
+      },
+    });
     await this.refreshPublicView(property, [from, to]);
     return property;
   }
@@ -138,7 +156,11 @@ export class PropertyLifecycleService {
    * Drops the cached public copies when the public could see this listing
    * before or can see it now. Work on a draft changes nothing anyone else sees.
    */
-  private async refreshPublicView(listing: CachedListing, statuses: string[], movedFrom?: Position) {
+  private async refreshPublicView(
+    listing: CachedListing,
+    statuses: string[],
+    movedFrom?: Position,
+  ) {
     if (statuses.includes(PUBLIC_STATUS)) {
       await this.listingChanges.changed(listing, movedFrom);
     }

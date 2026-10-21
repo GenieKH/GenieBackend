@@ -1,4 +1,13 @@
-import { Body, Controller, HttpCode, HttpException, HttpStatus, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpException,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+} from '@nestjs/common';
 import { CurrentUserId, RateLimit, RateLimits } from '@genie/shared';
 import { ChatGateway } from './chat.gateway';
 import { DeleteMessageDto, EditMessageDto } from './dto/chat.dto';
@@ -50,9 +59,16 @@ export class MessageActionsController {
     await this.limit(userId);
     const forEveryone = dto.forEveryone === true;
     const parties = forEveryone
-      ? await this.actions.deleteForEveryone(userId, messageId, dto.attachmentPath)
+      ? await this.actions.deleteForEveryone(
+          userId,
+          messageId,
+          dto.attachmentPath,
+        )
       : await this.actions.deleteForMe(userId, messageId);
-    this.gateway.notifyMessageDeleted(userId, messageId, { ...parties, forEveryone });
+    this.gateway.notifyMessageDeleted(userId, messageId, {
+      ...parties,
+      forEveryone,
+    });
     return { success: true };
   }
 
@@ -60,7 +76,10 @@ export class MessageActionsController {
     try {
       await this.rateLimiter.consume(userId);
     } catch {
-      throw new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        'Too Many Requests',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
   }
 }

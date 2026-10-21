@@ -44,12 +44,23 @@ export class CallsService implements OnModuleDestroy {
   }
 
   /** [callerId] calls [calleeId] from the connection [callerSocketId]. */
-  async invite(callerId: string, callerSocketId: string, callId: string, calleeId: string): Promise<InviteResult> {
+  async invite(
+    callerId: string,
+    callerSocketId: string,
+    callId: string,
+    calleeId: string,
+  ): Promise<InviteResult> {
     if (callerId === calleeId) return { ok: false, reason: 'self' };
 
     const [caller, callee] = await Promise.all([
-      this.prisma.user.findFirst({ where: { id: callerId, deactivatedAt: null }, select: DISPLAY_FIELDS }),
-      this.prisma.user.findFirst({ where: { id: calleeId, deactivatedAt: null }, select: { id: true } }),
+      this.prisma.user.findFirst({
+        where: { id: callerId, deactivatedAt: null },
+        select: DISPLAY_FIELDS,
+      }),
+      this.prisma.user.findFirst({
+        where: { id: calleeId, deactivatedAt: null },
+        select: { id: true },
+      }),
     ]);
     if (!caller || !callee) return { ok: false, reason: 'unavailable' };
 
@@ -65,12 +76,16 @@ export class CallsService implements OnModuleDestroy {
       answeredAt: null,
     };
     // Claimed first, so only calls that really ring are recorded.
-    if (!(await this.store.start(call, RINGING_TTL_SECONDS))) return { ok: false, reason: 'busy' };
+    if (!(await this.store.start(call, RINGING_TTL_SECONDS)))
+      return { ok: false, reason: 'busy' };
     try {
-      await this.prisma.callLog.create({ data: { id: callId, callerId, calleeId } });
+      await this.prisma.callLog.create({
+        data: { id: callId, callerId, calleeId },
+      });
     } catch (error) {
       await this.store.finish(call);
-      if ((error as { code?: string }).code === UNIQUE_CONSTRAINT_VIOLATION) return { ok: false, reason: 'invalid' };
+      if ((error as { code?: string }).code === UNIQUE_CONSTRAINT_VIOLATION)
+        return { ok: false, reason: 'invalid' };
       throw error;
     }
 
@@ -83,16 +98,33 @@ export class CallsService implements OnModuleDestroy {
   }
 
   /** The callee answered on [socketId]. Null when the call is no longer theirs to answer. */
-  async accept(calleeId: string, socketId: string, callId: string): Promise<LiveCall | null> {
+  async accept(
+    calleeId: string,
+    socketId: string,
+    callId: string,
+  ): Promise<LiveCall | null> {
     const call = await this.store.get(callId);
-    if (!call || call.calleeId !== calleeId || call.status !== 'ringing') return null;
+    if (!call || call.calleeId !== calleeId || call.status !== 'ringing')
+      return null;
 
-    const answered: LiveCall = { ...call, status: 'active', calleeSocketId: socketId, answeredAt: new Date().toISOString() };
+    const answered: LiveCall = {
+      ...call,
+      status: 'active',
+      calleeSocketId: socketId,
+      answeredAt: new Date().toISOString(),
+    };
     await this.store.update(answered, ACTIVE_TTL_SECONDS);
     this.clearRing(callId);
     await this.prisma.callLog
-      .update({ where: { id: callId }, data: { status: 'active', answeredAt: new Date(answered.answeredAt!) } })
-      .catch((error: Error) => this.logger.error(`Call ${callId} answer not recorded: ${error.message}`));
+      .update({
+        where: { id: callId },
+        data: { status: 'active', answeredAt: new Date(answered.answeredAt!) },
+      })
+      .catch((error: Error) =>
+        this.logger.error(
+          `Call ${callId} answer not recorded: ${error.message}`,
+        ),
+      );
     // The callee's other phones stop ringing.
     this.notifications.callEnded({ ...this.notice(call), missed: false });
     return answered;
@@ -101,14 +133,16 @@ export class CallsService implements OnModuleDestroy {
   /** The callee turned the call down. */
   async decline(calleeId: string, callId: string): Promise<boolean> {
     const call = await this.store.get(callId);
-    if (!call || call.calleeId !== calleeId || call.status !== 'ringing') return false;
+    if (!call || call.calleeId !== calleeId || call.status !== 'ringing')
+      return false;
     return this.end(call, 'declined');
   }
 
   /** Either person hangs up; before an answer, the caller cancels it. */
   async hangUp(userId: string, callId: string): Promise<boolean> {
     const call = await this.store.get(callId);
-    if (!call || (call.callerId !== userId && call.calleeId !== userId)) return false;
+    if (!call || (call.callerId !== userId && call.calleeId !== userId))
+      return false;
     if (call.status === 'active') return this.end(call, 'ended');
     return this.end(call, userId === call.callerId ? 'cancelled' : 'declined');
   }
@@ -120,7 +154,10 @@ export class CallsService implements OnModuleDestroy {
     if (!call) return;
     // A callee's other devices may still answer while the call rings.
     if (call.status === 'ringing' && call.callerSocketId !== socketId) return;
-    await this.end(call, call.status === 'ringing' ? 'cancelled' : 'disconnected');
+    await this.end(
+      call,
+      call.status === 'ringing' ? 'cancelled' : 'disconnected',
+    );
   }
 
   /**
@@ -128,11 +165,17 @@ export class CallsService implements OnModuleDestroy {
    * the call is answered. Null for anyone else, so nobody can eavesdrop on
    * or meddle with someone else's call.
    */
-  async peerSocket(userId: string, socketId: string, callId: string): Promise<string | null> {
+  async peerSocket(
+    userId: string,
+    socketId: string,
+    callId: string,
+  ): Promise<string | null> {
     const call = await this.store.get(callId);
     if (!call || call.status !== 'active' || !call.calleeSocketId) return null;
-    if (call.callerId === userId && call.callerSocketId === socketId) return call.calleeSocketId;
-    if (call.calleeId === userId && call.calleeSocketId === socketId) return call.callerSocketId;
+    if (call.callerId === userId && call.callerSocketId === socketId)
+      return call.calleeSocketId;
+    if (call.calleeId === userId && call.calleeSocketId === socketId)
+      return call.callerSocketId;
     return null;
   }
 
@@ -147,7 +190,9 @@ export class CallsService implements OnModuleDestroy {
       const call = await this.store.get(callId);
       if (call?.status === 'ringing') await this.end(call, 'missed');
     } catch (error) {
-      this.logger.error(`Call ${callId} did not stop ringing: ${(error as Error).message}`);
+      this.logger.error(
+        `Call ${callId} did not stop ringing: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -158,16 +203,27 @@ export class CallsService implements OnModuleDestroy {
 
     if (call.status === 'ringing') {
       // Stops the callee's phones ringing; a call they never got to is missed.
-      this.notifications.callEnded({ ...this.notice(call), missed: reason === 'missed' || reason === 'cancelled' });
+      this.notifications.callEnded({
+        ...this.notice(call),
+        missed: reason === 'missed' || reason === 'cancelled',
+      });
     }
     for (const listener of this.endedListeners) listener(call, reason);
     return true;
   }
 
-  private async recordEnd(callId: string, reason: CallEndReason): Promise<void> {
+  private async recordEnd(
+    callId: string,
+    reason: CallEndReason,
+  ): Promise<void> {
     await this.prisma.callLog
-      .update({ where: { id: callId }, data: { status: 'ended', endReason: reason, endedAt: new Date() } })
-      .catch((error: Error) => this.logger.error(`Call ${callId} end not recorded: ${error.message}`));
+      .update({
+        where: { id: callId },
+        data: { status: 'ended', endReason: reason, endedAt: new Date() },
+      })
+      .catch((error: Error) =>
+        this.logger.error(`Call ${callId} end not recorded: ${error.message}`),
+      );
   }
 
   private clearRing(callId: string): void {
@@ -176,6 +232,11 @@ export class CallsService implements OnModuleDestroy {
   }
 
   private notice(call: LiveCall) {
-    return { callId: call.id, callerId: call.callerId, callerName: call.callerName, calleeId: call.calleeId };
+    return {
+      callId: call.id,
+      callerId: call.callerId,
+      callerName: call.callerName,
+      calleeId: call.calleeId,
+    };
   }
 }

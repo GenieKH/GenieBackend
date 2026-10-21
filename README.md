@@ -93,7 +93,7 @@ sockets on the same instance.
 
 | Cached | Expires | Cleared at once when |
 |---|---|---|
-| Map search (`/public/properties/map`), per ~1 km grid box | 30 s | a published listing inside it (in the same ~11 km cell) is created, edited, moved, published, hidden, sold, paid for, or gets photos, or its owner's name or picture changes. A map wider than 64 cells is cleared by any such change |
+| Map search (`/public/properties/map`) and its price bars (`/map/prices`), per ~1 km grid box and filter | 30 s | a published listing inside it (in the same ~11 km cell) is created, edited, moved, published, hidden, sold, paid for, or gets photos, or its owner's name or picture changes. A map wider than 64 cells is cleared by any such change |
 | Text search listings / one owner's listings | 30 s | any published listing changes / one of that owner's does |
 | Listing page (`/public/properties/:id`) | 60 s | that listing changes, or its owner's name or picture does |
 | Chat public key (`/chat/keys/:userId`) | 10 min | that user publishes a new key, or their account is hidden, shown again or deleted |
@@ -174,13 +174,16 @@ All routes go through the gateway. JWT = `Authorization: Bearer <accessToken>`.
 | POST | `/auth/account/deactivate` | JWT | `{password}` or `{idToken}`; hides the account until the next sign-in. `403 DEVICE_TOO_NEW` as above |
 | POST | `/auth/account/delete` | JWT | `{password}` or `{idToken}`; deletes the account and its files for good. `403 DEVICE_TOO_NEW` as above |
 | POST | `/auth/forgot-password`, `/auth/verify-otp`, `/auth/reset-password` | – | password reset |
-| GET | `/public/properties/map` | optional | `minLat,maxLat,minLng,maxLng` |
+| GET | `/public/properties/map` | optional | `minLat,maxLat,minLng,maxLng`; optional filter: `propertyType`, `listingType` (repeatable: any of), `minPrice,maxPrice` (USD, asking price), `minSize,maxSize` (m², land else unit else building size), `keyword` (repeatable: all of) |
+| GET | `/public/properties/map/prices` | no | the same as the map search plus `upTo` (USD): `{ counts }`, 60 bars of asking prices from 0 to `upTo` (last bar includes above), ignoring the price range |
 | GET | `/public/properties/:id` | – | published property |
 | POST | `/public/properties/guest-session` | – | `{deviceId}` |
 | `*` | `/properties/...` | JWT | own listings, images, like, favorite, contact |
 | GET / PATCH | `/users/me` | JWT | profile (see below) |
 | GET | `/users/username-available` | JWT | is this username free (see below) |
 | POST / PUT / DELETE | `/users/me/avatar...` | JWT | profile picture (see below) |
+| GET / PUT / DELETE | `/users/:id/follow` | JWT | follow counts / follow / unfollow; each answers `{ followerCount, followingCount, isFollowing }` (see docs/SYSTEM_DESIGN.md 9a) |
+| GET | `/feed?limit=&cursor=` | JWT | live listings of the people you follow, newest published first: `{ items, nextCursor }` (card fields only; see docs/SYSTEM_DESIGN.md 9a) |
 | `*` | `/chat/...` | JWT | keys, backup, conversations, messages |
 | POST | `/payments/checkout` | JWT | `{propertyId}` → `{checkoutUrl, transactionId}` |
 | POST | `/payments/webhook` | signature | called by the payment provider |

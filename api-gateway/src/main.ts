@@ -11,7 +11,9 @@ import { buildCorsOptions } from './cors.config';
 
 async function bootstrap() {
   // bodyParser is off: request bodies are streamed straight to the services.
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
 
   app.set('trust proxy', 1);
   app.use(helmet());
@@ -25,10 +27,10 @@ async function bootstrap() {
   await app.init();
   const server = app.getHttpServer();
   for (const proxy of app.get(AppModule).websocketProxies) {
-    server.on('upgrade', proxy.upgrade!);
+    server.on('upgrade', proxy.upgrade);
   }
 
   const port = process.env.PORT || 4000;
   await app.listen(port, '0.0.0.0');
 }
-bootstrap();
+void bootstrap();

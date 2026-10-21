@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { JsonCache, PrismaService } from '@genie/shared';
 import { CHAT_PIN_TTL_SECONDS, chatPinCacheKey } from './chat-pin-cache';
 import { ConversationStateService } from './conversation-state.service';
@@ -75,11 +81,16 @@ export class ChatService {
   async setPublicKey(userId: string, publicKey: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { identityPublicKey: true, keyBackup: { select: { userId: true } } },
+      select: {
+        identityPublicKey: true,
+        keyBackup: { select: { userId: true } },
+      },
     });
     if (user?.identityPublicKey === publicKey) return { success: true };
     if (user?.identityPublicKey && user.keyBackup) {
-      throw new ConflictException('This account already has chat keys. Replacing them needs the backup PIN.');
+      throw new ConflictException(
+        'This account already has chat keys. Replacing them needs the backup PIN.',
+      );
     }
 
     await this.prisma.user.update({
@@ -92,16 +103,20 @@ export class ChatService {
 
   /** Fetched every time a conversation opens. */
   getPublicKey(userId: string) {
-    return this.cache.remember(publicKeyCacheKey(userId), PUBLIC_KEY_TTL_SECONDS, async () => {
-      const user = await this.prisma.user.findFirst({
-        where: { id: userId, ...VISIBLE },
-        select: { identityPublicKey: true },
-      });
-      if (!user || !user.identityPublicKey) {
-        throw new NotFoundException('Public key not found for this user');
-      }
-      return { identityPublicKey: user.identityPublicKey };
-    });
+    return this.cache.remember(
+      publicKeyCacheKey(userId),
+      PUBLIC_KEY_TTL_SECONDS,
+      async () => {
+        const user = await this.prisma.user.findFirst({
+          where: { id: userId, ...VISIBLE },
+          select: { identityPublicKey: true },
+        });
+        if (!user || !user.identityPublicKey) {
+          throw new NotFoundException('Public key not found for this user');
+        }
+        return { identityPublicKey: user.identityPublicKey };
+      },
+    );
   }
 
   /** Called when the account is hidden, shown again or deleted. */
@@ -134,7 +149,11 @@ export class ChatService {
     }
     if (replyToId.status === 'rejected') throw replyToId.reason;
 
-    const { saved, created } = await this.createOrFindMessage(senderId, message, replyToId.value);
+    const { saved, created } = await this.createOrFindMessage(
+      senderId,
+      message,
+      replyToId.value,
+    );
     const { sender, ...stored } = toMessageView(saved);
     const senderName = displayName(sender);
     if (created) {
@@ -161,17 +180,31 @@ export class ChatService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { backupBlob: true, keyBackup: { select: { protectedBy: true } } },
+      select: {
+        backupBlob: true,
+        keyBackup: { select: { protectedBy: true } },
+      },
     });
-    const hasPin = user?.keyBackup?.protectedBy === 'pin' || (!user?.keyBackup && !!user?.backupBlob);
+    const hasPin =
+      user?.keyBackup?.protectedBy === 'pin' ||
+      (!user?.keyBackup && !!user?.backupBlob);
     if (!hasPin) {
-      throw new ForbiddenException('Create your chat PIN before sending messages.');
+      throw new ForbiddenException(
+        'Create your chat PIN before sending messages.',
+      );
     }
     await this.cache.set(chatPinCacheKey(userId), true, CHAT_PIN_TTL_SECONDS);
   }
 
-  private async createOrFindMessage(senderId: string, message: NewMessage, replyToId: string | null) {
-    const include = { sender: { select: DISPLAY_FIELDS }, ...withReplyTo(senderId) };
+  private async createOrFindMessage(
+    senderId: string,
+    message: NewMessage,
+    replyToId: string | null,
+  ) {
+    const include = {
+      sender: { select: DISPLAY_FIELDS },
+      ...withReplyTo(senderId),
+    };
     try {
       const saved = await this.prisma.message.create({
         data: {
@@ -186,11 +219,17 @@ export class ChatService {
       });
       return { saved, created: true };
     } catch (error) {
-      if (!message.id || (error as { code?: string }).code !== UNIQUE_CONSTRAINT_VIOLATION) {
+      if (
+        !message.id ||
+        (error as { code?: string }).code !== UNIQUE_CONSTRAINT_VIOLATION
+      ) {
         throw error;
       }
       // A retry of a message that was already stored.
-      const existing = await this.prisma.message.findUnique({ where: { id: message.id }, include });
+      const existing = await this.prisma.message.findUnique({
+        where: { id: message.id },
+        include,
+      });
       if (!existing || existing.senderId !== senderId) {
         throw new ConflictException('Message id is already in use');
       }
@@ -203,10 +242,16 @@ export class ChatService {
    * deleted meanwhile (or never there) leaves an ordinary message: the reply
    * is still worth sending.
    */
-  private async quotable(senderId: string, message: NewMessage): Promise<string | null> {
+  private async quotable(
+    senderId: string,
+    message: NewMessage,
+  ): Promise<string | null> {
     if (!message.replyToId) return null;
     const quoted = await this.prisma.message.findFirst({
-      where: { id: message.replyToId, OR: betweenPair(senderId, message.recipientId) },
+      where: {
+        id: message.replyToId,
+        OR: betweenPair(senderId, message.recipientId),
+      },
       select: { id: true },
     });
     return quoted?.id ?? null;
@@ -230,7 +275,10 @@ export class ChatService {
    * themselves; `archived` lists only the archived ones. Either comes back
    * to the main list when a newer message arrives.
    */
-  async getConversations(userId: string, list: ConversationList = 'main'): Promise<Conversation[]> {
+  async getConversations(
+    userId: string,
+    list: ConversationList = 'main',
+  ): Promise<Conversation[]> {
     const lastMessages = await this.prisma.$queryRaw<LastMessageRow[]>`
       WITH RECURSIVE sent AS (
         (SELECT recipient_id AS id FROM messages WHERE sender_id = ${userId}::uuid ORDER BY recipient_id LIMIT 1)
@@ -309,23 +357,40 @@ export class ChatService {
           )
         GROUP BY m.sender_id`,
     ]);
-    const partnerById = new Map(partners.map((partner) => [partner.id, partner]));
-    const unreadBySender = new Map(unread.map((group) => [group.senderId, group.count]));
+    const partnerById = new Map(
+      partners.map((partner) => [partner.id, partner]),
+    );
+    const unreadBySender = new Map(
+      unread.map((group) => [group.senderId, group.count]),
+    );
 
-    return shown
-      .filter((row) => partnerById.has(row.partnerId))
-      // Ties by the other person, so pages (conversation-pages.ts) are exact.
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.partnerId < b.partnerId ? -1 : 1))
-      .map(({ partnerId, archivedAt: _archivedAt, clearedAt: _clearedAt, ...lastMessage }) => {
-        const partner = partnerById.get(partnerId)!;
-        return {
-          participantId: partnerId,
-          participantName: displayName(partner),
-          participantAvatar: partner.avatarUrl || null,
-          lastMessage,
-          unreadCount: unreadBySender.get(partnerId) ?? 0,
-        };
-      });
+    return (
+      shown
+        .filter((row) => partnerById.has(row.partnerId))
+        // Ties by the other person, so pages (conversation-pages.ts) are exact.
+        .sort(
+          (a, b) =>
+            b.createdAt.getTime() - a.createdAt.getTime() ||
+            (a.partnerId < b.partnerId ? -1 : 1),
+        )
+        .map(
+          ({
+            partnerId,
+            archivedAt: _archivedAt,
+            clearedAt: _clearedAt,
+            ...lastMessage
+          }) => {
+            const partner = partnerById.get(partnerId)!;
+            return {
+              participantId: partnerId,
+              participantName: displayName(partner),
+              participantAvatar: partner.avatarUrl || null,
+              lastMessage,
+              unreadCount: unreadBySender.get(partnerId) ?? 0,
+            };
+          },
+        )
+    );
   }
 
   /**
@@ -334,7 +399,12 @@ export class ChatService {
    * carries the message it replies to. Messages the user deleted for
    * themselves are left out.
    */
-  async getMessagesWith(userId: string, participantId: string, limit = 50, before?: string) {
+  async getMessagesWith(
+    userId: string,
+    participantId: string,
+    limit = 50,
+    before?: string,
+  ) {
     // "Delete for me" hides everything up to that moment.
     const [visible, clearedAt] = await Promise.all([
       this.isVisible(participantId),
@@ -360,7 +430,10 @@ export class ChatService {
   }
 
   private async isVisible(userId: string): Promise<boolean> {
-    const user = await this.prisma.user.findFirst({ where: { id: userId, ...VISIBLE }, select: { id: true } });
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, ...VISIBLE },
+      select: { id: true },
+    });
     return user !== null;
   }
 

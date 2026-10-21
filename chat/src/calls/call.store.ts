@@ -45,8 +45,25 @@ export class RedisCallStore extends CallStore {
   }
 
   async start(call: LiveCall, ttlSeconds: number): Promise<boolean> {
-    if (!(await this.redis.set(busyKey(call.callerId), call.id, 'EX', ttlSeconds, 'NX'))) return false;
-    if (!(await this.redis.set(busyKey(call.calleeId), call.id, 'EX', ttlSeconds, 'NX'))) {
+    if (
+      !(await this.redis.set(
+        busyKey(call.callerId),
+        call.id,
+        'EX',
+        ttlSeconds,
+        'NX',
+      ))
+    )
+      return false;
+    if (
+      !(await this.redis.set(
+        busyKey(call.calleeId),
+        call.id,
+        'EX',
+        ttlSeconds,
+        'NX',
+      ))
+    ) {
       await this.deleteIfEqual(busyKey(call.callerId), call.id);
       return false;
     }
@@ -70,7 +87,8 @@ export class RedisCallStore extends CallStore {
       .expire(busyKey(call.callerId), ttlSeconds)
       .expire(busyKey(call.calleeId), ttlSeconds)
       .set(socketKey(call.callerSocketId), call.id, 'EX', ttlSeconds);
-    if (call.calleeSocketId) write.set(socketKey(call.calleeSocketId), call.id, 'EX', ttlSeconds);
+    if (call.calleeSocketId)
+      write.set(socketKey(call.calleeSocketId), call.id, 'EX', ttlSeconds);
     await write.exec();
   }
 
@@ -84,7 +102,9 @@ export class RedisCallStore extends CallStore {
       this.deleteIfEqual(busyKey(call.callerId), call.id),
       this.deleteIfEqual(busyKey(call.calleeId), call.id),
       this.deleteIfEqual(socketKey(call.callerSocketId), call.id),
-      ...(call.calleeSocketId ? [this.deleteIfEqual(socketKey(call.calleeSocketId), call.id)] : []),
+      ...(call.calleeSocketId
+        ? [this.deleteIfEqual(socketKey(call.calleeSocketId), call.id)]
+        : []),
     ]);
     return true;
   }

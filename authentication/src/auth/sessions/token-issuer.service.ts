@@ -10,7 +10,11 @@ import {
 import { ClientContext } from './client-context';
 import { IpLocationProvider } from './ip-location.provider';
 import { hashRefreshToken } from './refresh-token-hash';
-import { RefreshTokenRecord, RefreshTokenRepository, SessionDetails } from './refresh-token.repository';
+import {
+  RefreshTokenRecord,
+  RefreshTokenRepository,
+  SessionDetails,
+} from './refresh-token.repository';
 
 export interface TokenPair {
   accessToken: string;
@@ -29,7 +33,8 @@ export class TokenIssuerService {
 
   constructor(
     @Inject(JwtService) private readonly jwt: JwtService,
-    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(RefreshTokenRepository)
+    private readonly refreshTokens: RefreshTokenRepository,
     @Inject(IpLocationProvider) private readonly locations: IpLocationProvider,
   ) {}
 
@@ -37,7 +42,12 @@ export class TokenIssuerService {
    * A sign-in starts a new session. A refresh passes the token it replaces as
    * `previous`, and the new token continues that token's session.
    */
-  async issue(userId: string, role: string, client: ClientContext, previous?: RefreshTokenRecord): Promise<IssuedTokens> {
+  async issue(
+    userId: string,
+    role: string,
+    client: ClientContext,
+    previous?: RefreshTokenRecord,
+  ): Promise<IssuedTokens> {
     const session = continueOrStartSession(client, previous);
 
     // `sid` names the session: it marks the asking device in the session list,
@@ -72,8 +82,14 @@ export class TokenIssuerService {
   private locateInBackground(tokenId: string, ipAddress: string): void {
     this.locations
       .locate(ipAddress)
-      .then((location) => (location ? this.refreshTokens.setLocation(tokenId, location) : undefined))
-      .catch((error: Error) => this.logger.warn(`Session location not saved: ${error.message}`));
+      .then((location) =>
+        location
+          ? this.refreshTokens.setLocation(tokenId, location)
+          : undefined,
+      )
+      .catch((error: Error) =>
+        this.logger.warn(`Session location not saved: ${error.message}`),
+      );
   }
 
   private refreshExpiry(): Date {
@@ -87,14 +103,21 @@ export class TokenIssuerService {
  * The session of a new token. What the device says about itself now wins over
  * what the previous token recorded; the place is kept while the address is the same.
  */
-export function continueOrStartSession(client: ClientContext, previous?: RefreshTokenRecord): SessionDetails {
+export function continueOrStartSession(
+  client: ClientContext,
+  previous?: RefreshTokenRecord,
+): SessionDetails {
   const ipAddress = client.ipAddress ?? previous?.ip_address ?? null;
   return {
     id: previous?.session_id ?? randomUUID(),
-    startedAt: previous?.session_started_at ?? previous?.created_at ?? new Date().toISOString(),
+    startedAt:
+      previous?.session_started_at ??
+      previous?.created_at ??
+      new Date().toISOString(),
     deviceName: client.deviceName ?? previous?.device_name ?? null,
     platform: client.platform ?? previous?.platform ?? null,
     ipAddress,
-    location: previous && previous.ip_address === ipAddress ? previous.location : null,
+    location:
+      previous && previous.ip_address === ipAddress ? previous.location : null,
   };
 }

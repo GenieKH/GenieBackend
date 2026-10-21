@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DeliveryReport, PushDeliveryService } from '../delivery/push-delivery.service';
+import {
+  DeliveryReport,
+  PushDeliveryService,
+} from '../delivery/push-delivery.service';
 import { PushDevicesService } from '../devices/push-devices.service';
 import { NotificationPreferencesService } from '../preferences/notification-preferences.service';
 import { ChatMessageEvent, chatMessagePush } from './chat-message.push';
@@ -25,17 +28,23 @@ export class ChatMessageNotifier {
   async notify(event: ChatMessageEvent): Promise<DeliveryReport> {
     if (event.recipientId === event.senderId) return NOTHING_SENT;
     if (!(await this.preferences.get(event.recipientId)).chatMessages) {
-      this.logger.log(`Chat push for ${event.recipientId} skipped: chat notifications are turned off`);
+      this.logger.log(
+        `Chat push for ${event.recipientId} skipped: chat notifications are turned off`,
+      );
       return NOTHING_SENT;
     }
 
     const targets = await this.devices.targetsOf(event.recipientId);
     if (targets.length === 0) {
-      this.logger.warn(`Chat push for ${event.recipientId} not sent: no device is registered for this account`);
+      this.logger.warn(
+        `Chat push for ${event.recipientId} not sent: no device is registered for this account`,
+      );
       return NOTHING_SENT;
     }
 
-    const report = await this.delivery.deliver(targets, (target) => chatMessagePush(event, target));
+    const report = await this.delivery.deliver(targets, (target) =>
+      chatMessagePush(event, target),
+    );
     this.logger.log(
       `Chat push for ${event.recipientId}: ${targets.length} device(s), sent ${report.sent}, failed ${report.failed}, removed ${report.removed}`,
     );

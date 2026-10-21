@@ -13,7 +13,12 @@ import { ListingDocument, PublisherDocument } from './search-engine';
 const url = process.env.MEILISEARCH_TEST_URL;
 const maybe = url ? describe : describe.skip;
 
-const listing = (id: string, title: string, description = '', createdAt = 0): ListingDocument => ({
+const listing = (
+  id: string,
+  title: string,
+  description = '',
+  createdAt = 0,
+): ListingDocument => ({
   id,
   title,
   description,
@@ -27,7 +32,10 @@ async function* batches<T>(...items: T[][]): AsyncGenerator<T[]> {
 }
 
 /** Writes are applied a moment after they are accepted. */
-async function eventually<T>(read: () => Promise<T>, done: (value: T) => boolean): Promise<T> {
+async function eventually<T>(
+  read: () => Promise<T>,
+  done: (value: T) => boolean,
+): Promise<T> {
   for (let tries = 0; ; tries++) {
     const value = await read();
     if (done(value) || tries > 50) return value;
@@ -39,7 +47,9 @@ maybe('MeilisearchEngine (real engine)', () => {
   let engine: MeilisearchEngine;
 
   beforeAll(async () => {
-    engine = new MeilisearchEngine(new MeilisearchClient(url!, process.env.MEILISEARCH_TEST_KEY ?? ''));
+    engine = new MeilisearchEngine(
+      new MeilisearchClient(url!, process.env.MEILISEARCH_TEST_KEY ?? ''),
+    );
     await engine.prepare();
     await engine.replaceAll(
       batches(
@@ -52,13 +62,17 @@ maybe('MeilisearchEngine (real engine)', () => {
           listing('en-2', 'Shophouse', 'Close to the villa district', 4),
         ],
       ),
-      batches<PublisherDocument>([{ id: 'u-1', name: 'Dara Sok', username: 'dara', listingCount: 3 }]),
+      batches<PublisherDocument>([
+        { id: 'u-1', name: 'Dara Sok', username: 'dara', listingCount: 3 },
+      ]),
     );
   }, 60_000);
 
   it('finds Khmer words inside Khmer text written without spaces', async () => {
     expect(await engine.findListings('ភ្នំពេញ', 10)).toEqual(['kh-1']);
-    expect(await engine.findListings('លក់', 10)).toEqual(expect.arrayContaining(['kh-1', 'kh-2']));
+    expect(await engine.findListings('លក់', 10)).toEqual(
+      expect.arrayContaining(['kh-1', 'kh-2']),
+    );
   });
 
   it('needs every word, and tolerates a typo', async () => {
@@ -78,21 +92,37 @@ maybe('MeilisearchEngine (real engine)', () => {
 
   it('applies a save and a removal', async () => {
     await engine.saveListing(listing('en-3', 'Penthouse with a view'));
-    expect(await eventually(() => engine.findListings('penthouse', 5), (ids) => ids.length > 0)).toEqual(['en-3']);
+    expect(
+      await eventually(
+        () => engine.findListings('penthouse', 5),
+        (ids) => ids.length > 0,
+      ),
+    ).toEqual(['en-3']);
 
     await engine.removeListing('en-3');
-    expect(await eventually(() => engine.findListings('penthouse', 5), (ids) => ids.length === 0)).toEqual([]);
+    expect(
+      await eventually(
+        () => engine.findListings('penthouse', 5),
+        (ids) => ids.length === 0,
+      ),
+    ).toEqual([]);
   });
 
   it('drops whatever a full reindex leaves out, and reports emptiness', async () => {
-    await engine.replaceAll(batches([listing('en-9', 'Warehouse')]), batches<PublisherDocument>());
+    await engine.replaceAll(
+      batches([listing('en-9', 'Warehouse')]),
+      batches<PublisherDocument>(),
+    );
 
     expect(await engine.findListings('villa', 10)).toEqual([]);
     expect(await engine.findListings('warehouse', 10)).toEqual(['en-9']);
     expect(await engine.findPublishers('dara', 5)).toEqual([]);
     expect(await engine.isEmpty()).toBe(false);
 
-    await engine.replaceAll(batches<ListingDocument>(), batches<PublisherDocument>());
+    await engine.replaceAll(
+      batches<ListingDocument>(),
+      batches<PublisherDocument>(),
+    );
     expect(await engine.isEmpty()).toBe(true);
   }, 60_000);
 });

@@ -1,7 +1,8 @@
 import * as jwt from 'jsonwebtoken';
 
 /** The services that call each other. A token names its sender; a receiver names who it accepts. */
-export type ServiceName = 'user' | 'payment' | 'property' | 'chat' | 'authentication' | 'notification';
+export type ServiceName =
+  'user' | 'payment' | 'property' | 'chat' | 'authentication' | 'notification';
 
 /** `typ` of a token one service signs for another. Never accepted as a user's token. */
 export const SERVICE_TOKEN = 'service';
@@ -14,7 +15,9 @@ const MIN_SECRET_LENGTH = 32;
 function secret(): string {
   const value = process.env.INTERNAL_SERVICE_SECRET;
   if (!value || value.length < MIN_SECRET_LENGTH) {
-    throw new Error(`INTERNAL_SERVICE_SECRET (at least ${MIN_SECRET_LENGTH} characters) is required for calls between services`);
+    throw new Error(
+      `INTERNAL_SERVICE_SECRET (at least ${MIN_SECRET_LENGTH} characters) is required for calls between services`,
+    );
   }
   return value;
 }
@@ -30,7 +33,11 @@ export function signServiceToken(issuer: ServiceName): string {
 /** The service that signed `token`. Throws when it is forged, expired, or not a service token. */
 export function verifyServiceToken(token: string): ServiceName {
   const payload = jwt.verify(token, secret(), { algorithms: ['HS256'] });
-  if (typeof payload === 'string' || payload.typ !== SERVICE_TOKEN || typeof payload.iss !== 'string') {
+  if (
+    typeof payload === 'string' ||
+    payload.typ !== SERVICE_TOKEN ||
+    typeof payload.iss !== 'string'
+  ) {
     throw new Error('Not a service token');
   }
   return payload.iss as ServiceName;

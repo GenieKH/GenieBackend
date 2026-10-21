@@ -5,13 +5,20 @@ import { PropertiesController } from './properties.controller';
 describe('list endpoints', () => {
   const favorites = { all: jest.fn(), page: jest.fn(), ids: jest.fn() };
   const owned = { all: jest.fn(), page: jest.fn(), inArea: jest.fn() };
-  const controller = new PropertiesController({} as never, {} as never, {} as never, {} as never, favorites as never, owned as never);
+  const controller = new PropertiesController(
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    favorites as never,
+    owned as never,
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('answer the whole list as before when no page is asked for, so older apps keep working', () => {
-    controller.getFavorites('u', {});
-    controller.findAll('u', {});
+  it('answer the whole list as before when no page is asked for, so older apps keep working', async () => {
+    await controller.getFavorites('u', {});
+    await controller.findAll('u', {});
 
     expect(favorites.all).toHaveBeenCalledWith('u');
     expect(owned.all).toHaveBeenCalledWith('u');
@@ -19,11 +26,15 @@ describe('list endpoints', () => {
     expect(owned.page).not.toHaveBeenCalled();
   });
 
-  it('answer one page when asked, from the start and most recently saved first by default', () => {
-    controller.getFavorites('u', { limit: 20 });
-    controller.findAll('u', { limit: 20, offset: 40 });
+  it('answer one page when asked, from the start and most recently saved first by default', async () => {
+    await controller.getFavorites('u', { limit: 20 });
+    await controller.findAll('u', { limit: 20, offset: 40 });
 
-    expect(favorites.page).toHaveBeenCalledWith('u', { limit: 20, offset: 0, sort: 'saved' });
+    expect(favorites.page).toHaveBeenCalledWith('u', {
+      limit: 20,
+      offset: 0,
+      sort: 'saved',
+    });
     expect(owned.page).toHaveBeenCalledWith('u', { limit: 20, offset: 40 });
   });
 });

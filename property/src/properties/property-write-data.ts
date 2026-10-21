@@ -13,6 +13,8 @@ export function toCreateData(userId: string, dto: CreatePropertyDto) {
     ...clearedFieldsFor(fields.propertyType),
     userId,
     status: status || 'Draft',
+    // Created live: it is published now.
+    ...(status === 'Active' && { publishedAt: new Date() }),
     ...(keywords?.length && { keywords: { create: keywordRows(keywords) } }),
   };
 }

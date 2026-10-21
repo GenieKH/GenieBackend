@@ -1,4 +1,9 @@
-import { Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_CLIENT } from '../../supabase/supabase.module';
 
@@ -54,7 +59,9 @@ const RECORD_COLUMNS =
 export class RefreshTokenRepository {
   private readonly logger = new Logger(RefreshTokenRepository.name);
 
-  constructor(@Inject(SUPABASE_CLIENT) private readonly supabase: SupabaseClient) {}
+  constructor(
+    @Inject(SUPABASE_CLIENT) private readonly supabase: SupabaseClient,
+  ) {}
 
   async insert(token: NewRefreshToken): Promise<void> {
     const { error } = await this.supabase.from('refresh_tokens').insert([
@@ -75,8 +82,12 @@ export class RefreshTokenRepository {
   }
 
   async findById(id: string): Promise<RefreshTokenRecord | null> {
-    const { data } = await this.supabase.from('refresh_tokens').select(RECORD_COLUMNS).eq('id', id).maybeSingle();
-    return (data as RefreshTokenRecord | null) ?? null;
+    const { data } = await this.supabase
+      .from('refresh_tokens')
+      .select(RECORD_COLUMNS)
+      .eq('id', id)
+      .maybeSingle();
+    return data ?? null;
   }
 
   /**
@@ -101,22 +112,32 @@ export class RefreshTokenRepository {
       .eq('id', id)
       .select('session_id');
     this.throwIfFailed(error, 'Failed to revoke token');
-    return (data as SessionIdRow[] | null)?.[0]?.session_id ?? null;
+    const rows: SessionIdRow[] | null = data;
+    return rows?.[0]?.session_id ?? null;
   }
 
   /**
    * Revokes every usable token of the user, or every one outside
    * `exceptSessionId`. Returns the sessions that ended with them.
    */
-  async revokeAllForUser(userId: string, exceptSessionId?: string | null): Promise<string[]> {
-    let query = this.supabase.from('refresh_tokens').update({ revoked: true }).eq('user_id', userId).eq('revoked', false);
+  async revokeAllForUser(
+    userId: string,
+    exceptSessionId?: string | null,
+  ): Promise<string[]> {
+    let query = this.supabase
+      .from('refresh_tokens')
+      .update({ revoked: true })
+      .eq('user_id', userId)
+      .eq('revoked', false);
     if (exceptSessionId) {
       // Spelled out because `neq` alone would skip the tokens that have no session.
       query = query.or(`session_id.is.null,session_id.neq.${exceptSessionId}`);
     }
     const { data, error } = await query.select('session_id');
     this.throwIfFailed(error, 'Failed to revoke all sessions');
-    return ((data as SessionIdRow[] | null) ?? []).flatMap((row) => (row.session_id ? [row.session_id] : []));
+    return ((data ?? []) as SessionIdRow[]).flatMap((row) =>
+      row.session_id ? [row.session_id] : [],
+    );
   }
 
   /** Ends one session of the user. Returns false if they have no such active session. */
@@ -159,11 +180,17 @@ export class RefreshTokenRepository {
   }
 
   async setLocation(id: string, location: string): Promise<void> {
-    const { error } = await this.supabase.from('refresh_tokens').update({ location }).eq('id', id);
+    const { error } = await this.supabase
+      .from('refresh_tokens')
+      .update({ location })
+      .eq('id', id);
     this.throwIfFailed(error, 'Failed to store session location');
   }
 
-  private throwIfFailed(error: { message: string } | null, publicMessage: string): void {
+  private throwIfFailed(
+    error: { message: string } | null,
+    publicMessage: string,
+  ): void {
     if (!error) return;
     this.logger.error(`${publicMessage}: ${error.message}`);
     throw new InternalServerErrorException(publicMessage);

@@ -37,5 +37,8 @@ export interface Page<T> {
  */
 export function toPage<T>(rows: T[], offset: number, limit: number): Page<T> {
   const more = rows.length > limit;
-  return { items: more ? rows.slice(0, limit) : rows, nextOffset: more ? offset + limit : null };
+  return {
+    items: more ? rows.slice(0, limit) : rows,
+    nextOffset: more ? offset + limit : null,
+  };
 }

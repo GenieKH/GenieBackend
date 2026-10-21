@@ -1,12 +1,24 @@
 import { Logger } from '@nestjs/common';
 import { MeilisearchClient } from './meilisearch.client';
-import { DocumentBatches, ListingDocument, PublisherDocument, SearchEngine } from './search-engine';
+import {
+  DocumentBatches,
+  ListingDocument,
+  PublisherDocument,
+  SearchEngine,
+} from './search-engine';
 
 const LISTINGS = 'listings';
 const PUBLISHERS = 'publishers';
 
 /** Meilisearch's own order, then the tie-breaker of each index. */
-const RANKING = ['words', 'typo', 'proximity', 'attribute', 'sort', 'exactness'];
+const RANKING = [
+  'words',
+  'typo',
+  'proximity',
+  'attribute',
+  'sort',
+  'exactness',
+];
 
 const SETTINGS: Record<string, object> = {
   // A word in the title counts more than one in the description.
@@ -36,7 +48,9 @@ export class MeilisearchEngine extends SearchEngine {
   static fromEnvironment(): MeilisearchEngine {
     const url = process.env.MEILISEARCH_URL?.replace(/\/+$/, '');
     const apiKey = process.env.MEILISEARCH_API_KEY ?? '';
-    return new MeilisearchEngine(url ? new MeilisearchClient(url, apiKey) : null);
+    return new MeilisearchEngine(
+      url ? new MeilisearchClient(url, apiKey) : null,
+    );
   }
 
   get isConfigured(): boolean {
@@ -109,24 +123,39 @@ export class MeilisearchEngine extends SearchEngine {
 
   private async createWithSettings(index: string): Promise<void> {
     const created = await this.engine.createIndex(index);
-    await this.engine.waitFor(created, (code) => code === 'index_already_exists');
-    await this.engine.waitFor(await this.engine.updateSettings(index, SETTINGS[index]));
+    await this.engine.waitFor(
+      created,
+      (code) => code === 'index_already_exists',
+    );
+    await this.engine.waitFor(
+      await this.engine.updateSettings(index, SETTINGS[index]),
+    );
   }
 
-  private async fill(index: string, settings: object, batches: AsyncIterable<object[]>): Promise<void> {
+  private async fill(
+    index: string,
+    settings: object,
+    batches: AsyncIterable<object[]>,
+  ): Promise<void> {
     await this.engine.waitFor(await this.engine.createIndex(index));
     const tasks = [await this.engine.updateSettings(index, settings)];
     for await (const batch of batches) {
-      if (batch.length > 0) tasks.push(await this.engine.addDocuments(index, batch));
+      if (batch.length > 0)
+        tasks.push(await this.engine.addDocuments(index, batch));
     }
     for (const task of tasks) await this.engine.waitFor(task);
   }
 
   private async deleteQuietly(index: string): Promise<void> {
     try {
-      await this.engine.waitFor(await this.engine.deleteIndex(index), (code) => code === 'index_not_found');
+      await this.engine.waitFor(
+        await this.engine.deleteIndex(index),
+        (code) => code === 'index_not_found',
+      );
     } catch (error) {
-      this.logger.warn(`Could not delete index ${index}: ${(error as Error).message}`);
+      this.logger.warn(
+        `Could not delete index ${index}: ${(error as Error).message}`,
+      );
     }
   }
 }

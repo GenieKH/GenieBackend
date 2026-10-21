@@ -43,7 +43,10 @@ const HOUSE_FIELDS: readonly TypeSpecificField[] = [
 ];
 
 /** Which details each property type's form asks for. */
-export const FIELDS_BY_TYPE: Record<PropertyType, readonly TypeSpecificField[]> = {
+export const FIELDS_BY_TYPE: Record<
+  PropertyType,
+  readonly TypeSpecificField[]
+> = {
   Land: ['landSize'],
   House: HOUSE_FIELDS,
   Warehouse: HOUSE_FIELDS,
@@ -88,10 +91,14 @@ export const FIELDS_BY_TYPE: Record<PropertyType, readonly TypeSpecificField[]> 
  * `null` for every detail `type` does not have, ready to spread into a
  * Prisma write. Unknown (legacy) types keep everything.
  */
-export function clearedFieldsFor(type: string): Partial<Record<TypeSpecificField, null>> {
+export function clearedFieldsFor(
+  type: string,
+): Partial<Record<TypeSpecificField, null>> {
   const kept = FIELDS_BY_TYPE[type as PropertyType];
   if (!kept) return {};
   return Object.fromEntries(
-    TYPE_SPECIFIC_FIELDS.filter((field) => !kept.includes(field)).map((field) => [field, null]),
+    TYPE_SPECIFIC_FIELDS.filter((field) => !kept.includes(field)).map(
+      (field) => [field, null],
+    ),
   );
 }

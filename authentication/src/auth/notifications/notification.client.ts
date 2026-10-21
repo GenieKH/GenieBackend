@@ -36,6 +36,8 @@ export class NotificationClient {
         },
         timeoutMs: NOTIFY_TIMEOUT_MS,
       })
-      .catch((error: Error) => this.logger.warn(`Sign-in push not sent: ${error.message}`));
+      .catch((error: Error) =>
+        this.logger.warn(`Sign-in push not sent: ${error.message}`),
+      );
   }
 }

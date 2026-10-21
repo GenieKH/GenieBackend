@@ -19,7 +19,10 @@ describe('PropertyQueryService read routing', () => {
   beforeEach(() => {
     primary = client();
     replica = client();
-    const counts = { of: jest.fn().mockResolvedValue(new Map()), attach: jest.fn((rows) => rows) };
+    const counts = {
+      of: jest.fn().mockResolvedValue(new Map()),
+      attach: jest.fn((rows) => rows),
+    };
     query = new PropertyQueryService(
       primary as never,
       new PublicPropertyCache(fakeCache(new FakeRedis())),
@@ -36,7 +39,12 @@ describe('PropertyQueryService read routing', () => {
   });
 
   it('reads the public map from the read client', async () => {
-    await query.searchMap({ minLat: 11.5, maxLat: 11.6, minLng: 104.8, maxLng: 104.9 });
+    await query.searchMap({
+      minLat: 11.5,
+      maxLat: 11.6,
+      minLng: 104.8,
+      maxLng: 104.9,
+    });
 
     expect(replica.property.findMany).toHaveBeenCalled();
     expect(primary.property.findMany).not.toHaveBeenCalled();

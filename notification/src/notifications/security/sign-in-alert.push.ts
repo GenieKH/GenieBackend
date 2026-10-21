@@ -11,11 +11,17 @@ export interface SignInEvent {
 }
 
 /** "Samsung SM-G991B (Android 14) signed in. If this wasn't you, ..." */
-export function signInAlertPush(event: SignInEvent, target: PushTarget): PushContent {
+export function signInAlertPush(
+  event: SignInEvent,
+  target: PushTarget,
+): PushContent {
   return {
     alert: {
       title: inLocale(texts.newSignInTitle, target.locale),
-      body: inLocale(texts.newSignInBody, target.locale)(describeDevice(event, target)),
+      body: inLocale(
+        texts.newSignInBody,
+        target.locale,
+      )(describeDevice(event, target)),
     },
     data: { type: 'security_sign_in', sessionId: event.sessionId },
     channel: 'security',

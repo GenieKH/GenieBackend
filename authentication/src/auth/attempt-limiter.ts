@@ -1,5 +1,14 @@
-import { HttpException, HttpStatus, Injectable, Optional } from '@nestjs/common';
-import { RateLimiterMemory, RateLimiterRedis, RateLimiterRes } from 'rate-limiter-flexible';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Optional,
+} from '@nestjs/common';
+import {
+  RateLimiterMemory,
+  RateLimiterRedis,
+  RateLimiterRes,
+} from 'rate-limiter-flexible';
 import { RedisConnection } from '../redis/redis-connection';
 
 interface Limiter {
@@ -29,7 +38,10 @@ export class AttemptLimiter {
   /** Records one attempt, or answers `429` once the key has none left. */
   async consumeOrReject(key: string, retry = 'in 15 minutes'): Promise<void> {
     if (!(await this.tryConsume(key))) {
-      throw new HttpException(`Too many attempts. Try again ${retry}.`, HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        `Too many attempts. Try again ${retry}.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
   }
 
@@ -87,13 +99,21 @@ export class AuthAttemptLimits {
     this.resetCooldown = this.limit('reset-cooldown', 1, ONE_MINUTE);
     this.resetRequests = this.limit('reset-request', 3, FIFTEEN_MINUTES);
     this.resetRequestsPerDay = this.limit('reset-request-day', 6, ONE_DAY);
-    this.resetRequestsPerClient = this.limit('reset-request-client', 10, ONE_HOUR);
+    this.resetRequestsPerClient = this.limit(
+      'reset-request-client',
+      10,
+      ONE_HOUR,
+    );
     this.otp = this.limit('otp', 5, FIFTEEN_MINUTES);
     this.otpPerDay = this.limit('otp-day', 15, ONE_DAY);
     this.identityProof = this.limit('identity-proof', 10, FIFTEEN_MINUTES);
   }
 
-  private limit(name: string, points: number, duration: number): AttemptLimiter {
+  private limit(
+    name: string,
+    points: number,
+    duration: number,
+  ): AttemptLimiter {
     const inMemory = new RateLimiterMemory({ points, duration });
     if (!this.redis) return new AttemptLimiter(inMemory);
 

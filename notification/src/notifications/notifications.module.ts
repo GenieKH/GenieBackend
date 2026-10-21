@@ -23,7 +23,9 @@ function pushSenderFromEnv(): PushSender {
   try {
     return FirebasePushSender.fromEnv() ?? new DisabledPushSender();
   } catch (error) {
-    new Logger('Notifications').error(`Firebase could not start: ${(error as Error).message}`);
+    new Logger('Notifications').error(
+      `Firebase could not start: ${(error as Error).message}`,
+    );
     return new DisabledPushSender();
   }
 }

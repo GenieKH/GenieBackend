@@ -3,7 +3,8 @@ import * as bcrypt from 'bcrypt';
 import { PasswordResetService } from './password-reset.service';
 
 /** Lets the code-issuing work that runs after the reply finish. */
-const flushBackgroundWork = () => new Promise((resolve) => setImmediate(resolve));
+const flushBackgroundWork = () =>
+  new Promise((resolve) => setImmediate(resolve));
 
 describe('PasswordResetService', () => {
   const users = { findByEmail: jest.fn(), update: jest.fn() };
@@ -21,7 +22,12 @@ describe('PasswordResetService', () => {
     jest.resetAllMocks();
     mailer.sendOtp.mockResolvedValue(undefined);
     otps.claim.mockResolvedValue(true);
-    service = new PasswordResetService(users as never, otps as never, sessions as never, mailer as never);
+    service = new PasswordResetService(
+      users as never,
+      otps as never,
+      sessions as never,
+      mailer as never,
+    );
   });
 
   describe('requestReset', () => {
@@ -63,7 +69,9 @@ describe('PasswordResetService', () => {
     it('answers before storing or sending anything, so the reply takes as long either way', async () => {
       users.findByEmail.mockResolvedValue({ id: 'u1' });
       let finishStoring!: () => void;
-      otps.invalidateAllFor.mockReturnValue(new Promise<void>((resolve) => (finishStoring = resolve)));
+      otps.invalidateAllFor.mockReturnValue(
+        new Promise<void>((resolve) => (finishStoring = resolve)),
+      );
 
       await service.requestReset('a@b.com');
 
@@ -80,15 +88,21 @@ describe('PasswordResetService', () => {
     it('accepts the right code', async () => {
       otps.findLatestActive.mockResolvedValue(record);
 
-      await expect(service.verifyOtp('a@b.com', '123456')).resolves.toMatchObject({ verified: true });
+      await expect(
+        service.verifyOtp('a@b.com', '123456'),
+      ).resolves.toMatchObject({ verified: true });
     });
 
     it('rejects a wrong code and an expired/missing one', async () => {
       otps.findLatestActive.mockResolvedValueOnce(record);
-      await expect(service.verifyOtp('a@b.com', '000000')).rejects.toThrow(BadRequestException);
+      await expect(service.verifyOtp('a@b.com', '000000')).rejects.toThrow(
+        BadRequestException,
+      );
 
       otps.findLatestActive.mockResolvedValueOnce(null);
-      await expect(service.verifyOtp('a@b.com', '123456')).rejects.toThrow(BadRequestException);
+      await expect(service.verifyOtp('a@b.com', '123456')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('changes the password, burns the code and signs the user out everywhere', async () => {
@@ -98,7 +112,9 @@ describe('PasswordResetService', () => {
       await service.resetPassword('a@b.com', '123456', 'new-password');
 
       const patch = users.update.mock.calls[0][1];
-      expect(await bcrypt.compare('new-password', patch.password_hash)).toBe(true);
+      expect(await bcrypt.compare('new-password', patch.password_hash)).toBe(
+        true,
+      );
       // Also how a Google account ends up with a password of its own.
       expect(patch.has_password).toBe(true);
       expect(otps.claim).toHaveBeenCalledWith('o1');
@@ -116,14 +132,19 @@ describe('PasswordResetService', () => {
       ]);
 
       // Whichever claims the code first wins; the other is refused.
-      expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+      expect(results.map((r) => r.status).sort()).toEqual([
+        'fulfilled',
+        'rejected',
+      ]);
       expect(users.update).toHaveBeenCalledTimes(1);
     });
 
     it('does not touch the password when the code is wrong', async () => {
       otps.findLatestActive.mockResolvedValue(record);
 
-      await expect(service.resetPassword('a@b.com', '999999', 'new-password')).rejects.toThrow(BadRequestException);
+      await expect(
+        service.resetPassword('a@b.com', '999999', 'new-password'),
+      ).rejects.toThrow(BadRequestException);
       expect(users.update).not.toHaveBeenCalled();
     });
   });

@@ -4,14 +4,17 @@
   "packageManager": "npm@11.17.0",
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
     "db:generate": "cd .. && npx prisma generate",
     "db:push": "cd .. && npx prisma db push",
     "db:migrate": "cd .. && npx prisma migrate dev",
     "db:seed": "cd .. && npx prisma db seed",
-    "test": "jest"
+    "test": "jest",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "lint:check": "eslint \"src/**/*.ts\""
   },
   "dependencies": {
     "@genie/shared": "*",
@@ -39,17 +42,24 @@
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.18.0",
     "@prisma/compute-sdk": "latest",
     "@types/bcrypt": "^6.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.0.0",
     "@types/nodemailer": "^8.0.1",
     "@types/passport-jwt": "^4.0.1",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.2",
+    "globals": "^17.0.0",
     "jest": "^30.5.2",
+    "prettier": "^3.4.2",
     "prisma": "^7.8.0",
     "ts-jest": "^29.4.14",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.20.0"
   },
   "jest": {
     "moduleFileExtensions": [

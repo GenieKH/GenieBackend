@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { HealthController } from '@genie/shared';
 import { AppModule } from './app.module';
+import { FeedController } from './feed/feed.controller';
 import { InternalAccountsController } from './properties/internal/internal-accounts.controller';
 import { InternalPublicationController } from './properties/internal/internal-publication.controller';
 import { PropertiesController } from './properties/properties.controller';
@@ -19,13 +20,16 @@ describe('property service wiring', () => {
   });
 
   it('resolves every controller', async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
 
     for (const type of [
       PropertiesController,
       PublicPropertiesController,
       SearchController,
       SearchHistoryController,
+      FeedController,
       InternalPublicationController,
       InternalAccountsController,
       HealthController,

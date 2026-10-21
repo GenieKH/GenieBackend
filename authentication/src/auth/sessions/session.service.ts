@@ -1,10 +1,22 @@
-import { Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UserRepository } from '../users/user.repository';
 import { ClientContext } from './client-context';
-import { EstablishedDeviceService, SessionCaller, sessionStartOf } from './established-device.service';
+import {
+  EstablishedDeviceService,
+  SessionCaller,
+  sessionStartOf,
+} from './established-device.service';
 import { refreshTokenMatches } from './refresh-token-hash';
-import { RefreshTokenRecord, RefreshTokenRepository } from './refresh-token.repository';
+import {
+  RefreshTokenRecord,
+  RefreshTokenRepository,
+} from './refresh-token.repository';
 import { SessionRevocationService } from './session-revocation.service';
 import { TokenIssuerService, TokenPair } from './token-issuer.service';
 
@@ -39,15 +51,21 @@ export interface DeviceList {
 export class SessionService {
   constructor(
     @Inject(JwtService) private readonly jwt: JwtService,
-    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(RefreshTokenRepository)
+    private readonly refreshTokens: RefreshTokenRepository,
     @Inject(TokenIssuerService) private readonly issuer: TokenIssuerService,
     @Inject(UserRepository) private readonly users: UserRepository,
-    @Inject(SessionRevocationService) private readonly revocations: SessionRevocationService,
-    @Inject(EstablishedDeviceService) private readonly devices: EstablishedDeviceService,
+    @Inject(SessionRevocationService)
+    private readonly revocations: SessionRevocationService,
+    @Inject(EstablishedDeviceService)
+    private readonly devices: EstablishedDeviceService,
   ) {}
 
   /** Exchanges a refresh token for a new pair; the old token can never be used again. */
-  async refresh(refreshToken: string, client: ClientContext): Promise<TokenPair> {
+  async refresh(
+    refreshToken: string,
+    client: ClientContext,
+  ): Promise<TokenPair> {
     const { sub, jti } = this.verifyRefreshToken(refreshToken);
 
     const record = await this.refreshTokens.findById(jti);
@@ -67,7 +85,9 @@ export class SessionService {
     const won = await this.refreshTokens.revokeIfActive(jti);
     if (!won) {
       await this.revocations.endAllSessions(sub);
-      throw new UnauthorizedException('Token theft detected (Concurrent). All sessions revoked.');
+      throw new UnauthorizedException(
+        'Token theft detected (Concurrent). All sessions revoked.',
+      );
     }
 
     const user = await this.users.findById(sub);
@@ -75,7 +95,12 @@ export class SessionService {
       throw new UnauthorizedException('User no longer exists');
     }
 
-    const { sessionId: _sessionId, ...tokens } = await this.issuer.issue(sub, user.role, client, record);
+    const { sessionId: _sessionId, ...tokens } = await this.issuer.issue(
+      sub,
+      user.role,
+      client,
+      record,
+    );
     return tokens;
   }
 
@@ -83,7 +108,9 @@ export class SessionService {
   async logout(refreshToken: string): Promise<{ message: string }> {
     let payload: RefreshPayload;
     try {
-      payload = this.jwt.verify<RefreshPayload>(refreshToken, { ignoreExpiration: true });
+      payload = this.jwt.verify<RefreshPayload>(refreshToken, {
+        ignoreExpiration: true,
+      });
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -117,7 +144,10 @@ export class SessionService {
   }
 
   /** Signs one device out, at once. Signing out another device than the caller's needs an established device. */
-  async revokeSession(caller: SessionCaller, sessionId: string): Promise<{ message: string }> {
+  async revokeSession(
+    caller: SessionCaller,
+    sessionId: string,
+  ): Promise<{ message: string }> {
     if (sessionId !== caller.sessionId) {
       await this.devices.require(caller);
     }
@@ -140,14 +170,23 @@ export class SessionService {
    * session ends. If the session has no usable token, the device was simply
    * signed out (here or from another device) and only needs to log in again.
    */
-  private async rejectRevokedToken(record: RefreshTokenRecord, userId: string): Promise<never> {
-    const signedOut = record.session_id !== null && !(await this.refreshTokens.hasActiveToken(record.session_id));
+  private async rejectRevokedToken(
+    record: RefreshTokenRecord,
+    userId: string,
+  ): Promise<never> {
+    const signedOut =
+      record.session_id !== null &&
+      !(await this.refreshTokens.hasActiveToken(record.session_id));
     if (signedOut) {
-      throw new UnauthorizedException('This device was signed out. Please log in again.');
+      throw new UnauthorizedException(
+        'This device was signed out. Please log in again.',
+      );
     }
 
     await this.revocations.endAllSessions(userId);
-    throw new UnauthorizedException('Token theft detected. All sessions revoked.');
+    throw new UnauthorizedException(
+      'Token theft detected. All sessions revoked.',
+    );
   }
 
   private verifyRefreshToken(token: string): { sub: string; jti: string } {

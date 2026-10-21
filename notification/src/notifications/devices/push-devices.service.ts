@@ -5,7 +5,12 @@ import { PushTarget } from '../delivery/push-sender';
 /** One account rarely has this many devices; past it the oldest are dropped. */
 export const MAX_DEVICES_PER_USER = 20;
 
-const TARGET_FIELDS = { id: true, token: true, platform: true, locale: true } as const;
+const TARGET_FIELDS = {
+  id: true,
+  token: true,
+  platform: true,
+  locale: true,
+} as const;
 
 /** Who is registering a device: the account, and the signed-in session doing it. */
 export interface DeviceOwner {
@@ -28,8 +33,16 @@ export interface DeviceRegistration {
 export class PushDevicesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async register(owner: DeviceOwner, device: DeviceRegistration): Promise<void> {
-    const fields = { userId: owner.userId, sessionId: owner.sessionId, platform: device.platform, locale: device.locale };
+  async register(
+    owner: DeviceOwner,
+    device: DeviceRegistration,
+  ): Promise<void> {
+    const fields = {
+      userId: owner.userId,
+      sessionId: owner.sessionId,
+      platform: device.platform,
+      locale: device.locale,
+    };
     await this.prisma.pushDevice.upsert({
       where: { token: device.token },
       create: { token: device.token, ...fields },
@@ -45,13 +58,17 @@ export class PushDevicesService {
 
   /** A signed-out device must not keep showing the account's notifications. */
   async forgetSession(sessionId: string): Promise<number> {
-    const { count } = await this.prisma.pushDevice.deleteMany({ where: { sessionId } });
+    const { count } = await this.prisma.pushDevice.deleteMany({
+      where: { sessionId },
+    });
     return count;
   }
 
   /** Devices whose token no longer reaches them. */
   async forget(ids: string[]): Promise<number> {
-    const { count } = await this.prisma.pushDevice.deleteMany({ where: { id: { in: ids } } });
+    const { count } = await this.prisma.pushDevice.deleteMany({
+      where: { id: { in: ids } },
+    });
     return count;
   }
 
@@ -59,14 +76,19 @@ export class PushDevicesService {
    * Where to reach [userId], except on the session [exceptSessionId] (the
    * device that caused the notification). None for a hidden account.
    */
-  async targetsOf(userId: string, options: { exceptSessionId?: string | null } = {}): Promise<PushTarget[]> {
+  async targetsOf(
+    userId: string,
+    options: { exceptSessionId?: string | null } = {},
+  ): Promise<PushTarget[]> {
     const except = options.exceptSessionId;
     const devices = await this.prisma.pushDevice.findMany({
       where: {
         userId,
         user: { deactivatedAt: null },
         // `not` alone would also leave out devices registered without a session.
-        ...(except && { OR: [{ sessionId: null }, { sessionId: { not: except } }] }),
+        ...(except && {
+          OR: [{ sessionId: null }, { sessionId: { not: except } }],
+        }),
       },
       select: TARGET_FIELDS,
     });
@@ -86,7 +108,10 @@ export class PushDevicesService {
           ...(after && { id: { gt: after } }),
           user: {
             deactivatedAt: null,
-            OR: [{ notificationPreferences: { is: null } }, { notificationPreferences: { is: { promotions: true } } }],
+            OR: [
+              { notificationPreferences: { is: null } },
+              { notificationPreferences: { is: { promotions: true } } },
+            ],
           },
         },
         orderBy: { id: 'asc' },
@@ -115,14 +140,21 @@ const PLATFORMS: readonly string[] = ['android', 'ios', 'web'];
 const LOCALES: readonly string[] = ['en', 'km'];
 
 /** The database checks both columns; this keeps the types honest anyway. */
-function asTarget(row: { id: string; token: string; platform: string; locale: string }): PushTarget[] {
+function asTarget(row: {
+  id: string;
+  token: string;
+  platform: string;
+  locale: string;
+}): PushTarget[] {
   if (!PLATFORMS.includes(row.platform)) return [];
   return [
     {
       id: row.id,
       token: row.token,
       platform: row.platform as PushTarget['platform'],
-      locale: (LOCALES.includes(row.locale) ? row.locale : 'en') as PushTarget['locale'],
+      locale: (LOCALES.includes(row.locale)
+        ? row.locale
+        : 'en') as PushTarget['locale'],
     },
   ];
 }

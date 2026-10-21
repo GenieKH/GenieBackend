@@ -10,7 +10,9 @@ describe('readPrismaFor', () => {
   });
 
   it('is a separate client of the replica when DATABASE_READ_URL is set', async () => {
-    const replica = readPrismaFor(primary, { DATABASE_READ_URL: 'postgresql://reader@replica.invalid:5432/genie' });
+    const replica = readPrismaFor(primary, {
+      DATABASE_READ_URL: 'postgresql://reader@replica.invalid:5432/genie',
+    });
 
     expect(replica).not.toBe(primary);
     expect(typeof replica.property.findMany).toBe('function');

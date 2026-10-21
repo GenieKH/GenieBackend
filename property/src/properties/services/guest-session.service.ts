@@ -8,7 +8,9 @@ export class GuestSessionService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async register(deviceId?: string): Promise<{ success: boolean; sessionId?: string }> {
+  async register(
+    deviceId?: string,
+  ): Promise<{ success: boolean; sessionId?: string }> {
     if (!deviceId) return { success: false };
 
     try {
@@ -19,7 +21,9 @@ export class GuestSessionService {
       });
       return { success: true, sessionId: session.id };
     } catch (error) {
-      this.logger.error(`Failed to register guest session: ${(error as Error).message}`);
+      this.logger.error(
+        `Failed to register guest session: ${(error as Error).message}`,
+      );
       return { success: false };
     }
   }

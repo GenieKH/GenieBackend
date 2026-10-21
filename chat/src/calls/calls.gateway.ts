@@ -12,6 +12,7 @@ import { Namespace, Socket } from 'socket.io';
 import { RateLimit, RateLimits } from '@genie/shared';
 import { parsePayload } from '../chat/socket-payload';
 import { userRoom } from '../chat/socket-rooms';
+import { socketUser } from '../chat/ws-auth';
 import { WsJwtGuard } from '../chat/ws-jwt.guard';
 import { CallEndReason, LiveCall } from './call.types';
 import { CallsService } from './calls.service';
@@ -55,15 +56,22 @@ export class CallsGateway implements OnGatewayInit, OnGatewayDisconnect {
   handleDisconnect(client: Socket) {
     this.calls
       .socketGone(client.id)
-      .catch((error: Error) => this.logger.error(`Call of a closed connection not ended: ${error.message}`));
+      .catch((error: Error) =>
+        this.logger.error(
+          `Call of a closed connection not ended: ${error.message}`,
+        ),
+      );
   }
 
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('call:invite')
-  async invite(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown): Promise<Ack> {
+  async invite(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ): Promise<Ack> {
     const dto = parsePayload(CallInviteDto, payload);
     if (!dto) return INVALID;
-    const callerId: string = client.data.userId;
+    const callerId = socketUser(client).userId;
 
     try {
       await this.inviteLimiter.consume(callerId);
@@ -72,50 +80,74 @@ export class CallsGateway implements OnGatewayInit, OnGatewayDisconnect {
     }
 
     return this.guarded('invite', async () => {
-      const result = await this.calls.invite(callerId, client.id, dto.callId, dto.calleeId);
+      const result = await this.calls.invite(
+        callerId,
+        client.id,
+        dto.callId,
+        dto.calleeId,
+      );
       if (!result.ok) return { status: 'error', reason: result.reason };
       const { call } = result;
-      this.server
-        .to(userRoom(call.calleeId))
-        .emit('call:incoming', { callId: call.id, callerId: call.callerId, callerName: call.callerName });
+      this.server.to(userRoom(call.calleeId)).emit('call:incoming', {
+        callId: call.id,
+        callerId: call.callerId,
+        callerName: call.callerName,
+      });
       return OK;
     });
   }
 
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('call:accept')
-  accept(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown): Promise<Ack> {
+  accept(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ): Promise<Ack> {
     const dto = parsePayload(CallRefDto, payload);
     if (!dto) return Promise.resolve(INVALID);
 
     return this.guarded('accept', async () => {
-      const call = await this.calls.accept(client.data.userId, client.id, dto.callId);
+      const call = await this.calls.accept(
+        socketUser(client).userId,
+        client.id,
+        dto.callId,
+      );
       if (!call) return { status: 'error', reason: 'gone' };
-      this.server.to(call.callerSocketId).emit('call:accepted', { callId: call.id });
+      this.server
+        .to(call.callerSocketId)
+        .emit('call:accepted', { callId: call.id });
       // The callee's other devices stop ringing; this one is excluded.
-      client.to(userRoom(call.calleeId)).emit('call:answered-elsewhere', { callId: call.id });
+      client
+        .to(userRoom(call.calleeId))
+        .emit('call:answered-elsewhere', { callId: call.id });
       return OK;
     });
   }
 
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('call:decline')
-  decline(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown): Promise<Ack> {
+  decline(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ): Promise<Ack> {
     const dto = parsePayload(CallRefDto, payload);
     if (!dto) return Promise.resolve(INVALID);
     return this.guarded('decline', async () => {
-      await this.calls.decline(client.data.userId, dto.callId);
+      await this.calls.decline(socketUser(client).userId, dto.callId);
       return OK;
     });
   }
 
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('call:hangup')
-  hangUp(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown): Promise<Ack> {
+  hangUp(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ): Promise<Ack> {
     const dto = parsePayload(CallRefDto, payload);
     if (!dto) return Promise.resolve(INVALID);
     return this.guarded('hang up', async () => {
-      await this.calls.hangUp(client.data.userId, dto.callId);
+      await this.calls.hangUp(socketUser(client).userId, dto.callId);
       return OK;
     });
   }
@@ -123,12 +155,19 @@ export class CallsGateway implements OnGatewayInit, OnGatewayDisconnect {
   /** Passed on to the other party only; dropped for anyone not in the call. */
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('call:signal')
-  signal(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown): Promise<Ack> {
+  signal(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ): Promise<Ack> {
     const dto = parsePayload(CallSignalDto, payload);
     if (!dto) return Promise.resolve(INVALID);
 
     return this.guarded('signal', async () => {
-      const peer = await this.calls.peerSocket(client.data.userId, client.id, dto.callId);
+      const peer = await this.calls.peerSocket(
+        socketUser(client).userId,
+        client.id,
+        dto.callId,
+      );
       if (!peer) return { status: 'error', reason: 'gone' };
       this.server.to(peer).emit('call:signal', dto);
       return OK;
@@ -138,7 +177,10 @@ export class CallsGateway implements OnGatewayInit, OnGatewayDisconnect {
   /** Both parties hear it; the callee on every device, which may still be ringing. */
   private announceEnded(call: LiveCall, reason: CallEndReason): void {
     const ended = { callId: call.id, reason };
-    this.server.to(call.callerSocketId).to(userRoom(call.calleeId)).emit('call:ended', ended);
+    this.server
+      .to(call.callerSocketId)
+      .to(userRoom(call.calleeId))
+      .emit('call:ended', ended);
   }
 
   /** A failure is reported to the app, never thrown into the socket. */

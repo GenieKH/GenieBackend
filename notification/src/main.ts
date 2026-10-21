@@ -24,4 +24,4 @@ async function bootstrap() {
   Logger.log(`Listening on ${host}:${port}`, 'Bootstrap');
   Logger.log(describeJwtPublicKey(), 'Bootstrap');
 }
-bootstrap();
+void bootstrap();

@@ -27,11 +27,17 @@ export class PropertyPublicationService {
    * publishable status. The listing waits as Pending. Answers the status it
    * had, so the payment service can put it back if it cannot go on.
    */
-  async beginPublish(userId: string, propertyId: string): Promise<{ previousStatus: string }> {
+  async beginPublish(
+    userId: string,
+    propertyId: string,
+  ): Promise<{ previousStatus: string }> {
     const property = await this.query.findOwned(userId, propertyId);
     this.status.canPublish(property.status);
 
-    await this.prisma.property.update({ where: { id: propertyId }, data: { status: 'Pending' } });
+    await this.prisma.property.update({
+      where: { id: propertyId },
+      data: { status: 'Pending' },
+    });
     return { previousStatus: property.status };
   }
 
@@ -39,14 +45,23 @@ export class PropertyPublicationService {
    * The payment ended: a paid listing goes live, an unpaid one goes back to
    * Draft. Only a Pending listing changes, so repeating the call is harmless.
    */
-  async settlePublish(propertyId: string, outcome: PublishOutcome): Promise<void> {
+  async settlePublish(
+    propertyId: string,
+    outcome: PublishOutcome,
+  ): Promise<void> {
     const { count } = await this.prisma.property.updateMany({
       where: { id: propertyId, status: 'Pending' },
-      data: { status: outcome },
+      data: {
+        status: outcome,
+        ...(outcome === 'Active' && { publishedAt: new Date() }),
+      },
     });
     // The listing just went live: let the map show it without waiting for the cache to expire.
     if (outcome === 'Active' && count > 0) {
-      const listing = await this.prisma.property.findUnique({ where: { id: propertyId }, select: CACHED_LISTING_SELECT });
+      const listing = await this.prisma.property.findUnique({
+        where: { id: propertyId },
+        select: CACHED_LISTING_SELECT,
+      });
       if (listing) await this.listingChanges.changed(listing);
     }
   }

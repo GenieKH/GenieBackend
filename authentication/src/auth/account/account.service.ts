@@ -3,9 +3,16 @@ import * as bcrypt from 'bcrypt';
 import { FirebaseService } from '../../firebase/firebase.service';
 import { BCRYPT_ROUNDS } from '../auth.constants';
 import { PasswordResetOtpRepository } from '../password-reset/password-reset-otp.repository';
-import { EstablishedDeviceService, SessionCaller } from '../sessions/established-device.service';
+import {
+  EstablishedDeviceService,
+  SessionCaller,
+} from '../sessions/established-device.service';
 import { SessionRevocationService } from '../sessions/session-revocation.service';
-import { UserPatch, UserRecord, UserRepository } from '../users/user.repository';
+import {
+  UserPatch,
+  UserRecord,
+  UserRepository,
+} from '../users/user.repository';
 import { IdentityProof, IdentityProofService } from './identity-proof.service';
 import { UserContentClient } from './user-content.client';
 
@@ -22,20 +29,30 @@ import { UserContentClient } from './user-content.client';
 export class AccountService {
   constructor(
     @Inject(UserRepository) private readonly users: UserRepository,
-    @Inject(SessionRevocationService) private readonly sessions: SessionRevocationService,
-    @Inject(EstablishedDeviceService) private readonly devices: EstablishedDeviceService,
+    @Inject(SessionRevocationService)
+    private readonly sessions: SessionRevocationService,
+    @Inject(EstablishedDeviceService)
+    private readonly devices: EstablishedDeviceService,
     @Inject(IdentityProofService) private readonly proofs: IdentityProofService,
     @Inject(UserContentClient) private readonly content: UserContentClient,
-    @Inject(PasswordResetOtpRepository) private readonly otps: PasswordResetOtpRepository,
+    @Inject(PasswordResetOtpRepository)
+    private readonly otps: PasswordResetOtpRepository,
     @Inject(FirebaseService) private readonly firebase: FirebaseService,
   ) {}
 
   /** Every other device is signed out: whoever else knew the old password is gone. */
-  async changePassword(caller: SessionCaller, currentPassword: string, newPassword: string): Promise<void> {
+  async changePassword(
+    caller: SessionCaller,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
     await this.devices.require(caller);
     await this.proofs.verify(caller.userId, { password: currentPassword });
 
-    await this.users.update(caller.userId, await this.passwordPatch(newPassword));
+    await this.users.update(
+      caller.userId,
+      await this.passwordPatch(newPassword),
+    );
     await this.sessions.endAllSessions(caller.userId, caller.sessionId);
   }
 
@@ -44,7 +61,11 @@ export class AccountService {
    * of its own. Proven by signing in with Google again just now (`idToken`),
    * the same way such an account proves itself everywhere else.
    */
-  async createPassword(userId: string, idToken: string, newPassword: string): Promise<void> {
+  async createPassword(
+    userId: string,
+    idToken: string,
+    newPassword: string,
+  ): Promise<void> {
     await this.proofs.verify(userId, { idToken });
 
     await this.users.update(userId, await this.passwordPatch(newPassword));
@@ -72,7 +93,9 @@ export class AccountService {
     const user = await this.proofs.verify(caller.userId, proof);
 
     // Hidden before anything is removed, so nobody is shown a listing whose photos are already gone.
-    await this.users.update(user.id, { deactivated_at: new Date().toISOString() });
+    await this.users.update(user.id, {
+      deactivated_at: new Date().toISOString(),
+    });
     try {
       await this.content.eraseFiles(user.id);
     } catch (error) {
@@ -97,6 +120,9 @@ export class AccountService {
   }
 
   private async passwordPatch(password: string): Promise<UserPatch> {
-    return { password_hash: await bcrypt.hash(password, BCRYPT_ROUNDS), has_password: true };
+    return {
+      password_hash: await bcrypt.hash(password, BCRYPT_ROUNDS),
+      has_password: true,
+    };
   }
 }

@@ -1,7 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '@genie/shared';
 import { PropertyPhotoStorage } from '../storage/property-photo-storage';
-import { MAX_PROPERTY_IMAGES, PropertyImageService } from './property-image.service';
+import {
+  MAX_PROPERTY_IMAGES,
+  PropertyImageService,
+} from './property-image.service';
 
 const ME = '11111111-1111-4111-8111-111111111111';
 const SOMEONE_ELSE = '22222222-2222-4222-8222-222222222222';
@@ -11,14 +14,22 @@ const FILE = '55555555-5555-4555-8555-555555555555';
 const PUBLIC = 'https://storage.test/storage/v1/object/public/property-images/';
 
 describe('PropertyImageService', () => {
-  const imageTable = { createMany: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() };
+  const imageTable = {
+    createMany: jest.fn(),
+    findMany: jest.fn(),
+    deleteMany: jest.fn(),
+  };
   const query = { findOwned: jest.fn() };
   const listingChanges = { changed: jest.fn() };
   const client = {
     storage: {
       from: () => ({
-        getPublicUrl: (path: string) => ({ data: { publicUrl: `${PUBLIC}${path}` } }),
-        createSignedUploadUrl: async (path: string) => ({ data: { signedUrl: `https://upload.test/${path}` } }),
+        getPublicUrl: (path: string) => ({
+          data: { publicUrl: `${PUBLIC}${path}` },
+        }),
+        createSignedUploadUrl: async (path: string) => ({
+          data: { signedUrl: `https://upload.test/${path}` },
+        }),
         remove: jest.fn(async () => ({ error: null })),
       }),
     },
@@ -29,7 +40,11 @@ describe('PropertyImageService', () => {
   let removed: string[];
 
   function listing(imageUrls: string[] = [], status = 'Draft') {
-    return { id: LISTING, status, images: imageUrls.map((url, i) => ({ url, order: i + 1 })) };
+    return {
+      id: LISTING,
+      status,
+      images: imageUrls.map((url, i) => ({ url, order: i + 1 })),
+    };
   }
 
   beforeEach(() => {
@@ -40,9 +55,11 @@ describe('PropertyImageService', () => {
     (storage as unknown as { supabase: unknown }).supabase = client;
     photos = new PropertyPhotoStorage(storage);
     removed = [];
-    jest.spyOn(storage, 'removeFiles').mockImplementation(async (_bucket, paths) => {
-      removed.push(...paths);
-    });
+    jest
+      .spyOn(storage, 'removeFiles')
+      .mockImplementation(async (_bucket, paths) => {
+        removed.push(...paths);
+      });
     query.findOwned.mockResolvedValue(listing());
     imageTable.findMany.mockResolvedValue([]);
     images = new PropertyImageService(
@@ -55,18 +72,29 @@ describe('PropertyImageService', () => {
 
   describe('upload URLs', () => {
     it("names each file inside the listing's own folder, in the order asked", async () => {
-      const urls = await images.createUploadUrls(ME, LISTING, ['front door.jpg', 'garden.jpg']);
+      const urls = await images.createUploadUrls(ME, LISTING, [
+        'front door.jpg',
+        'garden.jpg',
+      ]);
 
       expect(urls).toHaveLength(2);
-      expect(urls[0].fileName).toMatch(new RegExp(`^${ME}/${LISTING}/[0-9a-f-]{36}-front_door\\.jpg$`));
+      expect(urls[0].fileName).toMatch(
+        new RegExp(`^${ME}/${LISTING}/[0-9a-f-]{36}-front_door\\.jpg$`),
+      );
       expect(urls[1].fileName).toMatch(/-garden\.jpg$/);
-      expect(urls.every((url) => photos.isUploadedFileName(url.fileName))).toBe(true);
+      expect(urls.every((url) => photos.isUploadedFileName(url.fileName))).toBe(
+        true,
+      );
     });
 
     it(`refuses to go past ${MAX_PROPERTY_IMAGES} photos`, async () => {
-      query.findOwned.mockResolvedValue(listing(Array.from({ length: 29 }, (_, i) => `${PUBLIC}${i}`)));
+      query.findOwned.mockResolvedValue(
+        listing(Array.from({ length: 29 }, (_, i) => `${PUBLIC}${i}`)),
+      );
 
-      await expect(images.createUploadUrls(ME, LISTING, ['a.jpg', 'b.jpg'])).rejects.toThrow(BadRequestException);
+      await expect(
+        images.createUploadUrls(ME, LISTING, ['a.jpg', 'b.jpg']),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -82,13 +110,24 @@ describe('PropertyImageService', () => {
     });
 
     it.each([
-      ["another user's photo", `${SOMEONE_ELSE}/${OTHER_LISTING}/${FILE}-x.jpg`],
-      ['a photo of another of my listings', `${ME}/${OTHER_LISTING}/${FILE}-x.jpg`],
+      [
+        "another user's photo",
+        `${SOMEONE_ELSE}/${OTHER_LISTING}/${FILE}-x.jpg`,
+      ],
+      [
+        'a photo of another of my listings',
+        `${ME}/${OTHER_LISTING}/${FILE}-x.jpg`,
+      ],
       ['a photo from before folders existed', '1700000000000-123456789-x.jpg'],
-      ['a path that climbs out of the folder', `${ME}/${LISTING}/../${SOMEONE_ELSE}/x.jpg`],
+      [
+        'a path that climbs out of the folder',
+        `${ME}/${LISTING}/../${SOMEONE_ELSE}/x.jpg`,
+      ],
       ['a URL', 'https://evil.example/x.jpg'],
     ])('refuses %s', async (_case, fileName) => {
-      await expect(images.confirmUploads(ME, LISTING, [fileName])).rejects.toThrow(BadRequestException);
+      await expect(
+        images.confirmUploads(ME, LISTING, [fileName]),
+      ).rejects.toThrow(BadRequestException);
       expect(imageTable.createMany).not.toHaveBeenCalled();
     });
 
@@ -110,14 +149,19 @@ describe('PropertyImageService', () => {
 
       await images.removeImages(ME, LISTING, [drop]);
 
-      expect(imageTable.deleteMany).toHaveBeenCalledWith({ where: { propertyId: LISTING, url: { in: [drop] } } });
+      expect(imageTable.deleteMany).toHaveBeenCalledWith({
+        where: { propertyId: LISTING, url: { in: [drop] } },
+      });
       expect(removed).toEqual([`${ME}/${LISTING}/${FILE}-drop.jpg`]);
     });
 
     it('ignores a URL the listing does not show, so removing twice is harmless', async () => {
       query.findOwned.mockResolvedValue(listing([keep]));
 
-      await images.removeImages(ME, LISTING, [drop, 'https://elsewhere.test/a.jpg']);
+      await images.removeImages(ME, LISTING, [
+        drop,
+        'https://elsewhere.test/a.jpg',
+      ]);
 
       expect(imageTable.deleteMany).not.toHaveBeenCalled();
       expect(removed).toEqual([]);
@@ -148,15 +192,21 @@ describe('PropertyImageService', () => {
 
       await images.removeImages(ME, LISTING, [drop]);
 
-      expect(listingChanges.changed).toHaveBeenCalledWith(expect.objectContaining({ id: LISTING }));
+      expect(listingChanges.changed).toHaveBeenCalledWith(
+        expect.objectContaining({ id: LISTING }),
+      );
     });
 
     it('still succeeds when the file cannot be deleted', async () => {
       query.findOwned.mockResolvedValue(listing([drop]));
-      jest.spyOn(storage, 'removeFiles').mockRejectedValueOnce(new Error('storage down'));
+      jest
+        .spyOn(storage, 'removeFiles')
+        .mockRejectedValueOnce(new Error('storage down'));
       jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
-      await expect(images.removeImages(ME, LISTING, [drop])).resolves.toBeDefined();
+      await expect(
+        images.removeImages(ME, LISTING, [drop]),
+      ).resolves.toBeDefined();
       expect(imageTable.deleteMany).toHaveBeenCalled();
     });
   });
@@ -168,7 +218,9 @@ describe('PropertyImageService', () => {
       // Attached to my listing from someone else's before folders existed.
       const theirs = '1700000000000-222-theirs.jpg';
       imageTable.findMany
-        .mockResolvedValueOnce([mine, oldMine, theirs].map((name) => ({ url: `${PUBLIC}${name}` })))
+        .mockResolvedValueOnce(
+          [mine, oldMine, theirs].map((name) => ({ url: `${PUBLIC}${name}` })),
+        )
         .mockResolvedValueOnce([{ url: `${PUBLIC}${theirs}` }]);
 
       await images.removeAllOwnedBy(ME);
@@ -178,7 +230,9 @@ describe('PropertyImageService', () => {
 
     it("never deletes a file in another user's folder", async () => {
       const inTheirFolder = `${SOMEONE_ELSE}/${OTHER_LISTING}/${FILE}-x.jpg`;
-      imageTable.findMany.mockResolvedValueOnce([{ url: `${PUBLIC}${inTheirFolder}` }]).mockResolvedValueOnce([]);
+      imageTable.findMany
+        .mockResolvedValueOnce([{ url: `${PUBLIC}${inTheirFolder}` }])
+        .mockResolvedValueOnce([]);
 
       await images.removeAllOwnedBy(ME);
 

@@ -36,7 +36,12 @@ export class JsonCache {
 
   async set(key: string, value: unknown, ttlSeconds: number): Promise<void> {
     try {
-      await this.connection.client.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+      await this.connection.client.set(
+        key,
+        JSON.stringify(value),
+        'EX',
+        ttlSeconds,
+      );
     } catch {
       // Not cached this time; the next read loads it again.
     }
@@ -64,7 +69,11 @@ export class JsonCache {
    * `ttlSeconds`. A cached value went through JSON: dates come back as strings,
    * exactly as they would in the HTTP response.
    */
-  async remember<T>(key: string, ttlSeconds: number, load: () => Promise<T>): Promise<T> {
+  async remember<T>(
+    key: string,
+    ttlSeconds: number,
+    load: () => Promise<T>,
+  ): Promise<T> {
     const cached = await this.get<T>(key);
     if (cached !== null) return cached;
 

@@ -1,6 +1,10 @@
 import { ListingChanges } from '../../properties/services/listing-changes.service';
 import { ListingRow, PublisherRow } from './search-documents';
-import { DocumentBatches, ListingDocument, PublisherDocument } from './search-engine';
+import {
+  DocumentBatches,
+  ListingDocument,
+  PublisherDocument,
+} from './search-engine';
 import { SearchIndexSync } from './search-index-sync.service';
 
 const CREATED = new Date('2026-10-01T00:00:00Z');
@@ -21,7 +25,14 @@ function listingRow(overrides: Partial<ListingRow> = {}): ListingRow {
 }
 
 function publisherRow(overrides: Partial<PublisherRow> = {}): PublisherRow {
-  return { id: 'u-1', name: 'Dara', username: 'dara', deactivatedAt: null, _count: { properties: 1 }, ...overrides };
+  return {
+    id: 'u-1',
+    name: 'Dara',
+    username: 'dara',
+    deactivatedAt: null,
+    _count: { properties: 1 },
+    ...overrides,
+  };
 }
 
 async function collect<T>(batches: DocumentBatches<T>): Promise<T[][]> {
@@ -48,8 +59,14 @@ describe('SearchIndexSync', () => {
 
   beforeEach(() => {
     prisma = {
-      property: { findUnique: jest.fn().mockResolvedValue(listingRow()), findMany: jest.fn().mockResolvedValue([]) },
-      user: { findUnique: jest.fn().mockResolvedValue(publisherRow()), findMany: jest.fn().mockResolvedValue([]) },
+      property: {
+        findUnique: jest.fn().mockResolvedValue(listingRow()),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue(publisherRow()),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
     engine = {
       isConfigured: true,
@@ -63,7 +80,8 @@ describe('SearchIndexSync', () => {
     sync = new SearchIndexSync(prisma as never, engine as never, changes);
   });
 
-  const changed = () => sync.listingChanged({ id: 'p-1', userId: 'u-1', lat: 11.5, lng: 104.9 });
+  const changed = () =>
+    sync.listingChanged({ id: 'p-1', userId: 'u-1', lat: 11.5, lng: 104.9 });
 
   it('listens to listing changes only when an engine is configured', async () => {
     engine.isConfigured = false;
@@ -88,14 +106,22 @@ describe('SearchIndexSync', () => {
       listingType: 'Sale',
       createdAt: CREATED.getTime(),
     });
-    expect(engine.savePublisher).toHaveBeenCalledWith({ id: 'u-1', name: 'Dara', username: 'dara', listingCount: 1 });
+    expect(engine.savePublisher).toHaveBeenCalledWith({
+      id: 'u-1',
+      name: 'Dara',
+      username: 'dara',
+      listingCount: 1,
+    });
   });
 
   it.each([
     ['taken back to a draft', listingRow({ status: 'Draft' })],
     ['deleted', listingRow({ status: 'Deleted' })],
     ['sold', listingRow({ status: 'Sold' })],
-    ['owned by a hidden account', listingRow({ user: { deactivatedAt: new Date() } })],
+    [
+      'owned by a hidden account',
+      listingRow({ user: { deactivatedAt: new Date() } }),
+    ],
     ['gone from the database', null],
   ])('takes out a listing %s', async (_, row) => {
     prisma.property.findUnique.mockResolvedValue(row);
@@ -107,7 +133,10 @@ describe('SearchIndexSync', () => {
   });
 
   it.each([
-    ['with nothing published any more', publisherRow({ _count: { properties: 0 } })],
+    [
+      'with nothing published any more',
+      publisherRow({ _count: { properties: 0 } }),
+    ],
     ['who hid their account', publisherRow({ deactivatedAt: new Date() })],
   ])('takes out an owner %s', async (_, row) => {
     prisma.user.findUnique.mockResolvedValue(row);
@@ -128,9 +157,14 @@ describe('SearchIndexSync', () => {
   describe('reindexAll', () => {
     it('hands over published listings and publishers a batch at a time', async () => {
       prisma.property.findMany
-        .mockResolvedValueOnce([listingRow({ id: 'p-1' }), listingRow({ id: 'p-2' })])
+        .mockResolvedValueOnce([
+          listingRow({ id: 'p-1' }),
+          listingRow({ id: 'p-2' }),
+        ])
         .mockResolvedValueOnce([]);
-      prisma.user.findMany.mockResolvedValueOnce([publisherRow()]).mockResolvedValueOnce([]);
+      prisma.user.findMany
+        .mockResolvedValueOnce([publisherRow()])
+        .mockResolvedValueOnce([]);
       let handed: [ListingDocument[][], PublisherDocument[][]] = [[], []];
       engine.replaceAll.mockImplementation(async (listings, publishers) => {
         handed = [await collect(listings), await collect(publishers)];
@@ -140,8 +174,13 @@ describe('SearchIndexSync', () => {
 
       expect(handed[0].flat().map((doc) => doc.id)).toEqual(['p-1', 'p-2']);
       expect(handed[1].flat().map((doc) => doc.id)).toEqual(['u-1']);
-      expect(prisma.property.findMany.mock.calls[1][0]).toMatchObject({ cursor: { id: 'p-2' }, skip: 1 });
-      expect(prisma.property.findMany.mock.calls[0][0].where).toMatchObject({ status: 'Active' });
+      expect(prisma.property.findMany.mock.calls[1][0]).toMatchObject({
+        cursor: { id: 'p-2' },
+        skip: 1,
+      });
+      expect(prisma.property.findMany.mock.calls[0][0].where).toMatchObject({
+        status: 'Active',
+      });
     });
 
     it('applies again a change made while the snapshot was taken', async () => {

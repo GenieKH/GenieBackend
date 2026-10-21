@@ -13,7 +13,10 @@ const QUOTED_FIELDS = {
 export function withReplyTo(viewerId: string) {
   return {
     replyTo: {
-      select: { ...QUOTED_FIELDS, hiddenBy: { where: { userId: viewerId }, select: { userId: true } } },
+      select: {
+        ...QUOTED_FIELDS,
+        hiddenBy: { where: { userId: viewerId }, select: { userId: true } },
+      },
     },
   } as const;
 }
@@ -39,9 +42,15 @@ interface MessageRow {
  * when the viewer deleted it for themselves, or deleted the conversation's
  * history up to [clearedAt]: a reply never brings back what they removed.
  */
-export function toMessageView<T extends MessageRow>(row: T, clearedAt: Date | null = null) {
+export function toMessageView<T extends MessageRow>(
+  row: T,
+  clearedAt: Date | null = null,
+) {
   const { replyToId: _replyToId, replyTo, ...message } = row;
-  const hidden = !replyTo || replyTo.hiddenBy.length > 0 || (clearedAt !== null && replyTo.createdAt <= clearedAt);
+  const hidden =
+    !replyTo ||
+    replyTo.hiddenBy.length > 0 ||
+    (clearedAt !== null && replyTo.createdAt <= clearedAt);
   if (hidden) return { ...message, replyTo: null };
   const { hiddenBy: _hiddenBy, ...quoted } = replyTo;
   return { ...message, replyTo: quoted };

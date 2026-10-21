@@ -2,7 +2,9 @@ import { FirebaseLoginService } from './firebase-login.service';
 
 // firebase-admin pulls in ESM-only packages Jest cannot load; the real
 // service is replaced by a stub below anyway.
-jest.mock('../../firebase/firebase.service', () => ({ FirebaseService: class {} }));
+jest.mock('../../firebase/firebase.service', () => ({
+  FirebaseService: class {},
+}));
 
 const GOOGLE_PHOTO = 'https://lh3.googleusercontent.com/a/current-photo';
 
@@ -17,7 +19,11 @@ describe('FirebaseLoginService', () => {
   };
   const sessions = { endAllSessions: jest.fn() };
   const signIn = { complete: jest.fn() };
-  const client = { deviceName: 'Pixel 8', platform: 'Android 15', ipAddress: '203.0.113.7' };
+  const client = {
+    deviceName: 'Pixel 8',
+    platform: 'Android 15',
+    ipAddress: '203.0.113.7',
+  };
   let service: FirebaseLoginService;
 
   const existingUser = {
@@ -37,7 +43,12 @@ describe('FirebaseLoginService', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     signIn.complete.mockResolvedValue({ accessToken: 'a', refreshToken: 'r' });
-    service = new FirebaseLoginService(firebase as never, users as never, sessions as never, signIn as never);
+    service = new FirebaseLoginService(
+      firebase as never,
+      users as never,
+      sessions as never,
+      signIn as never,
+    );
   });
 
   it('signs in a user already linked to the Firebase uid', async () => {
@@ -58,7 +69,10 @@ describe('FirebaseLoginService', () => {
 
     await service.login('id-token', client);
 
-    expect(users.update).toHaveBeenCalledWith('u1', expect.objectContaining({ firebase_uid: 'fb1' }));
+    expect(users.update).toHaveBeenCalledWith(
+      'u1',
+      expect.objectContaining({ firebase_uid: 'fb1' }),
+    );
     expect(users.create).not.toHaveBeenCalled();
   });
 
@@ -88,9 +102,17 @@ describe('FirebaseLoginService', () => {
   });
 
   it('never links an account through an UNVERIFIED email', async () => {
-    firebase.verifyIdToken.mockResolvedValue({ uid: 'fb9', email: 'victim@b.com', email_verified: false });
+    firebase.verifyIdToken.mockResolvedValue({
+      uid: 'fb9',
+      email: 'victim@b.com',
+      email_verified: false,
+    });
     users.findByFirebaseUid.mockResolvedValue(null);
-    users.create.mockResolvedValue({ ...existingUser, id: 'new', email: 'victim@b.com' });
+    users.create.mockResolvedValue({
+      ...existingUser,
+      id: 'new',
+      email: 'victim@b.com',
+    });
 
     await service.login('id-token', client);
 
@@ -108,7 +130,12 @@ describe('FirebaseLoginService', () => {
     });
     users.findByFirebaseUid.mockResolvedValue(null);
     users.findByEmail.mockResolvedValue(null);
-    users.create.mockResolvedValue({ ...existingUser, id: 'u2', name: 'New Person', avatar_url: GOOGLE_PHOTO });
+    users.create.mockResolvedValue({
+      ...existingUser,
+      id: 'u2',
+      name: 'New Person',
+      avatar_url: GOOGLE_PHOTO,
+    });
 
     await service.login('id-token', client);
 
@@ -129,7 +156,11 @@ describe('FirebaseLoginService', () => {
 
   describe('name and picture from Google', () => {
     const signInWith = async (user: object, picture = GOOGLE_PHOTO) => {
-      firebase.verifyIdToken.mockResolvedValue({ ...googleToken, name: 'Google Name', picture });
+      firebase.verifyIdToken.mockResolvedValue({
+        ...googleToken,
+        name: 'Google Name',
+        picture,
+      });
       users.findByFirebaseUid.mockResolvedValue(user);
       await service.login('id-token', client);
     };
@@ -147,9 +178,14 @@ describe('FirebaseLoginService', () => {
     });
 
     it('follows the Google photo when it changes, while the picture is synced from Google', async () => {
-      await signInWith({ ...linkedUser, avatar_url: 'https://lh3.googleusercontent.com/a/old-photo' });
+      await signInWith({
+        ...linkedUser,
+        avatar_url: 'https://lh3.googleusercontent.com/a/old-photo',
+      });
 
-      expect(users.update).toHaveBeenCalledWith('u1', { avatar_url: GOOGLE_PHOTO });
+      expect(users.update).toHaveBeenCalledWith('u1', {
+        avatar_url: GOOGLE_PHOTO,
+      });
     });
 
     it('never replaces a name the user chose or a picture they uploaded', async () => {

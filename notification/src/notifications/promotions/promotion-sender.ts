@@ -42,12 +42,18 @@ export class PromotionSender implements OnApplicationBootstrap {
     });
     if (claimed.count === 0) return;
 
-    const promotion = await this.prisma.promotion.findUniqueOrThrow({ where: { id: promotionId } });
+    const promotion = await this.prisma.promotion.findUniqueOrThrow({
+      where: { id: promotionId },
+    });
     let sent = 0;
     let failed = 0;
     try {
-      for await (const page of this.devices.promotionAudience(PushSender.maxBatch)) {
-        const report = await this.delivery.deliver(page, (target) => promotionPush(promotion, target));
+      for await (const page of this.devices.promotionAudience(
+        PushSender.maxBatch,
+      )) {
+        const report = await this.delivery.deliver(page, (target) =>
+          promotionPush(promotion, target),
+        );
         sent += report.sent;
         failed += report.failed;
         await this.prisma.promotion.update({
@@ -56,23 +62,36 @@ export class PromotionSender implements OnApplicationBootstrap {
         });
       }
       await this.finish(promotionId, 'sent');
-      this.logger.log(`Promotion ${promotionId}: ${sent} sent, ${failed} failed`);
+      this.logger.log(
+        `Promotion ${promotionId}: ${sent} sent, ${failed} failed`,
+      );
     } catch (error) {
       await this.finish(promotionId, 'failed');
       throw error;
     }
   }
 
-  private async finish(promotionId: string, status: 'sent' | 'failed'): Promise<void> {
-    await this.prisma.promotion.update({ where: { id: promotionId }, data: { status, finishedAt: new Date() } });
+  private async finish(
+    promotionId: string,
+    status: 'sent' | 'failed',
+  ): Promise<void> {
+    await this.prisma.promotion.update({
+      where: { id: promotionId },
+      data: { status, finishedAt: new Date() },
+    });
   }
 
   private async resumeQueued(): Promise<void> {
     try {
-      const queued = await this.prisma.promotion.findMany({ where: { status: 'queued' }, select: { id: true } });
+      const queued = await this.prisma.promotion.findMany({
+        where: { status: 'queued' },
+        select: { id: true },
+      });
       for (const { id } of queued) this.startInBackground(id);
     } catch (error) {
-      this.logger.error(`Queued promotions not resumed: ${(error as Error).message}`);
+      this.logger.error(
+        `Queued promotions not resumed: ${(error as Error).message}`,
+      );
     }
   }
 }

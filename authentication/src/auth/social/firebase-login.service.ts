@@ -1,4 +1,9 @@
-import { Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { FirebaseService } from '../../firebase/firebase.service';
@@ -7,7 +12,11 @@ import { ClientContext } from '../sessions/client-context';
 import { SessionRevocationService } from '../sessions/session-revocation.service';
 import { SignInService } from '../sessions/sign-in.service';
 import { TokenPair } from '../sessions/token-issuer.service';
-import { UserPatch, UserRecord, UserRepository } from '../users/user.repository';
+import {
+  UserPatch,
+  UserRecord,
+  UserRepository,
+} from '../users/user.repository';
 
 interface FirebaseProfile {
   uid: string;
@@ -33,7 +42,8 @@ export class FirebaseLoginService {
   constructor(
     @Inject(FirebaseService) private readonly firebase: FirebaseService,
     @Inject(UserRepository) private readonly users: UserRepository,
-    @Inject(SessionRevocationService) private readonly sessions: SessionRevocationService,
+    @Inject(SessionRevocationService)
+    private readonly sessions: SessionRevocationService,
     @Inject(SignInService) private readonly signIn: SignInService,
   ) {}
 
@@ -56,7 +66,7 @@ export class FirebaseLoginService {
       emailVerified: token.email_verified === true,
       phone: token.phone_number ?? null,
       displayName: (token.name as string | undefined) ?? null,
-      photoUrl: (token.picture as string | undefined) ?? null,
+      photoUrl: token.picture ?? null,
     };
   }
 
@@ -70,7 +80,9 @@ export class FirebaseLoginService {
    * in. Linking therefore discards the password and ends every open session;
    * the owner can set a new password with "forgot password".
    */
-  private async linkExistingAccount(profile: FirebaseProfile): Promise<UserRecord | null> {
+  private async linkExistingAccount(
+    profile: FirebaseProfile,
+  ): Promise<UserRecord | null> {
     let existing: UserRecord | null = null;
     if (profile.email && profile.emailVerified) {
       existing = await this.users.findByEmail(profile.email);
@@ -79,7 +91,11 @@ export class FirebaseLoginService {
     }
     if (!existing) return null;
 
-    const patch = { firebase_uid: profile.uid, password_hash: await this.unusablePasswordHash(), has_password: false };
+    const patch = {
+      firebase_uid: profile.uid,
+      password_hash: await this.unusablePasswordHash(),
+      has_password: false,
+    };
     await this.users.update(existing.id, patch);
     await this.sessions.endAllSessions(existing.id);
     return { ...existing, ...patch };
@@ -96,9 +112,13 @@ export class FirebaseLoginService {
         role: DEFAULT_USER_ROLE,
         firebase_uid: profile.uid,
       });
-    } catch (error) {
-      this.logger.error(`Could not create user for Firebase uid ${profile.uid}`);
-      throw new InternalServerErrorException('Failed to create user from Firebase token');
+    } catch {
+      this.logger.error(
+        `Could not create user for Firebase uid ${profile.uid}`,
+      );
+      throw new InternalServerErrorException(
+        'Failed to create user from Firebase token',
+      );
     }
   }
 
@@ -113,12 +133,19 @@ export class FirebaseLoginService {
    * the Google account's. A picture the user uploaded, or chose not to have,
    * is left alone: a new account gets the Google photo once, when it is created.
    */
-  private async syncProfile(user: UserRecord, profile: FirebaseProfile): Promise<UserRecord> {
+  private async syncProfile(
+    user: UserRecord,
+    profile: FirebaseProfile,
+  ): Promise<UserRecord> {
     const patch: UserPatch = {};
     if (!user.name && profile.displayName) patch.name = profile.displayName;
 
     const followsGoogle = !!user.avatar_url && isGooglePhoto(user.avatar_url);
-    if (followsGoogle && profile.photoUrl && profile.photoUrl !== user.avatar_url) {
+    if (
+      followsGoogle &&
+      profile.photoUrl &&
+      profile.photoUrl !== user.avatar_url
+    ) {
       patch.avatar_url = profile.photoUrl;
     }
     if (Object.keys(patch).length === 0) return user;

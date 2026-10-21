@@ -9,7 +9,10 @@ export class PresenceService {
   /** Records that the user just went offline and returns that moment. */
   async markLastSeen(userId: string): Promise<Date> {
     const lastSeenAt = new Date();
-    await this.prisma.user.update({ where: { id: userId }, data: { lastSeenAt } });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { lastSeenAt },
+    });
     return lastSeenAt;
   }
 

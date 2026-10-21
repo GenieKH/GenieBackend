@@ -25,7 +25,10 @@ export class RedisIoAdapter extends IoAdapter {
       // Logged once per outage, not once per reconnect attempt.
       let healthy = true;
       connection.on('error', (error: Error & { code?: string }) => {
-        if (healthy) this.logger.error(`Chat Redis unavailable, retrying: ${error.message || error.code || 'cannot connect'}`);
+        if (healthy)
+          this.logger.error(
+            `Chat Redis unavailable, retrying: ${error.message || error.code || 'cannot connect'}`,
+          );
         healthy = false;
       });
       connection.on('ready', () => {
@@ -36,7 +39,7 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   createIOServer(port: number, options?: ServerOptions): Server {
-    const server: Server = super.createIOServer(port, options);
+    const server = super.createIOServer(port, options) as Server;
     server.adapter(createAdapter(this.publisher, this.subscriber));
     return server;
   }

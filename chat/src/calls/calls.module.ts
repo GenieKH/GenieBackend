@@ -13,7 +13,10 @@ import { IceServersService } from './ice-servers.service';
   controllers: [CallsController],
   providers: [
     { provide: CallStore, useClass: RedisCallStore },
-    { provide: IceServersService, useFactory: () => new IceServersService(process.env) },
+    {
+      provide: IceServersService,
+      useFactory: () => new IceServersService(process.env),
+    },
     CallHistoryService,
     CallsService,
     CallsGateway,

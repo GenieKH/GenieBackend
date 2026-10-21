@@ -1,4 +1,11 @@
-import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, timingSafeEqual } from 'crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  hkdfSync,
+  randomBytes,
+  timingSafeEqual,
+} from 'crypto';
 
 export const MIN_BACKUP_SECRET_LENGTH = 32;
 
@@ -20,7 +27,9 @@ export class BackupSeal {
 
   constructor(secret: string) {
     if (secret.length < MIN_BACKUP_SECRET_LENGTH) {
-      throw new Error(`The backup secret needs at least ${MIN_BACKUP_SECRET_LENGTH} characters`);
+      throw new Error(
+        `The backup secret needs at least ${MIN_BACKUP_SECRET_LENGTH} characters`,
+      );
     }
     this.verifierKey = deriveKey(secret, 'genie-chat-backup-verifier-v1');
     this.blobKey = deriveKey(secret, 'genie-chat-backup-blob-v1');
@@ -28,19 +37,25 @@ export class BackupSeal {
 
   /** What is stored in place of the PIN proof a device sends. */
   verifierTag(userId: string, verifier: string): string {
-    return createHmac('sha256', this.verifierKey).update(`${userId}:${verifier}`).digest('base64');
+    return createHmac('sha256', this.verifierKey)
+      .update(`${userId}:${verifier}`)
+      .digest('base64');
   }
 
   matches(userId: string, verifier: string, storedTag: string): boolean {
     const expected = Buffer.from(storedTag, 'base64');
     const received = Buffer.from(this.verifierTag(userId, verifier), 'base64');
-    return expected.length === received.length && timingSafeEqual(expected, received);
+    return (
+      expected.length === received.length && timingSafeEqual(expected, received)
+    );
   }
 
   /** Encrypts a device's backup for storage. Only opens again for the same user. */
   wrap(userId: string, blob: string): string {
     const iv = randomBytes(IV_BYTES);
-    const cipher = createCipheriv('aes-256-gcm', this.blobKey, iv).setAAD(Buffer.from(userId));
+    const cipher = createCipheriv('aes-256-gcm', this.blobKey, iv).setAAD(
+      Buffer.from(userId),
+    );
     const sealed = Buffer.concat([cipher.update(blob, 'utf8'), cipher.final()]);
     return Buffer.concat([iv, cipher.getAuthTag(), sealed]).toString('base64');
   }
@@ -48,9 +63,16 @@ export class BackupSeal {
   /** Throws if the stored value was altered or belongs to another user. */
   unwrap(userId: string, wrapped: string): string {
     const bytes = Buffer.from(wrapped, 'base64');
-    const decipher = createDecipheriv('aes-256-gcm', this.blobKey, bytes.subarray(0, IV_BYTES))
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      this.blobKey,
+      bytes.subarray(0, IV_BYTES),
+    )
       .setAAD(Buffer.from(userId))
       .setAuthTag(bytes.subarray(IV_BYTES, IV_BYTES + TAG_BYTES));
-    return Buffer.concat([decipher.update(bytes.subarray(IV_BYTES + TAG_BYTES)), decipher.final()]).toString('utf8');
+    return Buffer.concat([
+      decipher.update(bytes.subarray(IV_BYTES + TAG_BYTES)),
+      decipher.final(),
+    ]).toString('utf8');
   }
 }

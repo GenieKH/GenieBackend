@@ -23,7 +23,10 @@ export class CallsController {
 
   /** The finished calls with one person, oldest first, to show among the messages. */
   @Get('history')
-  getHistory(@CurrentUserId() userId: string, @Query() query: CallHistoryQuery): Promise<CallHistoryEntry[]> {
+  getHistory(
+    @CurrentUserId() userId: string,
+    @Query() query: CallHistoryQuery,
+  ): Promise<CallHistoryEntry[]> {
     return this.history.between(userId, query.with, query.limit);
   }
 }

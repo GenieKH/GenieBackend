@@ -9,7 +9,10 @@ import { ReadPrisma, readPrismaFor } from './read-prisma';
  */
 @Global()
 @Module({
-  providers: [PrismaService, { provide: ReadPrisma, useFactory: readPrismaFor, inject: [PrismaService] }],
+  providers: [
+    PrismaService,
+    { provide: ReadPrisma, useFactory: readPrismaFor, inject: [PrismaService] },
+  ],
   exports: [PrismaService, ReadPrisma],
 })
 export class PrismaModule {}

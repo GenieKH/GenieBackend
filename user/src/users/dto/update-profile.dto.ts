@@ -79,6 +79,8 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   @MaxLength(20)
-  @Matches(PHONE_NUMBER, { message: 'Enter a valid phone number, for example +85512345678' })
+  @Matches(PHONE_NUMBER, {
+    message: 'Enter a valid phone number, for example +85512345678',
+  })
   phone?: string;
 }

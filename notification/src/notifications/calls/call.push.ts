@@ -21,13 +21,19 @@ export interface CallEndedEvent extends CallEvent {
  * iOS (no CallKit yet) and the web show an ordinary notification that opens
  * the app on the incoming call.
  */
-export function incomingCallPush(event: CallEvent, target: PushTarget): PushContent {
+export function incomingCallPush(
+  event: CallEvent,
+  target: PushTarget,
+): PushContent {
   return {
     alert:
       target.platform === 'android'
         ? undefined
         : {
-            title: inLocale(texts.incomingCall, target.locale)(event.callerName),
+            title: inLocale(
+              texts.incomingCall,
+              target.locale,
+            )(event.callerName),
             body: inLocale(texts.tapToAnswer, target.locale),
           },
     data: {
@@ -48,7 +54,10 @@ export function incomingCallPush(event: CallEvent, target: PushTarget): PushCont
  * Stops the ringing on Android. A missed call is also announced; elsewhere
  * an ended call that was answered or cancelled needs nothing.
  */
-export function callEndedPush(event: CallEndedEvent, target: PushTarget): PushContent | null {
+export function callEndedPush(
+  event: CallEndedEvent,
+  target: PushTarget,
+): PushContent | null {
   const data = {
     type: 'call_ended',
     callId: event.callId,
@@ -57,7 +66,13 @@ export function callEndedPush(event: CallEndedEvent, target: PushTarget): PushCo
     missed: String(event.missed),
   };
   if (target.platform === 'android') {
-    return { data, channel: 'calls', tag: `call:${event.callId}`, urgent: true, timeToLiveSeconds: RING_SECONDS };
+    return {
+      data,
+      channel: 'calls',
+      tag: `call:${event.callId}`,
+      urgent: true,
+      timeToLiveSeconds: RING_SECONDS,
+    };
   }
   if (!event.missed) return null;
   return {

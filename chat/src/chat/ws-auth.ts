@@ -1,5 +1,9 @@
 import { Socket } from 'socket.io';
-import { ACCESS_TOKEN, RevokedSessions, verifySignedToken } from '@genie/shared';
+import {
+  ACCESS_TOKEN,
+  RevokedSessions,
+  verifySignedToken,
+} from '@genie/shared';
 
 /** Who a socket belongs to. `sessionId` is null for a token from before sessions existed. */
 export interface SocketUser {
@@ -13,21 +17,32 @@ export function extractSocketToken(client: Socket): string | undefined {
   if (header?.startsWith('Bearer ')) {
     return header.slice('Bearer '.length);
   }
-  const authToken = client.handshake.auth?.token;
+  const authToken: unknown = client.handshake.auth?.token;
   return typeof authToken === 'string' ? authToken : undefined;
+}
+
+/** The user stored on the socket by `authenticateSocket`. Only valid once the handshake or guard has passed. */
+export function socketUser(client: Socket): SocketUser {
+  return client.data as SocketUser;
 }
 
 /** Verifies an access token and returns who it was issued to. Throws if invalid. */
 export function verifyAccessToken(token: string): SocketUser {
   const payload = verifySignedToken(token, ACCESS_TOKEN);
-  return { userId: payload.sub, sessionId: typeof payload.sid === 'string' ? payload.sid : null };
+  return {
+    userId: payload.sub,
+    sessionId: typeof payload.sid === 'string' ? payload.sid : null,
+  };
 }
 
 /**
  * Who the socket's token belongs to, written to `client.data`. Throws when
  * there is no valid token or its device was signed out.
  */
-export async function authenticateSocket(client: Socket, revoked: RevokedSessions): Promise<SocketUser> {
+export async function authenticateSocket(
+  client: Socket,
+  revoked: RevokedSessions,
+): Promise<SocketUser> {
   const token = extractSocketToken(client);
   if (!token) throw new Error('No token provided');
 
@@ -35,7 +50,6 @@ export async function authenticateSocket(client: Socket, revoked: RevokedSession
   if (user.sessionId && (await revoked.has(user.sessionId))) {
     throw new Error('This device was signed out');
   }
-  client.data.userId = user.userId;
-  client.data.sessionId = user.sessionId;
+  Object.assign(client.data as object, user);
   return user;
 }

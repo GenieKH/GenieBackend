@@ -11,7 +11,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // Reject malformed bodies and drop any field a DTO does not declare.
-  app.useGlobalPipes(new RejectNullBytesPipe(), new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(
+    new RejectNullBytesPipe(),
+    new ValidationPipe({ whitelist: true, transform: true }),
+  );
 
   // On SIGTERM (every deploy): stop accepting work and close the DB pool.
   app.enableShutdownHooks();
@@ -23,4 +26,4 @@ async function bootstrap() {
   await app.listen(port, host);
   Logger.log(`Listening on ${host}:${port}`, 'Bootstrap');
 }
-bootstrap();
+void bootstrap();

@@ -2,17 +2,22 @@ import * as bcrypt from 'bcrypt';
 import { hashRefreshToken, refreshTokenMatches } from './refresh-token-hash';
 
 /** Two tokens of one user: their first 72 bytes (all bcrypt reads) are the same. */
-const HEADER_AND_SUBJECT = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEi';
+const HEADER_AND_SUBJECT =
+  'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEi';
 const TOKEN = `${HEADER_AND_SUBJECT}LCJqdGkiOiJhYWFh.signature-a`;
 const OTHER_TOKEN = `${HEADER_AND_SUBJECT}LCJqdGkiOiJiYmJi.signature-b`;
 
 describe('refresh token hash', () => {
   it('matches the token it was made from', async () => {
-    expect(await refreshTokenMatches(TOKEN, hashRefreshToken(TOKEN))).toBe(true);
+    expect(await refreshTokenMatches(TOKEN, hashRefreshToken(TOKEN))).toBe(
+      true,
+    );
   });
 
   it('tells apart tokens that only differ after their first 72 bytes', async () => {
-    expect(await refreshTokenMatches(OTHER_TOKEN, hashRefreshToken(TOKEN))).toBe(false);
+    expect(
+      await refreshTokenMatches(OTHER_TOKEN, hashRefreshToken(TOKEN)),
+    ).toBe(false);
   });
 
   it('is the same every time, and never the token itself', () => {

@@ -1,0 +1,33 @@
+/** Photos a feed card can swipe through; opening the listing reads them all. */
+const CARD_PHOTOS = 5;
+
+/**
+ * What a feed card shows, and nothing more: no description, nearby places,
+ * keywords or owner contact details. Opening a listing reads it in full
+ * (`GET /public/properties/:id`).
+ */
+export const FEED_CARD_SELECT = {
+  id: true,
+  title: true,
+  price: true,
+  propertyType: true,
+  listingType: true,
+  discountType: true,
+  discountValue: true,
+  status: true,
+  createdAt: true,
+  publishedAt: true,
+  lat: true,
+  lng: true,
+  bedrooms: true,
+  bathrooms: true,
+  landSize: true,
+  buildingSize: true,
+  unitSize: true,
+  images: {
+    select: { url: true },
+    orderBy: { order: 'asc' },
+    take: CARD_PHOTOS,
+  },
+  user: { select: { id: true, username: true, name: true, avatarUrl: true } },
+} as const;

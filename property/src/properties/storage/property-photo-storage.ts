@@ -12,7 +12,8 @@ const BUCKET = 'property-images';
 const PROPERTY_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 
 /** `<user>/<listing>/<uuid>-<name>`: how listing photos are named now. */
-const FOLDER_FILE_NAME = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]{36}-[a-zA-Z0-9._-]+$/;
+const FOLDER_FILE_NAME =
+  /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]{36}-[a-zA-Z0-9._-]+$/;
 
 /** `<time>-<random>-<name>`: photos uploaded before they had folders. */
 const LEGACY_FILE_NAME = /^\d+-\d+-[a-zA-Z0-9._-]+$/;
@@ -65,12 +66,20 @@ export class PropertyPhotoStorage implements OnModuleInit {
    * One upload URL per name, in the same order, each for a new unique file
    * inside `folder`. The original name is only kept as a readable suffix.
    */
-  createPresignedUrls(folder: string, fileNames: string[]): Promise<{ fileName: string; signedUrl: string }[]> {
+  createPresignedUrls(
+    folder: string,
+    fileNames: string[],
+  ): Promise<{ fileName: string; signedUrl: string }[]> {
     return Promise.all(
       fileNames.map(async (originalName) => {
-        const readable = originalName.replace(/[^a-zA-Z0-9.-]/g, '_').slice(-MAX_NAME_PART);
+        const readable = originalName
+          .replace(/[^a-zA-Z0-9.-]/g, '_')
+          .slice(-MAX_NAME_PART);
         const fileName = `${folder}/${randomUUID()}-${readable || 'image'}`;
-        const signedUrl = await this.storage.createSignedUploadUrl(BUCKET, fileName);
+        const signedUrl = await this.storage.createSignedUploadUrl(
+          BUCKET,
+          fileName,
+        );
         return { fileName, signedUrl };
       }),
     );

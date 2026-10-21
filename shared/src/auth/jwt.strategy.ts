@@ -33,6 +33,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (payload.typ !== 'access') {
       throw new UnauthorizedException('Not an access token');
     }
-    return { userId: payload.sub, role: payload.role, sessionId: typeof payload.sid === 'string' ? payload.sid : null };
+    return {
+      userId: payload.sub,
+      role: payload.role,
+      sessionId: typeof payload.sid === 'string' ? payload.sid : null,
+    };
   }
 }

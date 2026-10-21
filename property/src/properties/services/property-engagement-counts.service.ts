@@ -9,7 +9,11 @@ export interface EngagementCount {
 }
 
 /** A listing nobody has engaged with yet, such as one just created. */
-export const NO_ENGAGEMENT: EngagementCount = Object.freeze({ favorites: 0, views: 0, contacts: 0 });
+export const NO_ENGAGEMENT: EngagementCount = Object.freeze({
+  favorites: 0,
+  views: 0,
+  contacts: 0,
+});
 
 /** A listing as the API sends it: its fields plus `_count`. */
 export type WithEngagement<T> = T & { _count: EngagementCount };
@@ -30,17 +34,26 @@ export class PropertyEngagementCounts {
     const unique = [...new Set(ids)];
     if (unique.length === 0) return new Map();
 
-    const rows = await this.prisma.$queryRaw<(EngagementCount & { id: string })[]>`
+    const rows = await this.prisma.$queryRaw<
+      (EngagementCount & { id: string })[]
+    >`
       SELECT p.id::text AS id,
         (SELECT count(*)::int FROM property_favorites f WHERE f.property_id = p.id) AS favorites,
         (SELECT count(*)::int FROM property_views v WHERE v.property_id = p.id) AS views,
         (SELECT count(*)::int FROM property_contacts c WHERE c.property_id = p.id) AS contacts
       FROM unnest(${unique}::uuid[]) AS p(id)`;
-    return new Map(rows.map(({ id, favorites, views, contacts }) => [id, { favorites, views, contacts }]));
+    return new Map(
+      rows.map(({ id, favorites, views, contacts }) => [
+        id,
+        { favorites, views, contacts },
+      ]),
+    );
   }
 
   /** `rows`, each with its `_count`. */
-  async attach<T extends { id: string }>(rows: T[]): Promise<WithEngagement<T>[]> {
+  async attach<T extends { id: string }>(
+    rows: T[],
+  ): Promise<WithEngagement<T>[]> {
     const counts = await this.of(rows.map((row) => row.id));
     return rows.map((row) => withEngagement(row, counts));
   }

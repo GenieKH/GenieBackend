@@ -12,8 +12,10 @@ import { PaymentProvider, ProviderWebhook } from './payment-provider.interface';
  */
 @Injectable()
 export class AbaPaywayProvider implements PaymentProvider {
-  async initiateCheckout(transactionId: string, amount: number): Promise<string> {
-    return `https://payway.aba.com/checkout?id=${transactionId}&amount=${amount}`;
+  initiateCheckout(transactionId: string, amount: number): Promise<string> {
+    return Promise.resolve(
+      `https://payway.aba.com/checkout?id=${transactionId}&amount=${amount}`,
+    );
   }
 
   verifyWebhook(webhook: ProviderWebhook, signature: string): boolean {
@@ -26,6 +28,8 @@ export class AbaPaywayProvider implements PaymentProvider {
 
     const received = Buffer.from(signature, 'utf8');
     const wanted = Buffer.from(expected, 'utf8');
-    return received.length === wanted.length && timingSafeEqual(received, wanted);
+    return (
+      received.length === wanted.length && timingSafeEqual(received, wanted)
+    );
   }
 }

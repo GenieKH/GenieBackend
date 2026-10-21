@@ -41,20 +41,34 @@ export class NotificationClient {
   );
 
   chatMessage(notice: ChatMessageNotice): void {
-    this.post('chat-message', { ...notice, senderName: shortened(notice.senderName) });
+    this.post('chat-message', {
+      ...notice,
+      senderName: shortened(notice.senderName),
+    });
   }
 
   callRinging(notice: CallNotice): void {
-    this.post('call-ringing', { ...notice, callerName: shortened(notice.callerName) });
+    this.post('call-ringing', {
+      ...notice,
+      callerName: shortened(notice.callerName),
+    });
   }
 
   callEnded(notice: CallNotice & { missed: boolean }): void {
-    this.post('call-ended', { ...notice, callerName: shortened(notice.callerName) });
+    this.post('call-ended', {
+      ...notice,
+      callerName: shortened(notice.callerName),
+    });
   }
 
   private post(event: string, body: object): void {
     this.client
-      .call('POST', `/internal/notifications/${event}`, { body, timeoutMs: NOTIFY_TIMEOUT_MS })
-      .catch((error: Error) => this.logger.warn(`Push "${event}" not sent: ${error.message}`));
+      .call('POST', `/internal/notifications/${event}`, {
+        body,
+        timeoutMs: NOTIFY_TIMEOUT_MS,
+      })
+      .catch((error: Error) =>
+        this.logger.warn(`Push "${event}" not sent: ${error.message}`),
+      );
   }
 }

@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PASSWORD_PROOF_TOKEN_TYPE, PASSWORD_PROOF_TTL_SECONDS } from '../auth.constants';
+import {
+  PASSWORD_PROOF_TOKEN_TYPE,
+  PASSWORD_PROOF_TTL_SECONDS,
+} from '../auth.constants';
 import { IdentityProofService } from './identity-proof.service';
 
 export interface PasswordProof {

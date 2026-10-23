@@ -1,4 +1,4 @@
-# Genie Backend
+# Genie Backend services
 
 Backend for the Genie property marketplace (NestJS monorepo, PostgreSQL via Supabase, Prisma, Redis).
 

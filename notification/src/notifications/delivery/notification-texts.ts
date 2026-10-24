@@ -31,6 +31,11 @@ export const texts = {
     en: (caller: string) => `${caller} called you`,
     km: (caller: string) => `${caller} បានហៅអ្នក`,
   },
+
+  newListingInSearch: {
+    en: (search: string) => `New listing in "${search}"`,
+    km: (search: string) => `អចលនទ្រព្យថ្មីក្នុង "${search}"`,
+  },
 } as const;
 
 /** The text of [entry] for [locale]. */

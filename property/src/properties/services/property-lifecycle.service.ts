@@ -27,6 +27,12 @@ const keywordCodes = (property: { keywords?: { keyword: string }[] }) =>
 /** The only status the public can see. */
 const PUBLIC_STATUS = 'Active';
 
+/** What decides whether a listing shows on the public map. */
+type OnMapState = { status: string; lat: number | null };
+
+const isOnMap = (listing: OnMapState) =>
+  listing.status === PUBLIC_STATUS && listing.lat !== null;
+
 /** Creating, editing and moving a property through its statuses. */
 @Injectable()
 export class PropertyLifecycleService {
@@ -46,6 +52,7 @@ export class PropertyLifecycleService {
       include: PROPERTY_WITH_RELATIONS,
     });
     await this.refreshPublicView(property, [property.status]);
+    this.announceIfNowOnMap(null, property);
     // Nobody can have saved, opened or messaged about it yet.
     return { ...property, _count: NO_ENGAGEMENT };
   }
@@ -87,6 +94,7 @@ export class PropertyLifecycleService {
       data: { lat: pin.lat, lng: pin.lng },
     });
     await this.refreshPublicView(property, [before.status], before);
+    this.announceIfNowOnMap(before, property);
     this.nearby.locationChanged(id);
     return property;
   }
@@ -108,6 +116,7 @@ export class PropertyLifecycleService {
       },
     });
     await this.refreshPublicView(property, [before.status], before);
+    this.announceIfNowOnMap(before, property);
     if (center) this.nearby.locationChanged(id);
     return property;
   }
@@ -141,7 +150,7 @@ export class PropertyLifecycleService {
   }
 
   private async setStatus(
-    before: { id: string; status: string; publishedAt: Date | null },
+    before: OnMapState & { id: string; publishedAt: Date | null },
     to: string,
   ) {
     const property = await this.prisma.property.update({
@@ -156,7 +165,23 @@ export class PropertyLifecycleService {
       },
     });
     await this.refreshPublicView(property, [before.status, to]);
+    this.announceIfNowOnMap(before, property);
     return property;
+  }
+
+  /**
+   * The public can now find the listing on the map, and could not before: it
+   * is live and has a location. The app creates a listing live and gives it
+   * its boundary right after, so either step can be the one. Alerts and
+   * pushes follow (`ListingChanges.wentLive`), behind the answer.
+   */
+  private announceIfNowOnMap(
+    before: OnMapState | null,
+    after: OnMapState & { id: string },
+  ): void {
+    if (isOnMap(after) && !(before && isOnMap(before))) {
+      void this.listingChanges.wentLive(after.id);
+    }
   }
 
   /**

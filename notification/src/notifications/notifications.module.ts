@@ -10,6 +10,7 @@ import { PushDevicesController } from './devices/push-devices.controller';
 import { PushDevicesService } from './devices/push-devices.service';
 import { SessionSignOutListener } from './devices/session-sign-out.listener';
 import { InternalNotificationsController } from './internal/internal-notifications.controller';
+import { ListingAlertNotifier } from './listings/listing-alert-notifier';
 import { NotificationPreferencesController } from './preferences/notification-preferences.controller';
 import { NotificationPreferencesService } from './preferences/notification-preferences.service';
 import { PromotionSender } from './promotions/promotion-sender';
@@ -46,6 +47,7 @@ function pushSenderFromEnv(): PushSender {
     ChatMessageNotifier,
     SignInAlertNotifier,
     CallNotifier,
+    ListingAlertNotifier,
     AdminGuard,
     PromotionsService,
     PromotionSender,

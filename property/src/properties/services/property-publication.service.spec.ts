@@ -14,7 +14,10 @@ describe('PropertyPublicationService', () => {
     findUnique: jest.fn(),
   };
   const query = { findOwned: jest.fn() };
-  const listingChanges = { changed: jest.fn() };
+  const listingChanges = {
+    changed: jest.fn(),
+    wentLive: jest.fn().mockResolvedValue(undefined),
+  };
   let service: PropertyPublicationService;
 
   beforeEach(() => {

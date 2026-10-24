@@ -99,6 +99,7 @@ model User {
   reportsAbout            Report[] @relation("ReportsAbout")
   reportsReviewed         Report[] @relation("ReportsReviewed")
   leads                   PropertyLead[]
+  savedSearches           SavedSearch[]
 
   @@index([email], map: "idx_users_email", where: raw("(email IS NOT NULL)"))
   @@index([phone], map: "idx_users_phone", where: raw("(phone IS NOT NULL)"))
@@ -163,6 +164,7 @@ model Property {
   images           PropertyImage[]
   reports          Report[]
   leads            PropertyLead[]
+  savedSearchMatches SavedSearchMatch[]
   keywords         PropertyKeyword[]
   likes            PropertyLike[]
   nearbyPlaces     PropertyNearbyPlace[]
@@ -462,6 +464,8 @@ model NotificationPreferences {
   userId       String   @id @map("user_id") @db.Uuid
   chatMessages Boolean  @default(true) @map("chat_messages")
   promotions   Boolean  @default(true)
+  /// New listings matching a saved search (migration 32).
+  savedSearchAlerts Boolean @default(true) @map("saved_search_alerts")
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -591,4 +595,44 @@ model PropertyLead {
   @@id([propertyId, userId, channel])
   @@index([propertyId, createdAt])
   @@map("property_leads")
+}
+
+/// A map search someone saved (migration 32): an area plus the map filter.
+/// Empty lists and null bounds mean any, as in `map-filter.ts`.
+model SavedSearch {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  name         String
+  minLat       Float    @map("min_lat")
+  maxLat       Float    @map("max_lat")
+  minLng       Float    @map("min_lng")
+  maxLng       Float    @map("max_lng")
+  propertyType String?  @map("property_type")
+  listingTypes String[] @default([]) @map("listing_types")
+  minPrice     Decimal? @map("min_price") @db.Decimal(12, 2)
+  maxPrice     Decimal? @map("max_price") @db.Decimal(12, 2)
+  minSize      Decimal? @map("min_size") @db.Decimal(12, 2)
+  maxSize      Decimal? @map("max_size") @db.Decimal(12, 2)
+  keywords     String[] @default([])
+  alerts       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matches SavedSearchMatch[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("saved_searches")
+}
+
+/// A listing a saved search already alerted about (migration 32).
+model SavedSearchMatch {
+  savedSearchId String   @map("saved_search_id") @db.Uuid
+  propertyId    String   @map("property_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  savedSearch SavedSearch @relation(fields: [savedSearchId], references: [id], onDelete: Cascade)
+  property    Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([savedSearchId, propertyId])
+  @@map("saved_search_matches")
 }

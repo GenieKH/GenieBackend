@@ -260,6 +260,21 @@ flowchart LR
 - Listing results have their own cache version: publishing or hiding any listing outdates them at once; one owner's listings are outdated by that owner's changes only. Trigram indexes (migration `11_search_indexes`) keep the `ILIKE '%word%'` queries off full table scans.
 - A person result carries `memberSince`. `GET /public/search/people/:userId` is the profile page, opened from search or by tapping the other person in a chat. It answers for any active account (404 if missing or deactivated), but only search finds people, and only publishers. It carries `email` and `phone` only for publishers, whose listings already show them, and only to a signed-in caller; someone who has published nothing keeps them private. Result lists never include contact details, so search cannot be used to collect them in bulk. The page has Follow (does nothing yet), Chat and View on map.
 
+**Saved searches and alerts** (signed-in only; migration 32, `saved_searches` and `saved_search_matches`):
+
+| Endpoint | Body | Answer | Errors |
+|---|---|---|---|
+| `GET /search/saved` | | `[{id, name, minLat, maxLat, minLng, maxLng, propertyType, listingTypes, minPrice, maxPrice, minSize, maxSize, keywords, alerts, createdAt}]`, newest first | 401 |
+| `POST /search/saved` | `name` (1-60, trimmed), the map area, and any of the map filter's fields as in `GET /public/properties/map` (lists as JSON arrays: `listingTypes`, `keywords`), `alerts?` (default true) | the saved search | 400 (unknown type, keyword or listing type; a range upside down), 401, 409 (already 20) |
+| `PATCH /search/saved/:id` | `name?`, `alerts?` | the saved search | 400, 401, 404 (not yours) |
+| `DELETE /search/saved/:id` | | 204, also when already gone | 401 |
+
+- A listing **goes on the map** when it is live and has a location; `ListingChanges.wentLive` fires on that change, whichever step makes it: created live, published, relisted, paid for, or (the app's way) created live and then given its boundary or pin. Moving it later is not a new listing.
+- `SavedSearchMatcher` then finds the alerting searches of other people whose area holds it and whose filter it passes the way the map filter does (asking price before discount; the type's card size, `SIZE_FIELD_BY_TYPE`; every keyword of the search). Each search alerts about a listing once (`saved_search_matches`), so unpublishing and publishing again tells nobody twice. A person gets one push per listing however many of their searches match; the owner is never told.
+- The property service asks the notification service (`POST /internal/notifications/saved-search-match`, service token from `property`, at most 500 people a call). This runs after the write answers; a failure is logged.
+- The push: `New listing in "<search name>"` with the listing title, Android channel `listing_alerts`, data `{type: saved_search_match, propertyId}`; one per listing (tag `listing:<id>`). Off with the preference `savedSearchAlerts` (migration 32 adds the column).
+- Not covered: a listing posted by someone the searcher blocked still alerts them.
+
 **Search history** (signed-in only, token required; migration `12_search_history`):
 
 | Endpoint | Body | Answer | Errors |
@@ -542,8 +557,8 @@ API (all need a signed-in user):
 |---|---|
 | `POST /notifications/devices` `{ token, platform: android\|ios\|web, locale?: en\|km }` | `204`. A token belongs to one account and session; signing in as someone else moves it. At most 20 devices per account, oldest dropped |
 | `POST /notifications/devices/remove` `{ token }` | `204`. The app calls it before signing out; only the owner's own device is removed |
-| `GET /notifications/preferences` | `{ chatMessages, promotions }`, both `true` until changed |
-| `PATCH /notifications/preferences` `{ chatMessages?, promotions? }` | Returns the saved preferences |
+| `GET /notifications/preferences` | `{ chatMessages, promotions, savedSearchAlerts }`, all `true` until changed |
+| `PATCH /notifications/preferences` `{ chatMessages?, promotions?, savedSearchAlerts? }` | Returns the saved preferences |
 | `POST /notifications/promotions` `{ id?, title (≤65), body (≤240), titleKm?, bodyKm?, propertyId?, url? (https), imageUrl? (https) }` | Admins only (`users.role = 'admin'`, read from the database). `202` with its status; sent in the background to every device whose owner allows promotions. Repeating a request with the same `id` sends it once |
 | `GET /notifications/promotions/:id` | Admins only: `status` (queued, sending, sent, failed) and counts |
 

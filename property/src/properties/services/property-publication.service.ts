@@ -69,6 +69,7 @@ export class PropertyPublicationService {
         select: CACHED_LISTING_SELECT,
       });
       if (listing) await this.listingChanges.changed(listing);
+      void this.listingChanges.wentLive(propertyId);
     }
   }
 

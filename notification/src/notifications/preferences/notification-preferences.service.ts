@@ -5,13 +5,25 @@ import { PrismaService } from '@genie/shared';
 export interface NotificationPreferences {
   chatMessages: boolean;
   promotions: boolean;
+  /** New listings matching one of their saved searches. */
+  savedSearchAlerts: boolean;
 }
+
+/** One kind of push a user can turn off. */
+export type SwitchablePreference = keyof NotificationPreferences;
 
 /** Everyone starts with everything on; the app lets them turn things off. */
 export const DEFAULT_PREFERENCES: NotificationPreferences = {
   chatMessages: true,
   promotions: true,
+  savedSearchAlerts: true,
 };
+
+const PREFERENCE_SELECT = {
+  chatMessages: true,
+  promotions: true,
+  savedSearchAlerts: true,
+} as const;
 
 @Injectable()
 export class NotificationPreferencesService {
@@ -20,7 +32,7 @@ export class NotificationPreferencesService {
   async get(userId: string): Promise<NotificationPreferences> {
     const row = await this.prisma.notificationPreferences.findUnique({
       where: { userId },
-      select: { chatMessages: true, promotions: true },
+      select: PREFERENCE_SELECT,
     });
     return row ?? DEFAULT_PREFERENCES;
   }
@@ -33,7 +45,7 @@ export class NotificationPreferencesService {
       where: { userId },
       create: { userId, ...DEFAULT_PREFERENCES, ...changes },
       update: changes,
-      select: { chatMessages: true, promotions: true },
+      select: PREFERENCE_SELECT,
     });
   }
 }

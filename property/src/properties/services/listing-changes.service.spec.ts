@@ -41,4 +41,22 @@ describe('ListingChanges', () => {
     await expect(changes.changed(LISTING)).resolves.toBeUndefined();
     expect(other.listingChanged).toHaveBeenCalled();
   });
+
+  describe('wentLive', () => {
+    it('tells every live listener, and a failing one does not stop the rest', async () => {
+      const seen: string[] = [];
+      changes.onWentLive({
+        listingWentLive: () => Promise.reject(new Error('down')),
+      });
+      changes.onWentLive({
+        listingWentLive: (id) => {
+          seen.push(id);
+          return Promise.resolve();
+        },
+      });
+
+      await expect(changes.wentLive('p1')).resolves.toBeUndefined();
+      expect(seen).toEqual(['p1']);
+    });
+  });
 });

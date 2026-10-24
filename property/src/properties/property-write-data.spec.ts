@@ -94,6 +94,18 @@ describe('toUpdateData', () => {
     expect(data.maintenanceFee).toBeNull();
   });
 
+  it('keeps a warehouse to its sizes, floors and parking, without rooms', () => {
+    const data = toUpdateData(
+      { bedrooms: 3, bathrooms: 2, furnishing: 'Fully Furnished', floors: 2 },
+      'Warehouse',
+    );
+
+    expect(data.floors).toBe(2);
+    expect(data.bedrooms).toBeNull();
+    expect(data.bathrooms).toBeNull();
+    expect(data.furnishing).toBeNull();
+  });
+
   it('keeps the current type when none is sent', () => {
     const data = toUpdateData({ bedrooms: 3 }, 'House');
 

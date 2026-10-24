@@ -21,6 +21,7 @@ describe('PropertyImageService', () => {
   };
   const query = { findOwned: jest.fn() };
   const listingChanges = { changed: jest.fn() };
+  const thumbnails = { createFor: jest.fn() };
   const client = {
     storage: {
       from: () => ({
@@ -62,11 +63,16 @@ describe('PropertyImageService', () => {
       });
     query.findOwned.mockResolvedValue(listing());
     imageTable.findMany.mockResolvedValue([]);
+    thumbnails.createFor.mockImplementation(
+      async (names: string[]) =>
+        new Map(names.map((name) => [name, `${PUBLIC}${name}.thumb.jpg`])),
+    );
     images = new PropertyImageService(
       { propertyImage: imageTable } as never,
       query as never,
       photos,
       listingChanges as never,
+      thumbnails as never,
     );
   });
 
@@ -101,11 +107,29 @@ describe('PropertyImageService', () => {
   describe('confirming uploads', () => {
     const own = `${ME}/${LISTING}/${FILE}-front.jpg`;
 
-    it('attaches files from its own folder', async () => {
+    it('attaches files from its own folder, with their thumbnails', async () => {
+      await images.confirmUploads(ME, LISTING, [own]);
+
+      expect(thumbnails.createFor).toHaveBeenCalledWith([own]);
+      expect(imageTable.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            propertyId: LISTING,
+            url: `${PUBLIC}${own}`,
+            thumbnailUrl: `${PUBLIC}${own}.thumb.jpg`,
+            order: 1,
+          },
+        ],
+      });
+    });
+
+    it('still attaches a photo whose thumbnail could not be made', async () => {
+      thumbnails.createFor.mockResolvedValueOnce(new Map([[own, null]]));
+
       await images.confirmUploads(ME, LISTING, [own]);
 
       expect(imageTable.createMany).toHaveBeenCalledWith({
-        data: [{ propertyId: LISTING, url: `${PUBLIC}${own}`, order: 1 }],
+        data: [expect.objectContaining({ thumbnailUrl: null })],
       });
     });
 
@@ -124,6 +148,7 @@ describe('PropertyImageService', () => {
         `${ME}/${LISTING}/../${SOMEONE_ELSE}/x.jpg`,
       ],
       ['a URL', 'https://evil.example/x.jpg'],
+      ['a thumbnail', `${ME}/${LISTING}/${FILE}-front.jpg.thumb.jpg`],
     ])('refuses %s', async (_case, fileName) => {
       await expect(
         images.confirmUploads(ME, LISTING, [fileName]),
@@ -137,6 +162,7 @@ describe('PropertyImageService', () => {
       await images.confirmUploads(ME, LISTING, [own, own]);
 
       expect(imageTable.createMany).not.toHaveBeenCalled();
+      expect(thumbnails.createFor).not.toHaveBeenCalled();
     });
   });
 
@@ -144,7 +170,7 @@ describe('PropertyImageService', () => {
     const keep = `${PUBLIC}${ME}/${LISTING}/${FILE}-keep.jpg`;
     const drop = `${PUBLIC}${ME}/${LISTING}/${FILE}-drop.jpg`;
 
-    it('takes the photo off the listing and deletes its file', async () => {
+    it('takes the photo off the listing and deletes its file and thumbnail', async () => {
       query.findOwned.mockResolvedValue(listing([keep, drop]));
 
       await images.removeImages(ME, LISTING, [drop]);
@@ -152,7 +178,10 @@ describe('PropertyImageService', () => {
       expect(imageTable.deleteMany).toHaveBeenCalledWith({
         where: { propertyId: LISTING, url: { in: [drop] } },
       });
-      expect(removed).toEqual([`${ME}/${LISTING}/${FILE}-drop.jpg`]);
+      expect(removed).toEqual([
+        `${ME}/${LISTING}/${FILE}-drop.jpg`,
+        `${ME}/${LISTING}/${FILE}-drop.jpg.thumb.jpg`,
+      ]);
     });
 
     it('ignores a URL the listing does not show, so removing twice is harmless', async () => {
@@ -225,7 +254,12 @@ describe('PropertyImageService', () => {
 
       await images.removeAllOwnedBy(ME);
 
-      expect(removed).toEqual([mine, oldMine]);
+      expect(removed).toEqual([
+        mine,
+        oldMine,
+        `${mine}.thumb.jpg`,
+        `${oldMine}.thumb.jpg`,
+      ]);
     });
 
     it("never deletes a file in another user's folder", async () => {

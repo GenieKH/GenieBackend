@@ -96,6 +96,30 @@ export class SupabaseService {
     return data.signedUrl;
   }
 
+  /** The bytes of one stored file. */
+  async downloadFile(bucket: string, path: string): Promise<Buffer> {
+    const { data, error } = await this.supabase.storage
+      .from(bucket)
+      .download(path);
+    if (error || !data) {
+      throw error ?? new Error(`Nothing downloaded for ${bucket}/${path}`);
+    }
+    return Buffer.from(await data.arrayBuffer());
+  }
+
+  /** Stores [data] at [path], replacing a file already there. */
+  async uploadFile(
+    bucket: string,
+    path: string,
+    data: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    const { error } = await this.supabase.storage
+      .from(bucket)
+      .upload(path, data, { contentType, upsert: true });
+    if (error) throw error;
+  }
+
   /** The address of a file in a public bucket. */
   publicUrl(bucket: string, path: string): string {
     return this.supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;

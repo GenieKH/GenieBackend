@@ -29,7 +29,8 @@ export const PROPERTY_WITH_RELATIONS = {
     },
     orderBy: { rank: 'asc' },
   },
-  user: { select: OWNER_SUMMARY_SELECT },
+  // When they joined too: the listing's publisher card says since when.
+  user: { select: { ...OWNER_SUMMARY_SELECT, createdAt: true } },
 } as const;
 
 /**
@@ -55,6 +56,8 @@ export const MAP_SELECT = {
   landSize: true,
   buildingSize: true,
   unitSize: true,
+  // A Borey's card size.
+  totalProjectArea: true,
   // The app filters by them too, while a newly filtered list is on its way.
   keywords: { select: { keyword: true } },
   images: { orderBy: { order: 'asc' } },

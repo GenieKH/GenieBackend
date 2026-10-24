@@ -1,5 +1,8 @@
 import { Prisma } from '@genie/prisma-client';
 
+import { PropertyType } from './property-options';
+import { SIZE_FIELD_BY_TYPE, SizeField } from './property-type-fields';
+
 /** What the map filter narrows the listings to; unset means any. */
 export interface MapFilter {
   propertyType?: string;
@@ -8,7 +11,7 @@ export interface MapFilter {
   /** USD, on the asking price (before any discount); inclusive. */
   minPrice?: number;
   maxPrice?: number;
-  /** m², on the size a card shows: land, else unit, else building. */
+  /** m², on the size a card shows for the type (`SIZE_FIELD_BY_TYPE`). */
   minSize?: number;
   maxSize?: number;
   /** The listing carries every one of these. */
@@ -64,20 +67,17 @@ function range(min?: number, max?: number): Range | null {
   };
 }
 
-/** The first size a listing has, as the app's cards pick it, is in `size`. */
+/** The size a listing's type shows on its cards is in `size`. */
 function sizeIn(size: Range): Prisma.PropertyWhereInput[] {
-  const none = (field: 'landSize' | 'unitSize') => ({
-    OR: [{ [field]: null }, { [field]: 0 }],
-  });
-  return [
-    { landSize: { gt: 0, ...size } },
-    { AND: [none('landSize'), { unitSize: { gt: 0, ...size } }] },
-    {
-      AND: [
-        none('landSize'),
-        none('unitSize'),
-        { buildingSize: { gt: 0, ...size } },
-      ],
-    },
-  ];
+  const typesBySize = new Map<SizeField, PropertyType[]>();
+  for (const [type, field] of Object.entries(SIZE_FIELD_BY_TYPE)) {
+    typesBySize.set(field, [
+      ...(typesBySize.get(field) ?? []),
+      type as PropertyType,
+    ]);
+  }
+  return [...typesBySize].map(([field, types]) => ({
+    propertyType: { in: types },
+    [field]: { gt: 0, ...size },
+  }));
 }

@@ -1,5 +1,6 @@
 import { FeedService } from './feed.service';
 import { decodeFeedCursor, encodeFeedCursor } from './feed-cursor';
+import { readFeedSpreadHours } from './feed-spread';
 
 const ME = '11111111-1111-4111-8111-111111111111';
 const AGENT = '22222222-2222-4222-8222-222222222222';
@@ -23,7 +24,7 @@ describe('FeedService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new FeedService(prisma as never, followed as never);
+    service = new FeedService(prisma as never, followed as never, 6);
     followed.idsFollowedBy.mockResolvedValue([AGENT]);
     prisma.$queryRaw.mockResolvedValue([]);
     // Cards come back in any order; the service puts them in feed order.
@@ -50,16 +51,20 @@ describe('FeedService', () => {
     const { sql, values } = rawCall(prisma.$queryRaw.mock.calls[0]);
     expect(values).toContainEqual([AGENT]);
     expect(values.filter((value) => value === 21)).toHaveLength(2);
+    expect(values).toContain(6);
     expect(sql).toContain('CROSS JOIN LATERAL');
     expect(sql).toContain("status = 'Active'");
     expect(sql).toContain('deactivated_at IS NULL');
-    expect(sql).toContain('ORDER BY published_at DESC, id ASC');
+    expect(sql).toContain(
+      'row_number() OVER (ORDER BY published_at DESC, id ASC)',
+    );
+    expect(sql).toContain('ORDER BY feed_at DESC, id ASC');
   });
 
   it('sends the cards in feed order, card fields only', async () => {
     prisma.$queryRaw.mockResolvedValue([
-      { id: 'a', publishedAt: at('2026-10-03T00:00:00.000Z') },
-      { id: 'b', publishedAt: at('2026-10-02T00:00:00.000Z') },
+      { id: 'a', feedAt: at('2026-10-03T00:00:00.000Z') },
+      { id: 'b', feedAt: at('2026-10-02T00:00:00.000Z') },
     ]);
 
     const page = await service.page(ME, { limit: 20 });
@@ -78,7 +83,7 @@ describe('FeedService', () => {
   });
 
   it('continues after the cursor', async () => {
-    const after = { publishedAt: at('2026-10-01T10:00:00.000Z'), id: LISTING };
+    const after = { feedAt: at('2026-10-01T10:00:00.000Z'), id: LISTING };
 
     await service.page(ME, { limit: 20, after });
 
@@ -88,35 +93,31 @@ describe('FeedService', () => {
       (value): value is { sql: string; values: unknown[] } =>
         typeof (value as { sql?: unknown })?.sql === 'string',
     );
-    expect(condition?.sql).toContain('published_at <');
-    expect(condition?.values).toEqual([
-      after.publishedAt,
-      after.publishedAt,
-      LISTING,
-    ]);
+    expect(condition?.sql).toContain('feed_at <');
+    expect(condition?.values).toEqual([after.feedAt, after.feedAt, LISTING]);
   });
 
   it('hands out the cursor of the last listing shown when there is more', async () => {
     prisma.$queryRaw.mockResolvedValue([
-      { id: 'a', publishedAt: at('2026-10-03T00:00:00.000Z') },
-      { id: LISTING, publishedAt: at('2026-10-02T00:00:00.000Z') },
-      { id: 'c', publishedAt: at('2026-10-01T00:00:00.000Z') },
+      { id: 'a', feedAt: at('2026-10-03T00:00:00.000Z') },
+      { id: LISTING, feedAt: at('2026-10-02T00:00:00.000Z') },
+      { id: 'c', feedAt: at('2026-10-01T00:00:00.000Z') },
     ]);
 
     const page = await service.page(ME, { limit: 2 });
 
     expect(page.items.map((item) => item.id)).toEqual(['a', LISTING]);
     expect(decodeFeedCursor(page.nextCursor!)).toEqual({
-      publishedAt: at('2026-10-02T00:00:00.000Z'),
+      feedAt: at('2026-10-02T00:00:00.000Z'),
       id: LISTING,
     });
   });
 
   it('keeps the cursor when a listing on the page stopped being live meanwhile', async () => {
     prisma.$queryRaw.mockResolvedValue([
-      { id: 'a', publishedAt: at('2026-10-03T00:00:00.000Z') },
-      { id: LISTING, publishedAt: at('2026-10-02T00:00:00.000Z') },
-      { id: 'c', publishedAt: at('2026-10-01T00:00:00.000Z') },
+      { id: 'a', feedAt: at('2026-10-03T00:00:00.000Z') },
+      { id: LISTING, feedAt: at('2026-10-02T00:00:00.000Z') },
+      { id: 'c', feedAt: at('2026-10-01T00:00:00.000Z') },
     ]);
     prisma.property.findMany.mockResolvedValue([{ id: 'a' }]);
 
@@ -128,7 +129,7 @@ describe('FeedService', () => {
 
   it('ends the feed on the last page', async () => {
     prisma.$queryRaw.mockResolvedValue([
-      { id: 'a', publishedAt: at('2026-10-03T00:00:00.000Z') },
+      { id: 'a', feedAt: at('2026-10-03T00:00:00.000Z') },
     ]);
 
     const page = await service.page(ME, { limit: 2 });
@@ -147,7 +148,7 @@ describe('FeedService', () => {
 
 describe('feed cursor', () => {
   it('reads back what it wrote', () => {
-    const cursor = { publishedAt: at('2026-10-21T08:30:15.123Z'), id: LISTING };
+    const cursor = { feedAt: at('2026-10-21T08:30:15.123Z'), id: LISTING };
 
     expect(decodeFeedCursor(encodeFeedCursor(cursor))).toEqual(cursor);
   });
@@ -168,5 +169,21 @@ describe('feed cursor', () => {
     ['nothing', ''],
   ])('refuses %s with a 400', (_name, raw) => {
     expect(() => decodeFeedCursor(raw)).toThrow('Invalid cursor');
+  });
+});
+
+describe('feed spread setting', () => {
+  it('defaults to 3 hours', () => {
+    expect(readFeedSpreadHours(undefined)).toBe(3);
+    expect(readFeedSpreadHours('')).toBe(3);
+  });
+
+  it('reads a positive number', () => {
+    expect(readFeedSpreadHours('12')).toBe(12);
+    expect(readFeedSpreadHours('0.5')).toBe(0.5);
+  });
+
+  it.each(['0', '-3', 'abc'])('refuses "%s" at start-up', (raw) => {
+    expect(() => readFeedSpreadHours(raw)).toThrow('FEED_OWNER_SPREAD_HOURS');
   });
 });

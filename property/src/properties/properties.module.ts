@@ -5,11 +5,15 @@ import { InternalPublicationController } from './internal/internal-publication.c
 import {
   GoogleNearbyPlaceProvider,
   GoogleRouteDistanceProvider,
+  GoogleRoutePathProvider,
 } from './nearby/google-nearby.providers';
 import {
   NearbyPlaceProvider,
   RouteDistanceProvider,
+  RoutePathProvider,
 } from './nearby/nearby-providers';
+import { NearbyRouteController } from './nearby/nearby-route.controller';
+import { NearbyRouteService } from './nearby/nearby-route.service';
 import { PropertyNearbyService } from './nearby/property-nearby.service';
 import { PropertiesController } from './properties.controller';
 import { PropertyStatusService } from './property-status.service';
@@ -24,6 +28,7 @@ import { PropertyImageService } from './services/property-image.service';
 import { PropertyLifecycleService } from './services/property-lifecycle.service';
 import { PropertyPublicationService } from './services/property-publication.service';
 import { PropertyQueryService } from './services/property-query.service';
+import { PropertyThumbnailService } from './services/property-thumbnail.service';
 import { PropertySearchService } from './services/property-search.service';
 import { PublicPropertyCache } from './services/public-property-cache.service';
 import { PropertyPhotoStorage } from './storage/property-photo-storage';
@@ -33,6 +38,7 @@ import { PropertyPhotoStorage } from './storage/property-photo-storage';
   controllers: [
     PropertiesController,
     PublicPropertiesController,
+    NearbyRouteController,
     InternalPublicationController,
     InternalAccountsController,
   ],
@@ -48,10 +54,13 @@ import { PropertyPhotoStorage } from './storage/property-photo-storage';
     PropertyLifecycleService,
     PropertyPublicationService,
     PropertyPhotoStorage,
+    PropertyThumbnailService,
     PropertyImageService,
     PropertyEngagementService,
     GuestSessionService,
     PropertyNearbyService,
+    NearbyRouteService,
+    { provide: RoutePathProvider, useClass: GoogleRoutePathProvider },
     { provide: NearbyPlaceProvider, useClass: GoogleNearbyPlaceProvider },
     { provide: RouteDistanceProvider, useClass: GoogleRouteDistanceProvider },
   ],

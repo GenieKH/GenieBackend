@@ -6,6 +6,8 @@ import {
   NearbyPlaceProvider,
   RoadDistance,
   RouteDistanceProvider,
+  RoutePath,
+  RoutePathProvider,
 } from './nearby-providers';
 
 const NEARBY_URL = 'https://places.googleapis.com/v1/places:searchNearby';
@@ -27,6 +29,8 @@ const TYPES_BY_CATEGORY: Record<NearbyCategory, string[]> = {
 
 /** Only these fields: they keep the call on the cheaper Nearby Search Pro SKU. */
 const NEARBY_FIELDS = 'places.id,places.displayName,places.location';
+const ROUTE_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+const ROUTE_FIELDS = 'routes.distanceMeters,routes.polyline.encodedPolyline';
 const MATRIX_FIELDS =
   'originIndex,destinationIndex,distanceMeters,duration,condition';
 
@@ -188,5 +192,43 @@ export class GoogleRouteDistanceProvider extends RouteDistanceProvider {
       };
     }
     return distances;
+  }
+}
+
+interface RoutesResponse {
+  routes?: {
+    distanceMeters?: number;
+    polyline?: { encodedPolyline?: string };
+  }[];
+}
+
+/** Google Routes API, the road of one route. */
+@Injectable()
+export class GoogleRoutePathProvider extends RoutePathProvider {
+  get isConfigured(): boolean {
+    return apiKey() !== '';
+  }
+
+  async drivePath(
+    origin: LatLng,
+    destination: LatLng,
+  ): Promise<RoutePath | null> {
+    const response = await post<RoutesResponse>(
+      'Routes API',
+      ROUTE_URL,
+      ROUTE_FIELDS,
+      {
+        origin: { location: { latLng: toGoogle(origin) } },
+        destination: { location: { latLng: toGoogle(destination) } },
+        travelMode: 'DRIVE',
+        // The same basis as the distances shown in the list.
+        routingPreference: 'TRAFFIC_UNAWARE',
+      },
+    );
+
+    const route = response.routes?.[0];
+    const polyline = route?.polyline?.encodedPolyline;
+    if (!route || !polyline) return null;
+    return { meters: route.distanceMeters ?? 0, polyline };
   }
 }

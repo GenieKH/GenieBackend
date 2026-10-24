@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@genie/prisma-client';
 import { PrismaService } from '@genie/shared';
 import { FEED_CARD_SELECT } from './feed-card.select';
 import { FeedCursor, encodeFeedCursor } from './feed-cursor';
 import { nextFeedPositions } from './feed-listing-ids';
+import { FEED_SPREAD_HOURS } from './feed-spread';
 import { FollowedAccounts } from './followed-accounts';
 
 type FeedCard = Prisma.PropertyGetPayload<{ select: typeof FEED_CARD_SELECT }>;
@@ -16,16 +17,18 @@ export interface FeedPage {
 
 /**
  * The feed: live listings of the people a user follows, most recently
- * published first. Read when asked (no stored feed): a user follows at most
- * 500 people, and the page is found from each one's newest listings. A
- * listing whose owner deactivated their account is left out until they
- * return.
+ * published first, with one owner's burst of listings spread out among the
+ * others (see `nextFeedPositions`). Read when asked (no stored feed): a user
+ * follows at most 500 people, and the page is found from each one's best
+ * listings. A listing whose owner deactivated their account is left out
+ * until they return.
  */
 @Injectable()
 export class FeedService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly followed: FollowedAccounts,
+    @Inject(FEED_SPREAD_HOURS) private readonly spreadHours: number,
   ) {}
 
   async page(
@@ -40,6 +43,7 @@ export class FeedService {
       this.prisma,
       ownerIds,
       page.limit + 1,
+      this.spreadHours,
       page.after,
     );
     const shown = positions.slice(0, page.limit);
@@ -51,7 +55,7 @@ export class FeedService {
       // the page one short, never the next page shifted.
       nextCursor:
         positions.length > page.limit && last
-          ? encodeFeedCursor({ publishedAt: last.publishedAt, id: last.id })
+          ? encodeFeedCursor({ feedAt: last.feedAt, id: last.id })
           : null,
     };
   }

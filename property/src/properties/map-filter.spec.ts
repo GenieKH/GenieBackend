@@ -33,13 +33,22 @@ describe('mapFilterWhere', () => {
     expect(mapFilterWhere({ maxPrice: 900 }).price).toEqual({ lte: 900 });
   });
 
-  it('checks the size a card shows: land, else unit, else building', () => {
-    const [land, unit, building] = mapFilterWhere({ minSize: 50 }).OR as {
-      AND?: unknown[];
-    }[];
-    expect(land).toEqual({ landSize: { gt: 0, gte: 50 } });
-    expect(unit.AND).toHaveLength(2);
-    expect(building.AND).toHaveLength(3);
+  it('checks the size a card shows for each type', () => {
+    expect(mapFilterWhere({ minSize: 50 }).OR).toEqual([
+      {
+        propertyType: { in: ['Land', 'Business for Sale'] },
+        landSize: { gt: 0, gte: 50 },
+      },
+      {
+        propertyType: { in: ['House', 'Building', 'Warehouse'] },
+        buildingSize: { gt: 0, gte: 50 },
+      },
+      { propertyType: { in: ['Condo'] }, unitSize: { gt: 0, gte: 50 } },
+      {
+        propertyType: { in: ['Borey'] },
+        totalProjectArea: { gt: 0, gte: 50 },
+      },
+    ]);
   });
 
   it('drops only the price for the histogram', () => {

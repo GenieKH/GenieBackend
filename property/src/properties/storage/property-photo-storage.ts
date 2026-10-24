@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PUBLIC_IMAGE_TYPES, SupabaseService } from '@genie/shared';
 import { randomUUID } from 'crypto';
+import { makePhotoThumbnail } from './photo-thumbnail';
 
 const BUCKET = 'property-images';
 
@@ -21,6 +22,12 @@ const LEGACY_FILE_NAME = /^\d+-\d+-[a-zA-Z0-9._-]+$/;
 /** Longest part of the original name kept in a stored name. */
 const MAX_NAME_PART = 80;
 
+/**
+ * A photo's thumbnail is stored next to it under its name plus this, so it
+ * matches the same name patterns and is deleted together with it.
+ */
+const THUMBNAIL_SUFFIX = '.thumb.jpg';
+
 /** The `property-images` bucket: how listing photos are named, uploaded and removed. */
 @Injectable()
 export class PropertyPhotoStorage implements OnModuleInit {
@@ -40,12 +47,40 @@ export class PropertyPhotoStorage implements OnModuleInit {
     }
   }
 
-  /** Deletes listing photos by the names `createPresignedUrls` gave them. */
+  /**
+   * Deletes listing photos by the names `createPresignedUrls` gave them, and
+   * their thumbnails. A photo without a thumbnail is fine: storage ignores
+   * names it does not have.
+   */
   removeUploadedFiles(fileNames: string[]): Promise<void> {
-    return this.storage.removeFiles(
-      BUCKET,
-      fileNames.filter((fileName) => this.isUploadedFileName(fileName)),
+    const photos = fileNames.filter((fileName) =>
+      this.isUploadedFileName(fileName),
     );
+    const thumbnails = photos
+      .filter((fileName) => !this.isThumbnailName(fileName))
+      .map((fileName) => `${fileName}${THUMBNAIL_SUFFIX}`);
+    return this.storage.removeFiles(BUCKET, [...photos, ...thumbnails]);
+  }
+
+  /** True for a thumbnail `createThumbnail` stored, rather than a photo. */
+  isThumbnailName(fileName: string): boolean {
+    return fileName.endsWith(THUMBNAIL_SUFFIX);
+  }
+
+  /**
+   * Makes the thumbnail of an uploaded photo and returns its public URL.
+   * Making it again replaces it, so a retry is harmless.
+   */
+  async createThumbnail(fileName: string): Promise<string> {
+    const original = await this.storage.downloadFile(BUCKET, fileName);
+    const thumbnailName = `${fileName}${THUMBNAIL_SUFFIX}`;
+    await this.storage.uploadFile(
+      BUCKET,
+      thumbnailName,
+      await makePhotoThumbnail(original),
+      'image/jpeg',
+    );
+    return this.getPublicUrl(thumbnailName);
   }
 
   /**

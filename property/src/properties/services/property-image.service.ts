@@ -3,6 +3,7 @@ import { PrismaService } from '@genie/shared';
 import { PropertyPhotoStorage } from '../storage/property-photo-storage';
 import { PropertyQueryService } from './property-query.service';
 import { ListingChanges } from './listing-changes.service';
+import { PropertyThumbnailService } from './property-thumbnail.service';
 
 /** The most photos one listing can have. The app stops at the same number. */
 export const MAX_PROPERTY_IMAGES = 30;
@@ -20,6 +21,7 @@ export class PropertyImageService {
     private readonly query: PropertyQueryService,
     private readonly storage: PropertyPhotoStorage,
     private readonly listingChanges: ListingChanges,
+    private readonly thumbnails: PropertyThumbnailService,
   ) {}
 
   /** One upload URL per name, in the same order, inside this listing's own folder. */
@@ -50,26 +52,30 @@ export class PropertyImageService {
     const property = await this.query.findOwned(userId, propertyId);
     const folder = `${uploadFolder(userId, propertyId)}/`;
     const isOwnUpload = (fileName: string) =>
-      fileName.startsWith(folder) && this.storage.isUploadedFileName(fileName);
+      fileName.startsWith(folder) &&
+      this.storage.isUploadedFileName(fileName) &&
+      !this.storage.isThumbnailName(fileName);
     if (!fileNames.every(isOwnUpload)) {
       throw new BadRequestException('Unknown image file');
     }
 
     const attached = new Set(property.images.map((image) => image.url));
-    const urls = [...new Set(fileNames)]
-      .map((fileName) => this.storage.getPublicUrl(fileName))
-      .filter((url) => !attached.has(url));
-    this.ensureRoomFor(property.images.length, urls.length);
+    const added = [...new Set(fileNames)].filter(
+      (fileName) => !attached.has(this.storage.getPublicUrl(fileName)),
+    );
+    this.ensureRoomFor(property.images.length, added.length);
 
-    if (urls.length > 0) {
+    if (added.length > 0) {
+      const thumbnails = await this.thumbnails.createFor(added);
       const lastOrder = Math.max(
         0,
         ...property.images.map((image) => image.order),
       );
       await this.prisma.propertyImage.createMany({
-        data: urls.map((url, index) => ({
+        data: added.map((fileName, index) => ({
           propertyId,
-          url,
+          url: this.storage.getPublicUrl(fileName),
+          thumbnailUrl: thumbnails.get(fileName) ?? null,
           order: lastOrder + index + 1,
         })),
       });

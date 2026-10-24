@@ -216,12 +216,14 @@ model PropertyKeyword {
 }
 
 model PropertyImage {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  propertyId String   @map("property_id") @db.Uuid
-  url        String
-  order      Int      @default(0)
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  propertyId   String   @map("property_id") @db.Uuid
+  url          String
+  // A small copy for cards and lists; null until made (see migration 29).
+  thumbnailUrl String?  @map("thumbnail_url")
+  order        Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  property     Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@index([propertyId])
   @@map("property_images")

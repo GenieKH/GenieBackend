@@ -24,8 +24,10 @@ export const FEED_CARD_SELECT = {
   landSize: true,
   buildingSize: true,
   unitSize: true,
+  // A Borey's card size.
+  totalProjectArea: true,
   images: {
-    select: { url: true },
+    select: { url: true, thumbnailUrl: true },
     orderBy: { order: 'asc' },
     take: CARD_PHOTOS,
   },

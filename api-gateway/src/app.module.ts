@@ -1,4 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { SentryErrorsModule } from '@genie/shared/sentry';
 import { AppController } from './app.controller';
 import { AuthMiddleware } from './auth.middleware';
 import {
@@ -15,6 +16,7 @@ import {
 } from './service-routes';
 
 @Module({
+  imports: [SentryErrorsModule],
   controllers: [AppController],
   providers: [RedisConnection, RevokedSessions],
 })

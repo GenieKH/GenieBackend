@@ -54,6 +54,7 @@ Shared (add to every service that lists them below):
 | `JWT_PUBLIC_KEY` | as today (newlines as `\n`) |
 | `INTERNAL_SERVICE_SECRET` | **new**, 32+ random characters: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
 | `REDIS_URL` | `${{Redis.REDIS_URL}}` |
+| `SENTRY_DSN` | optional, every service: the DSN of the Sentry project for the backend. Unset, nothing is reported. `SENTRY_ENVIRONMENT` (default `production`; e.g. `staging`) and `SENTRY_TRACES_SAMPLE_RATE` (default 0, performance tracing off) are optional too. The release is Railway's `RAILWAY_GIT_COMMIT_SHA`. |
 
 Per service (everything else comes from the shared list):
 

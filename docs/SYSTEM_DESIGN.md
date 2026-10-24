@@ -636,7 +636,7 @@ These come from reading the code, not from load testing.
 | 13 | Access token stays valid up to 15 minutes after logout | Acceptable; shorten if it worries you |
 | 14 | `/health` on the hosted gateway answered 500 / timeout while other routes worked | Investigate before relying on it for uptime checks |
 | 15 | Old messages and attachments are never deleted; expired OTP and revoked token rows stay | Retention policy and a cleanup job |
-| 16 | No monitoring, error tracking or alerting | Add Sentry (app and backend) and an uptime check |
+| 16 | ~~No monitoring, error tracking or alerting~~ **Sentry added (2026-10-24)**, off until `SENTRY_DSN` is set: every service reports the errors a request ends in that the code did not expect (5xx, `SentryErrorsModule` from `@genie/shared/sentry`, started first in each `main.ts`), never refusals (4xx). No bodies, cookies, query strings or session headers are sent (`dataCollection` plus `withoutSecrets`). The app reports its own (`SENTRY_DSN` in its env file). | Remaining: an uptime check on `/health` |
 | 17 | Hosted dependency advisories: 9 left, all need major upgrades and none look reachable | Review with each framework upgrade |
 
 ### Product decisions (not bugs)

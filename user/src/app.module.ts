@@ -4,6 +4,7 @@ import { BlocksModule } from './blocks/blocks.module';
 import { FollowsModule } from './follows/follows.module';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
+import { SentryErrorsModule } from '@genie/shared/sentry';
 
 /**
  * The user service: profiles, following, blocking, reports, and what happens
@@ -11,6 +12,7 @@ import { UsersModule } from './users/users.module';
  */
 @Module({
   imports: [
+    SentryErrorsModule,
     RedisModule,
     PrismaModule,
     UsersModule,

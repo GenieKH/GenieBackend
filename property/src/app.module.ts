@@ -9,6 +9,7 @@ import { AlertsModule } from './alerts/alerts.module';
 import { FeedModule } from './feed/feed.module';
 import { PropertiesModule } from './properties/properties.module';
 import { SearchModule } from './search/search.module';
+import { SentryErrorsModule } from '@genie/shared/sentry';
 
 /**
  * The property service: listings, their photos and engagement, the home
@@ -16,6 +17,7 @@ import { SearchModule } from './search/search.module';
  */
 @Module({
   imports: [
+    SentryErrorsModule,
     RedisModule,
     PrismaModule,
     PropertiesModule,

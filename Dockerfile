@@ -56,6 +56,8 @@ COPY prisma.config.ts ./
 RUN npx prisma generate
 
 COPY --from=builder /app/shared/dist ./shared/dist
+# Imported by each main.ts before anything else, to start error reporting.
+COPY shared/sentry.js shared/sentry.d.ts ./shared/
 COPY --from=builder /app/$SERVICE/dist ./$SERVICE/dist
 # Never run as root. Nothing under /app is written to at runtime, so root-owned files are fine.
 USER node

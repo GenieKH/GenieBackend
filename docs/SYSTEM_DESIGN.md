@@ -285,7 +285,9 @@ flowchart LR
 
 - Like, favorite and view are `INSERT ... ON CONFLICT DO NOTHING`: repeating is harmless.
 - Every listing read carries `_count: { favorites, views, contacts }`, counted for the listings read only (`PropertyEngagementCounts`; Prisma's own `_count` grouped the whole tables on every read). A view is one row per person (`property_views`), so `views` is how many people opened it; the owner opening their own listing is not recorded (migration 19 removed earlier ones). The app records a view when a listing is selected on the map or its detail sheet opens. Counts may lag by the public cache (map 30 s, detail 60 s).
-- Contact stores a message for the owner in the database. **The owner is not notified** (no push, no email).
+- Contact stores a message for the owner in the database. **The owner is not notified** (no push, no email). The app has no contact form: buyers reach owners by Chat or Call Now.
+- **Leads** (migration 31, `property_leads`): `POST /properties/:id/lead { channel: call|chat }` (204) when a signed-in buyer taps Call or Chat on a published listing. One row per person, listing and channel, so tapping again counts nothing; the owner's own taps are not counted; limited with contact messages (10 every 10 minutes); 404 for a listing that is not published. `_count.contacts` is the number of people who called or chatted, plus contact-form messages.
+- **Insights** `GET /properties/:id/insights` (owner only, 404 for anyone else's): `{ totals: { views, saves, calls, chats }, days: [{ date, views, saves, leads }] }`, the last 14 days in Cambodia time, oldest first, a quiet day as zeros. Each person counts once per kind: a view is someone's first opening, a save one still saved, a lead their first tap per channel. Read through `(property_id, created_at)` indexes on views, favorites and leads.
 - Lists can be read a page at a time. Without `limit` each answers the whole list as an array, as before, so older app builds keep working:
 
 | Endpoint | Page |

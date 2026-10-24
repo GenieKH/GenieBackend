@@ -6,13 +6,14 @@ import {
 } from '@nestjs/common';
 import { PrismaService, RateLimit, RateLimits } from '@genie/shared';
 import { CreateContactDto } from '../dto/create-contact.dto';
+import { LeadChannel } from '../dto/lead.dto';
 import { PUBLISHED } from '../property-includes';
 
 /** Messages to listing owners one account may send: 10 every 10 minutes. */
 const CONTACT_LIMIT = 10;
 const CONTACT_WINDOW_SECONDS = 10 * 60;
 
-/** What users do with someone else's listing: like, favorite, view, contact. */
+/** What users do with someone else's listing: like, favorite, view, contact, call or chat. */
 @Injectable()
 export class PropertyEngagementService {
   private readonly contactLimiter: RateLimit;
@@ -85,8 +86,32 @@ export class PropertyEngagementService {
     return { success: true };
   }
 
+  /**
+   * The buyer tapped Call or Chat on the listing: one lead per person and
+   * channel, so tapping again counts nothing more. Counted only when the
+   * listing is published, and never for its owner. Limited like messages to
+   * owners, since each is one more row.
+   */
+  async recordLead(userId: string, propertyId: string, channel: LeadChannel) {
+    const ownerId = await this.visibleOwnerId(propertyId);
+    if (ownerId === userId) return { success: true };
+    await this.consumeContactAllowance(userId);
+    await this.prisma.propertyLead.createMany({
+      data: [{ propertyId, userId, channel }],
+      skipDuplicates: true,
+    });
+    return { success: true };
+  }
+
   async contact(userId: string, propertyId: string, dto: CreateContactDto) {
     await this.assertVisible(propertyId);
+    await this.consumeContactAllowance(userId);
+    return this.prisma.propertyContact.create({
+      data: { ...dto, propertyId, userId },
+    });
+  }
+
+  private async consumeContactAllowance(userId: string): Promise<void> {
     try {
       await this.contactLimiter.consume(userId);
     } catch {
@@ -95,9 +120,6 @@ export class PropertyEngagementService {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-    return this.prisma.propertyContact.create({
-      data: { ...dto, propertyId, userId },
-    });
   }
 
   /** Strangers can only act on a published listing: a draft or deleted one is "not found" to them. */

@@ -98,6 +98,7 @@ model User {
   reportsMade             Report[] @relation("ReportsMade")
   reportsAbout            Report[] @relation("ReportsAbout")
   reportsReviewed         Report[] @relation("ReportsReviewed")
+  leads                   PropertyLead[]
 
   @@index([email], map: "idx_users_email", where: raw("(email IS NOT NULL)"))
   @@index([phone], map: "idx_users_phone", where: raw("(phone IS NOT NULL)"))
@@ -161,6 +162,7 @@ model Property {
   favorites        PropertyFavorite[]
   images           PropertyImage[]
   reports          Report[]
+  leads            PropertyLead[]
   keywords         PropertyKeyword[]
   likes            PropertyLike[]
   nearbyPlaces     PropertyNearbyPlace[]
@@ -572,4 +574,21 @@ model Report {
 
   @@index([status, createdAt])
   @@map("reports")
+}
+
+/// Someone who called or opened a chat about a listing from its page
+/// (migration 31): the owner's leads. One row per person, listing and
+/// channel ('call' or 'chat', checked by the database).
+model PropertyLead {
+  propertyId String   @map("property_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  channel    String
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, userId, channel])
+  @@index([propertyId, createdAt])
+  @@map("property_leads")
 }

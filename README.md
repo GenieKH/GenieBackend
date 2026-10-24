@@ -184,6 +184,8 @@ All routes go through the gateway. JWT = `Authorization: Bearer <accessToken>`.
 | POST / PUT / DELETE | `/users/me/avatar...` | JWT | profile picture (see below) |
 | GET / PUT / DELETE | `/users/:id/follow` | JWT | follow counts / follow / unfollow; each answers `{ followerCount, followingCount, isFollowing }` (see docs/SYSTEM_DESIGN.md 9a) |
 | GET | `/feed?limit=&cursor=` | JWT | live listings of the people you follow, newest published first: `{ items, nextCursor }` (card fields only; see docs/SYSTEM_DESIGN.md 9a) |
+| POST | `/properties/:id/lead` | JWT | `{ channel: call\|chat }`: a buyer tapped Call or Chat (204; once per person and channel; see docs/SYSTEM_DESIGN.md 9) |
+| GET | `/properties/:id/insights` | JWT, owner | `{ totals: { views, saves, calls, chats }, days: [{ date, views, saves, leads }] }` for the last 14 days |
 | GET / PUT / DELETE | `/users/:id/block` | JWT | block status / block / unblock; each answers `{ isBlocked, canMessage }` (see docs/SYSTEM_DESIGN.md 9b) |
 | GET | `/users/me/blocks` | JWT | the accounts you blocked, newest first: `[{ id, name, username, avatarUrl, blockedAt }]` |
 | POST | `/reports` | JWT | report a listing or an account: `{ targetType: listing\|user, targetId, reason, details? }` -> `{ id, status, createdAt }`; the same open report again answers the same one |

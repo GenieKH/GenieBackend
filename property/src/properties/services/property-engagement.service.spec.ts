@@ -28,6 +28,7 @@ function setup(options: { visible?: boolean; allowContact?: boolean } = {}) {
     },
     propertyView: { createMany: jest.fn() },
     propertyContact: { create: jest.fn().mockResolvedValue({ id: 'c1' }) },
+    propertyLead: { createMany: jest.fn() },
   };
   const limiter = {
     consume: allowContact
@@ -52,6 +53,7 @@ describe('PropertyEngagementService', () => {
       (s: PropertyEngagementService) =>
         s.contact('u', 'p1', { name: 'n', message: 'm' }),
     ],
+    ['lead', (s: PropertyEngagementService) => s.recordLead('u', 'p1', 'call')],
   ])(
     '%s of a listing that is not published is 404 and writes nothing',
     async (_name, act) => {
@@ -141,5 +143,36 @@ describe('PropertyEngagementService', () => {
     await service.unfavorite('u', 'p1');
     expect(prisma.propertyLike.deleteMany).toHaveBeenCalled();
     expect(prisma.propertyFavorite.deleteMany).toHaveBeenCalled();
+  });
+
+  describe('recordLead', () => {
+    it('records one lead per person and channel', async () => {
+      const { service, prisma } = setup();
+
+      await service.recordLead('u', 'p1', 'chat');
+
+      expect(prisma.propertyLead.createMany).toHaveBeenCalledWith({
+        data: [{ propertyId: 'p1', userId: 'u', channel: 'chat' }],
+        skipDuplicates: true,
+      });
+    });
+
+    it("never counts the owner's own taps", async () => {
+      const { service, prisma, limiter } = setup();
+
+      await service.recordLead('owner', 'p1', 'call');
+
+      expect(prisma.propertyLead.createMany).not.toHaveBeenCalled();
+      expect(limiter.consume).not.toHaveBeenCalled();
+    });
+
+    it('is limited like messages to owners', async () => {
+      const { service, prisma } = setup({ allowContact: false });
+
+      await expect(
+        service.recordLead('u', 'p1', 'call'),
+      ).rejects.toBeInstanceOf(HttpException);
+      expect(prisma.propertyLead.createMany).not.toHaveBeenCalled();
+    });
   });
 });

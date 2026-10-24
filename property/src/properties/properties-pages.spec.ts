@@ -12,6 +12,7 @@ describe('list endpoints', () => {
     {} as never,
     favorites as never,
     owned as never,
+    {} as never,
   );
 
   beforeEach(() => jest.clearAllMocks());

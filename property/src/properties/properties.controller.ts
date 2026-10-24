@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -17,6 +19,7 @@ import { CreatePropertyDto } from './dto/create-property.dto';
 import { FavoritesPageQuery } from './dto/favorites-page.query';
 import { ImageFileNamesDto } from './dto/image-file-names.dto';
 import { ImageUrlsDto } from './dto/image-urls.dto';
+import { LeadDto } from './dto/lead.dto';
 import { MapBoundsQuery } from './dto/map-bounds.query';
 import { PageQuery } from './dto/page.query';
 import { PinDto } from './dto/pin.dto';
@@ -25,6 +28,7 @@ import { FavoriteListingsService } from './services/favorite-listings.service';
 import { OwnerListingsService } from './services/owner-listings.service';
 import { PropertyEngagementService } from './services/property-engagement.service';
 import { PropertyImageService } from './services/property-image.service';
+import { PropertyInsightsService } from './services/property-insights.service';
 import { PropertyLifecycleService } from './services/property-lifecycle.service';
 import { PropertyQueryService } from './services/property-query.service';
 
@@ -40,6 +44,7 @@ export class PropertiesController {
     private readonly engagement: PropertyEngagementService,
     private readonly favorites: FavoriteListingsService,
     private readonly owned: OwnerListingsService,
+    private readonly insights: PropertyInsightsService,
   ) {}
 
   @Post()
@@ -99,6 +104,18 @@ export class PropertiesController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.query.findOwned(userId, id);
+  }
+
+  /**
+   * How the caller's own listing is doing: totals and the last 14 days
+   * (`PropertyInsights`). 404 for anyone else's.
+   */
+  @Get(':id/insights')
+  getInsights(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.insights.of(userId, id);
   }
 
   @Patch(':id')
@@ -233,6 +250,17 @@ export class PropertiesController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.engagement.logView(userId, id);
+  }
+
+  /** The caller tapped Call or Chat on a published listing: a lead for its owner. */
+  @Post(':id/lead')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async recordLead(
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: LeadDto,
+  ): Promise<void> {
+    await this.engagement.recordLead(userId, id, dto.channel);
   }
 
   @Post(':id/contact')

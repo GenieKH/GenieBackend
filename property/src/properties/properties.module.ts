@@ -25,6 +25,7 @@ import { OwnerListingsService } from './services/owner-listings.service';
 import { PropertyEngagementCounts } from './services/property-engagement-counts.service';
 import { PropertyEngagementService } from './services/property-engagement.service';
 import { PropertyImageService } from './services/property-image.service';
+import { PropertyInsightsService } from './services/property-insights.service';
 import { PropertyLifecycleService } from './services/property-lifecycle.service';
 import { PropertyPublicationService } from './services/property-publication.service';
 import { PropertyQueryService } from './services/property-query.service';
@@ -56,6 +57,7 @@ import { PropertyPhotoStorage } from './storage/property-photo-storage';
     PropertyPhotoStorage,
     PropertyThumbnailService,
     PropertyImageService,
+    PropertyInsightsService,
     PropertyEngagementService,
     GuestSessionService,
     PropertyNearbyService,

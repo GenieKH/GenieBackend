@@ -93,6 +93,11 @@ model User {
   hiddenMessages          ChatHiddenMessage[]
   following               Follow[] @relation("Following")
   followers               Follow[] @relation("Followers")
+  blocking                UserBlock[] @relation("Blocking")
+  blockedBy               UserBlock[] @relation("BlockedBy")
+  reportsMade             Report[] @relation("ReportsMade")
+  reportsAbout            Report[] @relation("ReportsAbout")
+  reportsReviewed         Report[] @relation("ReportsReviewed")
 
   @@index([email], map: "idx_users_email", where: raw("(email IS NOT NULL)"))
   @@index([phone], map: "idx_users_phone", where: raw("(phone IS NOT NULL)"))
@@ -155,6 +160,7 @@ model Property {
   contacts         PropertyContact[]
   favorites        PropertyFavorite[]
   images           PropertyImage[]
+  reports          Report[]
   keywords         PropertyKeyword[]
   likes            PropertyLike[]
   nearbyPlaces     PropertyNearbyPlace[]
@@ -524,4 +530,46 @@ model Follow {
   @@id([followerId, followingId])
   @@index([followingId])
   @@map("follows")
+}
+
+/// Who has blocked whom (migration 30). Blocking removes follows both ways and
+/// stops the two from following, messaging or calling each other.
+model UserBlock {
+  blockerId String   @map("blocker_id") @db.Uuid
+  blockedId String   @map("blocked_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  blocker User @relation("Blocking", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlockedBy", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("user_blocks")
+}
+
+/// A report of a listing or an account for an admin to review (migration 30).
+/// Exactly one of `propertyId` and `reportedUserId` is set (checked by the
+/// database), and a person has at most one open report per target.
+model Report {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reporterId     String    @map("reporter_id") @db.Uuid
+  propertyId     String?   @map("property_id") @db.Uuid
+  reportedUserId String?   @map("reported_user_id") @db.Uuid
+  /// One of `REPORT_REASONS` (checked by the database).
+  reason         String
+  details        String?
+  /// 'open', 'resolved' or 'dismissed'.
+  status         String    @default("open")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  reviewedAt     DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  reviewedBy     String?   @map("reviewed_by") @db.Uuid
+  reviewNote     String?   @map("review_note")
+
+  reporter     User      @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+  property     Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  reportedUser User?     @relation("ReportsAbout", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  reviewer     User?     @relation("ReportsReviewed", fields: [reviewedBy], references: [id])
+
+  @@index([status, createdAt])
+  @@map("reports")
 }

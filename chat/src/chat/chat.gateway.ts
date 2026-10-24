@@ -11,6 +11,7 @@ import {
 } from '@nestjs/websockets';
 import { Namespace, Socket } from 'socket.io';
 import { RateLimit, RateLimits, RevokedSessions } from '@genie/shared';
+import { BlockedException } from './block-checker';
 import { ChatService } from './chat.service';
 import { PresenceTargetDto, SendMessageDto } from './dto/chat.dto';
 import { PresenceService } from './presence.service';
@@ -146,6 +147,9 @@ export class ChatGateway
 
       return { status: 'ok', messageId: message.id, message };
     } catch (error) {
+      if (error instanceof BlockedException) {
+        return { status: 'error', message: error.message, code: error.code };
+      }
       if (error instanceof HttpException) {
         return { status: 'error', message: error.message };
       }

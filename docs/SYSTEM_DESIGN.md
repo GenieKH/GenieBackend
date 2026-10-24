@@ -329,8 +329,39 @@ them, so a page costs at most 500 x 21 index rows however many listings those ow
 A cursor, not an offset: a listing published while someone scrolls neither repeats nor pushes
 one out of the next pages. The app keeps the first page per account on the device, shows it at
 once on the next start, and reads the feed again when the tab is shown after 5 minutes.
-Deleting an account deletes its follows (foreign keys). Not built yet: blocking (a block should
-remove follows both ways), feed events (price drop, sold) and pushes to followers.
+Deleting an account deletes its follows (foreign keys). Blocking removes follows both ways (9b). Not built yet: feed events (price drop, sold) and pushes to followers.
+
+---
+
+## 9b. Block and report
+
+Migration 30: `user_blocks` (one row per pair, like `follows`) and `reports`. Both are owned by the user
+service. The chat service asks it whether two people may reach each other
+(`GET /internal/blocks/:userId/with/:otherId`, service token from `chat`), so it never reads `user_blocks`.
+
+| Endpoint | Answer | Errors |
+|---|---|---|
+| `GET /users/:id/block` | `{ isBlocked, canMessage }`: `isBlocked` is whether *you* blocked them; `canMessage` is false when either blocked the other, so the person blocked is not told who did what | 400, 401 |
+| `PUT /users/:id/block` | the same, after blocking; twice changes nothing | 400 (yourself), 401, 404 |
+| `DELETE /users/:id/block` | the same, after unblocking; twice changes nothing | 400, 401 |
+| `GET /users/me/blocks` | `[{ id, name, username, avatarUrl, blockedAt }]`, newest first, at most 500 | 401 |
+| `POST /reports` `{ targetType: listing\|user, targetId, reason, details? }` | `201 { id, status: open, createdAt }`; one open report per person and target (partial unique indexes), so reporting again answers the same one | 400 (yourself, bad reason or target type), 401, 404 (the database's foreign key: this service does not read listings), 429 (20 an hour) |
+| `GET /reports/admin?status=&limit=&cursor=` | admins only (`AdminGuard`, now in `shared`): `{ items, nextCursor }`, oldest first, `open` by default; a listing is named by `propertyId` only | 401, 403 |
+| `PATCH /reports/admin/:id` `{ status: resolved\|dismissed, note? }` | the report, naming its reviewer | 401, 403, 404, 409 (already closed) |
+
+- Blocking deletes the follows between the two in the same transaction, and drops both accounts' cached block
+  and following ids. Unblocking does not bring the follows back.
+- While either has blocked the other: following is refused (`403`); sending a message is refused on the socket
+  as `{ status: error, code: blocked }` and nothing is stored or pushed; a call invite answers `unavailable`,
+  as if nobody answered. Earlier messages stay in both conversation lists.
+- If the user service cannot answer within 2 s, messages and calls go through and the failure is logged:
+  chat keeps working through a user-service outage.
+- Reasons: `spam`, `scam`, `misleading`, `inappropriate`, `duplicate`, `unavailable`, `harassment`,
+  `impersonation`, `other` (a CHECK in the database and `REPORT_REASONS`). A message is reported as its sender:
+  the server cannot read it. `details` is at most 1000 characters.
+- A report is deleted with its target (a deleted listing or account needs no review). Closing a report changes
+  nothing else; taking a listing down is a separate step. There is no admin screen yet.
+- Not covered: presence and last seen are still visible to a blocked person.
 
 ---
 

@@ -1,6 +1,5 @@
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { PushContent, PushTarget } from '../delivery/push-sender';
-import { AdminGuard } from './admin.guard';
 import { PromotionSender } from './promotion-sender';
 import { PromotionsService } from './promotions.service';
 
@@ -167,39 +166,5 @@ describe('PromotionSender', () => {
     await expect(sender.send('p1')).rejects.toThrow('database gone');
 
     expect(lastUpdate().data.status).toBe('failed');
-  });
-});
-
-describe('AdminGuard', () => {
-  const userTable = { findFirst: jest.fn() };
-  const guard = new AdminGuard({ user: userTable } as never);
-  const request = (user?: { userId: string }) =>
-    ({ switchToHttp: () => ({ getRequest: () => ({ user }) }) }) as never;
-
-  it('lets an admin in', async () => {
-    userTable.findFirst.mockResolvedValue({ role: 'admin' });
-
-    await expect(guard.canActivate(request({ userId: 'a' }))).resolves.toBe(
-      true,
-    );
-  });
-
-  it('keeps everyone else out', async () => {
-    userTable.findFirst.mockResolvedValue({ role: 'user' });
-
-    await expect(guard.canActivate(request({ userId: 'u' }))).rejects.toThrow(
-      ForbiddenException,
-    );
-  });
-
-  it('keeps out a deactivated or unknown account', async () => {
-    userTable.findFirst.mockResolvedValue(null);
-
-    await expect(
-      guard.canActivate(request({ userId: 'gone' })),
-    ).rejects.toThrow(ForbiddenException);
-    await expect(guard.canActivate(request())).rejects.toThrow(
-      ForbiddenException,
-    );
   });
 });

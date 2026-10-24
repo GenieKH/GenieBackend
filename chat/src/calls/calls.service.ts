@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
+import { BlockChecker } from '../chat/block-checker';
 import { DISPLAY_FIELDS, displayName } from '../chat/display-name';
 import { NotificationClient } from '../chat/notification.client';
 import { CallStore } from './call.store';
@@ -36,6 +37,7 @@ export class CallsService implements OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly store: CallStore,
     private readonly notifications: NotificationClient,
+    private readonly blocks: BlockChecker,
   ) {}
 
   /** Called with every call that ends, however it ends, once. */
@@ -52,7 +54,7 @@ export class CallsService implements OnModuleDestroy {
   ): Promise<InviteResult> {
     if (callerId === calleeId) return { ok: false, reason: 'self' };
 
-    const [caller, callee] = await Promise.all([
+    const [caller, callee, blocked] = await Promise.all([
       this.prisma.user.findFirst({
         where: { id: callerId, deactivatedAt: null },
         select: DISPLAY_FIELDS,
@@ -61,8 +63,12 @@ export class CallsService implements OnModuleDestroy {
         where: { id: calleeId, deactivatedAt: null },
         select: { id: true },
       }),
+      this.blocks.eitherBlocked(callerId, calleeId),
     ]);
-    if (!caller || !callee) return { ok: false, reason: 'unavailable' };
+    // A block looks like nobody answering: the caller is not told about it.
+    if (!caller || !callee || blocked) {
+      return { ok: false, reason: 'unavailable' };
+    }
 
     const call: LiveCall = {
       id: callId,

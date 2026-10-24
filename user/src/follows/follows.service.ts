@@ -1,20 +1,19 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { JsonCache, PrismaService } from '@genie/shared';
+import { BlocksService } from '../blocks/blocks.service';
+import { followingIdsKey } from './following-ids-key';
 
 /** The most people one account may follow. It also bounds the feed query. */
 export const MAX_FOLLOWING = 500;
 
 /** Follow and unfollow drop the entry; this is only the safety net if Redis missed that. */
 const FOLLOWING_IDS_TTL_SECONDS = 600;
-
-function followingIdsKey(userId: string): string {
-  return `follows:following-ids:${userId}`;
-}
 
 /** What a profile shows about following: counts only, never who. */
 export interface FollowSummary {
@@ -34,14 +33,21 @@ export class FollowsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: JsonCache,
+    private readonly blocks: BlocksService,
   ) {}
 
-  /** Follows `targetId`. Following someone already followed changes nothing. */
+  /**
+   * Follows `targetId`. Following someone already followed changes nothing.
+   * Two people where either has blocked the other cannot follow each other.
+   */
   async follow(viewerId: string, targetId: string): Promise<FollowSummary> {
     if (viewerId === targetId) {
       throw new BadRequestException('You cannot follow yourself');
     }
     await this.requireVisible(targetId);
+    if (await this.blocks.eitherBlocked(viewerId, targetId)) {
+      throw new ForbiddenException('You cannot follow this account');
+    }
 
     if (!(await this.isFollowing(viewerId, targetId))) {
       await this.requireRoomToFollow(viewerId);

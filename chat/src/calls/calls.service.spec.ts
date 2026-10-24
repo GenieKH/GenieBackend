@@ -49,6 +49,7 @@ describe('CallsService', () => {
   const callLogTable = { create: jest.fn(), update: jest.fn() };
   const prisma = { user: userTable, callLog: callLogTable };
   const notifications = { callRinging: jest.fn(), callEnded: jest.fn() };
+  const blocks = { eitherBlocked: jest.fn() };
   let store: MemoryCallStore;
   let calls: CallsService;
   let ended: [string, CallEndReason][];
@@ -67,7 +68,13 @@ describe('CallsService', () => {
     callLogTable.create.mockResolvedValue({});
     callLogTable.update.mockResolvedValue({});
     store = new MemoryCallStore();
-    calls = new CallsService(prisma as never, store, notifications as never);
+    blocks.eitherBlocked.mockResolvedValue(false);
+    calls = new CallsService(
+      prisma as never,
+      store,
+      notifications as never,
+      blocks as never,
+    );
     ended = [];
     calls.onEnded((call, reason) => ended.push([call.id, reason]));
   });
@@ -93,6 +100,18 @@ describe('CallsService', () => {
       callerName: 'Alice',
       calleeId: BOB,
     });
+  });
+
+  it('a block looks like nobody answering: no ring, no push, no record', async () => {
+    blocks.eitherBlocked.mockResolvedValue(true);
+
+    await expect(calls.invite(ALICE, 'sock-a', 'c1', BOB)).resolves.toEqual({
+      ok: false,
+      reason: 'unavailable',
+    });
+    expect(blocks.eitherBlocked).toHaveBeenCalledWith(ALICE, BOB);
+    expect(callLogTable.create).not.toHaveBeenCalled();
+    expect(notifications.callRinging).not.toHaveBeenCalled();
   });
 
   it('refuses calling oneself, or someone who is gone', async () => {

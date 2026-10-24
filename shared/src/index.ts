@@ -17,6 +17,7 @@ export {
   SupabaseService,
 } from './supabase/supabase.service';
 
+export { AdminGuard } from './auth/admin.guard';
 export { CurrentUserId } from './auth/current-user-id.decorator';
 export { JwtAuthGuard } from './auth/jwt-auth.guard';
 export { describeJwtPublicKey } from './auth/jwt-key-info';

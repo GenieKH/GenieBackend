@@ -1,5 +1,5 @@
 import { Logger, Module } from '@nestjs/common';
-import { RevokedSessions } from '@genie/shared';
+import { AdminGuard, RevokedSessions } from '@genie/shared';
 import { CallNotifier } from './calls/call-notifier';
 import { ChatMessageNotifier } from './chat/chat-message-notifier';
 import { DisabledPushSender } from './delivery/disabled-push-sender';
@@ -12,7 +12,6 @@ import { SessionSignOutListener } from './devices/session-sign-out.listener';
 import { InternalNotificationsController } from './internal/internal-notifications.controller';
 import { NotificationPreferencesController } from './preferences/notification-preferences.controller';
 import { NotificationPreferencesService } from './preferences/notification-preferences.service';
-import { AdminGuard } from './promotions/admin.guard';
 import { PromotionSender } from './promotions/promotion-sender';
 import { PromotionsController } from './promotions/promotions.controller';
 import { PromotionsService } from './promotions/promotions.service';

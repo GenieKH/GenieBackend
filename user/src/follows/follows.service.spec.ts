@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { FollowsService, MAX_FOLLOWING } from './follows.service';
@@ -25,6 +26,7 @@ describe('FollowsService', () => {
       (_key: string, _ttl: number, load: () => Promise<unknown>) => load(),
     ),
   };
+  const blocks = { eitherBlocked: jest.fn() };
   let service: FollowsService;
 
   /** `count` answers by what it is asked: followers of, following of, or the limit check. */
@@ -40,13 +42,28 @@ describe('FollowsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new FollowsService(prisma as never, cache as never);
+    service = new FollowsService(
+      prisma as never,
+      cache as never,
+      blocks as never,
+    );
+    blocks.eitherBlocked.mockResolvedValue(false);
     prisma.user.findFirst.mockResolvedValue({ id: THEM });
     prisma.follow.findUnique.mockResolvedValue(null);
     counts(0, 0);
   });
 
   describe('follow', () => {
+    it('refuses when either has blocked the other, and adds nothing', async () => {
+      blocks.eitherBlocked.mockResolvedValue(true);
+
+      await expect(service.follow(ME, THEM)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(blocks.eitherBlocked).toHaveBeenCalledWith(ME, THEM);
+      expect(prisma.follow.createMany).not.toHaveBeenCalled();
+    });
+
     it('adds the follow, clears the cached ids, and answers the new counts', async () => {
       prisma.follow.findUnique
         .mockResolvedValueOnce(null)

@@ -230,7 +230,7 @@ flowchart LR
 - Optional filters (the pills under the search bar): `propertyType` and `listingType`, exact values from `property-options.ts` (400 otherwise). Served by the `(status, property_type, lat, lng)` and `(status, listing_type, lat, lng)` indexes.
 - The list is cached for 30 s per ~1 km grid box and filter, and cleared the moment a published listing in its area changes (versions per ~11 km cell; a map wider than 64 cells uses one version every change counts up); `isVisited` is looked up per user.
 - No pagination and no limit on the map query: a wide box returns everything with all images.
-- The owner's **email and phone are included** for anyone, signed in or not.
+- The owner's email and phone, and the listing's own `contactPhone`, go to signed-in callers only (`GuestContactInterceptor` on `/public/properties` and `/public/search`, after `OptionalJwtAuthGuard`). A guest, or a token that is expired or invalid, gets the same answer without them, so the public routes cannot be used to collect contact details. The cached answer is shared; the details are dropped from a copy. The app renews an access token it can see has expired before sending, so a signed-in user is not served the guest answer.
 
 ## 8a. Search: places, listings and people
 
@@ -258,7 +258,7 @@ flowchart LR
 - Places come from Google, called by the server so its key (`GOOGLE_PLACES_API_KEY`) is never in the app. The app makes one `session` token per search, so the suggestions and the place picked are billed as one session. Without a key, or when Google fails, search still answers listings and people.
 - A place's viewport is grown to at least ~500 m, so a single address still finds the listings around it.
 - Listing results have their own cache version: publishing or hiding any listing outdates them at once; one owner's listings are outdated by that owner's changes only. Trigram indexes (migration `11_search_indexes`) keep the `ILIKE '%word%'` queries off full table scans.
-- A person result carries `memberSince`. `GET /public/search/people/:userId` is the profile page, opened from search or by tapping the other person in a chat. It answers for any active account (404 if missing or deactivated), but only search finds people, and only publishers. It carries `email` and `phone` only for publishers, whose listings already show them; someone who has published nothing keeps them private. Result lists never include contact details, so search cannot be used to collect them in bulk. The page has Follow (does nothing yet), Chat and View on map.
+- A person result carries `memberSince`. `GET /public/search/people/:userId` is the profile page, opened from search or by tapping the other person in a chat. It answers for any active account (404 if missing or deactivated), but only search finds people, and only publishers. It carries `email` and `phone` only for publishers, whose listings already show them, and only to a signed-in caller; someone who has published nothing keeps them private. Result lists never include contact details, so search cannot be used to collect them in bulk. The page has Follow (does nothing yet), Chat and View on map.
 
 **Search history** (signed-in only, token required; migration `12_search_history`):
 
@@ -557,7 +557,7 @@ These come from reading the code, not from load testing.
 |---|---|---|---|
 | 1 | **Listing fee can be skipped.** `POST /properties` accepts `status: "Active"`, and `PATCH /properties/:id/publish` sets Active from Draft with no payment | Paid feature is free; anyone can publish | Ignore `status` on create; make `publish` only reachable through a settled payment (or remove it) |
 | 2 | **Payment is a mock** | No revenue; flow around it is untested against a real provider | Integrate ABA PayWay (or other) behind the existing `PaymentProvider` |
-| 3 | **Owner email and phone returned to anyone** on map and detail, even signed out | Scraping of every seller's contact details | Return contact details only to signed-in users, or only a "contact" action |
+| 3 | ~~**Owner email and phone returned to anyone** on map and detail, even signed out~~ **Done (2026-10-24):** signed-in callers only (section 8) | Scraping of every seller's contact details | |
 | 4 | **Database password in public git history**, and shared by dev and production | Full database access | Rotate; create a separate staging database |
 | 5 | **Single container runs everything** | One crash or deploy is a full outage; cannot scale one service | Split services, or at least run 2 replicas once state is moved out (see below) |
 | 6 | **No push notifications** | A user does not know a message or contact arrived unless the app is open | Add FCM; notify on new chat message and new contact |

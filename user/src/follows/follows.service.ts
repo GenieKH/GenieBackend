@@ -102,6 +102,18 @@ export class FollowsService {
     );
   }
 
+  /**
+   * Everyone who follows `userId` and has not hidden their account: who is
+   * told when they post a listing. Read only then, so it is not cached.
+   */
+  async followerIds(userId: string): Promise<string[]> {
+    const rows = await this.prisma.follow.findMany({
+      where: { followingId: userId, follower: { deactivatedAt: null } },
+      select: { followerId: true },
+    });
+    return rows.map((row) => row.followerId);
+  }
+
   /** Counts leave out hidden (deactivated) accounts, as their profiles are hidden too. */
   private async summary(
     viewerId: string,

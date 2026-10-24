@@ -3,10 +3,14 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsIn,
   IsNotEmpty,
+  IsNumber,
   IsString,
   IsUUID,
   MaxLength,
+  Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -43,4 +47,50 @@ export class SavedSearchMatchEventDto {
   @ValidateNested({ each: true })
   @Type(() => SavedSearchRecipientDto)
   recipients: SavedSearchRecipientDto[];
+}
+
+/** The people to tell: at least one, at most [MAX_RECIPIENTS] per call. */
+class ListingRecipientsDto {
+  @IsUUID()
+  propertyId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_TITLE_LENGTH)
+  title: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_RECIPIENTS)
+  @IsUUID('all', { each: true })
+  recipients: string[];
+}
+
+/** From property: someone these people follow posted a listing. */
+export class FollowedListingEventDto extends ListingRecipientsDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  ownerName: string;
+}
+
+/** From property: a listing these people saved dropped its price, or was sold. */
+export class SavedListingUpdateEventDto extends ListingRecipientsDto {
+  @IsIn(['price_drop', 'sold'])
+  kind: 'price_drop' | 'sold';
+
+  /** USD, what a buyer paid before and pays now; for a price drop only. */
+  @ValidateIf(
+    (event: SavedListingUpdateEventDto) => event.kind === 'price_drop',
+  )
+  @IsNumber()
+  @Min(0)
+  from?: number;
+
+  @ValidateIf(
+    (event: SavedListingUpdateEventDto) => event.kind === 'price_drop',
+  )
+  @IsNumber()
+  @Min(0)
+  to?: number;
 }

@@ -156,6 +156,13 @@ model Property {
   createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   /// When it last went live (Draft, Expired or Sold -> Active); null if never. The feed is ordered by it.
   publishedAt      DateTime?            @map("published_at") @db.Timestamptz(6)
+  /// When followers were told about it (migration 33): once, the first time it went on the map.
+  followersNotifiedAt DateTime? @map("followers_notified_at") @db.Timestamptz(6)
+  /// The last time the price a buyer pays fell while it was live, and what it was before.
+  priceDroppedAt      DateTime? @map("price_dropped_at") @db.Timestamptz(6)
+  previousPrice       Decimal?  @map("previous_price") @db.Decimal(12, 2)
+  /// When the people who saved it were last told of a drop (at most once a day).
+  priceDropNotifiedAt DateTime? @map("price_drop_notified_at") @db.Timestamptz(6)
   updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
   payments         PaymentTransaction[]
   user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -466,6 +473,10 @@ model NotificationPreferences {
   promotions   Boolean  @default(true)
   /// New listings matching a saved search (migration 32).
   savedSearchAlerts Boolean @default(true) @map("saved_search_alerts")
+  /// New listings from people they follow (migration 33).
+  followedListings  Boolean @default(true) @map("followed_listings")
+  /// Price drops and sales of listings they saved (migration 33).
+  savedListingUpdates Boolean @default(true) @map("saved_listing_updates")
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

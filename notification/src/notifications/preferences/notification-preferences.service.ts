@@ -7,6 +7,10 @@ export interface NotificationPreferences {
   promotions: boolean;
   /** New listings matching one of their saved searches. */
   savedSearchAlerts: boolean;
+  /** New listings from people they follow. */
+  followedListings: boolean;
+  /** Price drops and sales of listings they saved. */
+  savedListingUpdates: boolean;
 }
 
 /** One kind of push a user can turn off. */
@@ -17,12 +21,16 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
   chatMessages: true,
   promotions: true,
   savedSearchAlerts: true,
+  followedListings: true,
+  savedListingUpdates: true,
 };
 
 const PREFERENCE_SELECT = {
   chatMessages: true,
   promotions: true,
   savedSearchAlerts: true,
+  followedListings: true,
+  savedListingUpdates: true,
 } as const;
 
 @Injectable()

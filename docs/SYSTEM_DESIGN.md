@@ -346,7 +346,20 @@ them, so a page costs at most 500 x 21 index rows however many listings those ow
 A cursor, not an offset: a listing published while someone scrolls neither repeats nor pushes
 one out of the next pages. The app keeps the first page per account on the device, shows it at
 once on the next start, and reads the feed again when the tab is shown after 5 minutes.
-Deleting an account deletes its follows (foreign keys). Blocking removes follows both ways (9b). Not built yet: feed events (price drop, sold) and pushes to followers.
+Deleting an account deletes its follows (foreign keys). Blocking removes follows both ways (9b).
+
+**Pushes about listings** (migration 33; `property/src/alerts`, driven by the listing events of `ListingChanges`):
+
+| Event | Who is told | How often | Preference |
+|---|---|---|---|
+| A listing goes on the map (see 8a) | Everyone following its owner (`GET /internal/follows/:userId/followers` on the user service) | Once per listing ever (`properties.followers_notified_at`, claimed atomically): publishing again or relisting tells nobody twice, as the feed does not move it up | `followedListings` |
+| The price a buyer pays (after discount) on a live listing falls by at least 1% | People who saved it, never the owner | At most one push per listing a day (`price_drop_notified_at`) | `savedListingUpdates` |
+| A live listing is marked sold | People who saved it | Each time | `savedListingUpdates` |
+
+- Every drop is marked on the listing (`price_dropped_at`, `previous_price` = what a buyer paid before); a later price at or above `previous_price` takes the mark away. Feed cards (`FEED_CARD_SELECT`) and full listings carry both, and the app shows "Price dropped" with the old price for 14 days.
+- Notification routes (service token from `property`, at most 500 people a call): `POST /internal/notifications/followed-listing { propertyId, title, ownerName, recipients }`, `POST /internal/notifications/saved-listing-update { propertyId, title, kind: price_drop|sold, from?, to?, recipients }`. Pushes: "Dara posted a new listing" / "Price dropped: <title>" ("$120,000 → $110,000") / "Sold: <title>", Android channel `listing_alerts`, data `type` `followed_listing`, `price_drop` or `listing_sold` with `propertyId`, one per listing on the phone.
+- If the user service cannot answer when a listing goes live, its followers are not told (the claim is already made); the failure is logged.
+- The feed still shows live listings only: a sale is a push, not a feed card.
 
 ---
 
@@ -557,8 +570,8 @@ API (all need a signed-in user):
 |---|---|
 | `POST /notifications/devices` `{ token, platform: android\|ios\|web, locale?: en\|km }` | `204`. A token belongs to one account and session; signing in as someone else moves it. At most 20 devices per account, oldest dropped |
 | `POST /notifications/devices/remove` `{ token }` | `204`. The app calls it before signing out; only the owner's own device is removed |
-| `GET /notifications/preferences` | `{ chatMessages, promotions, savedSearchAlerts }`, all `true` until changed |
-| `PATCH /notifications/preferences` `{ chatMessages?, promotions?, savedSearchAlerts? }` | Returns the saved preferences |
+| `GET /notifications/preferences` | `{ chatMessages, promotions, savedSearchAlerts, followedListings, savedListingUpdates }`, all `true` until changed |
+| `PATCH /notifications/preferences` `{ chatMessages?, promotions?, savedSearchAlerts?, followedListings?, savedListingUpdates? }` | Returns the saved preferences |
 | `POST /notifications/promotions` `{ id?, title (≤65), body (≤240), titleKm?, bodyKm?, propertyId?, url? (https), imageUrl? (https) }` | Admins only (`users.role = 'admin'`, read from the database). `202` with its status; sent in the background to every device whose owner allows promotions. Repeating a request with the same `id` sends it once |
 | `GET /notifications/promotions/:id` | Admins only: `status` (queued, sending, sent, failed) and counts |
 

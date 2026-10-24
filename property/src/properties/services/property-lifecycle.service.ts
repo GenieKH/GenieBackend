@@ -4,6 +4,7 @@ import { boundaryCentroid } from '../boundary-centroid';
 import { BoundaryDto } from '../dto/boundary.dto';
 import { PropertyNearbyService } from '../nearby/property-nearby.service';
 import { assertValidDiscount } from '../property-discount';
+import { priceDrop, priceDropColumns, pricedOf } from '../price-drop';
 import { CreatePropertyDto } from '../dto/create-property.dto';
 import { PinDto } from '../dto/pin.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
@@ -59,28 +60,38 @@ export class PropertyLifecycleService {
 
   async update(userId: string, id: string, dto: UpdatePropertyDto) {
     const before = await this.query.findOwned(userId, id);
-    // The discount must still fit the price after the edit, whichever changed.
-    assertValidDiscount({
-      price: dto.price ?? Number(before.price),
+    const pricedBefore = pricedOf(before);
+    const pricedAfter = {
+      price: dto.price ?? pricedBefore.price,
       discountType:
-        dto.discountType !== undefined ? dto.discountType : before.discountType,
+        dto.discountType !== undefined
+          ? dto.discountType
+          : pricedBefore.discountType,
       discountValue:
         dto.discountValue !== undefined
           ? dto.discountValue
-          : before.discountValue == null
-            ? null
-            : Number(before.discountValue),
-    });
+          : pricedBefore.discountValue,
+    };
+    // The discount must still fit the price after the edit, whichever changed.
+    assertValidDiscount(pricedAfter);
+    const drop =
+      before.status === PUBLIC_STATUS
+        ? priceDrop(pricedBefore, pricedAfter)
+        : null;
     // An edit does not change the counts: read alongside it.
     const [property, counts] = await Promise.all([
       this.prisma.property.update({
         where: { id },
-        data: toUpdateData(dto, before.propertyType),
+        data: {
+          ...toUpdateData(dto, before.propertyType),
+          ...priceDropColumns(before, pricedAfter, drop),
+        },
         include: PROPERTY_WITH_RELATIONS,
       }),
       this.counts.of([id]),
     ]);
     await this.refreshPublicView(property, [before.status]);
+    if (drop) void this.listingChanges.priceDropped(id, drop);
     if (dto.keywords) {
       this.nearby.keywordsChanged(id, keywordCodes(before), dto.keywords);
     }
@@ -166,6 +177,9 @@ export class PropertyLifecycleService {
     });
     await this.refreshPublicView(property, [before.status, to]);
     this.announceIfNowOnMap(before, property);
+    if (to === 'Sold' && before.status === PUBLIC_STATUS) {
+      void this.listingChanges.sold(property.id);
+    }
     return property;
   }
 

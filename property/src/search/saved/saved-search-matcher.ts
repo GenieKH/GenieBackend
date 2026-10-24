@@ -7,7 +7,7 @@ import { SIZE_FIELD_BY_TYPE } from '../../properties/property-type-fields';
 import { PropertyType } from '../../properties/property-options';
 import {
   ListingChanges,
-  ListingLiveListener,
+  ListingEventListener,
 } from '../../properties/services/listing-changes.service';
 
 /** What a new listing is matched on: what the map filter reads. */
@@ -41,7 +41,7 @@ type SearchHit = { id: string; userId: string; name: string };
  * listing however many of their searches match. The owner is never told.
  */
 @Injectable()
-export class SavedSearchMatcher implements ListingLiveListener, OnModuleInit {
+export class SavedSearchMatcher implements ListingEventListener, OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly changes: ListingChanges,
@@ -49,7 +49,7 @@ export class SavedSearchMatcher implements ListingLiveListener, OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.changes.onWentLive(this);
+    this.changes.listenToEvents(this);
   }
 
   async listingWentLive(propertyId: string): Promise<void> {

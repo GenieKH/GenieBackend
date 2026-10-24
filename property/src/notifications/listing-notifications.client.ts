@@ -7,8 +7,9 @@ const NOTIFY_TIMEOUT_MS = 5_000;
 /** The most people the notification service takes in one call. */
 export const RECIPIENTS_PER_CALL = 500;
 
-/** The longest title the notification service takes. */
+/** The longest title and name the notification service takes. */
 const MAX_TITLE_LENGTH = 200;
+const MAX_NAME_LENGTH = 100;
 
 /**
  * Asks the notification service to tell people about a listing. Never
@@ -33,6 +34,38 @@ export class ListingNotificationsClient {
       this.post('saved-search-match', {
         propertyId: listing.id,
         title: listing.title.slice(0, MAX_TITLE_LENGTH),
+        recipients: chunk,
+      }),
+    );
+  }
+
+  /** [ownerName], whom each of [userIds] follows, posted the listing. */
+  async followedListing(
+    listing: { id: string; title: string },
+    ownerName: string,
+    userIds: string[],
+  ): Promise<void> {
+    await this.inChunks(userIds, (chunk) =>
+      this.post('followed-listing', {
+        propertyId: listing.id,
+        title: listing.title.slice(0, MAX_TITLE_LENGTH),
+        ownerName: ownerName.slice(0, MAX_NAME_LENGTH),
+        recipients: chunk,
+      }),
+    );
+  }
+
+  /** A listing each of [userIds] saved dropped its price, or was sold. */
+  async savedListingUpdate(
+    listing: { id: string; title: string },
+    update: { kind: 'price_drop'; from: number; to: number } | { kind: 'sold' },
+    userIds: string[],
+  ): Promise<void> {
+    await this.inChunks(userIds, (chunk) =>
+      this.post('saved-listing-update', {
+        propertyId: listing.id,
+        title: listing.title.slice(0, MAX_TITLE_LENGTH),
+        ...update,
         recipients: chunk,
       }),
     );

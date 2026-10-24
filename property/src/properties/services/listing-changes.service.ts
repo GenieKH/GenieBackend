@@ -10,9 +10,20 @@ export interface ListingChangeListener {
   listingChanged(listing: CachedListing): Promise<void>;
 }
 
-/** Told when a listing the public could not see becomes visible (new, published, relisted, paid for). */
-export interface ListingLiveListener {
-  listingWentLive(propertyId: string): Promise<void>;
+/**
+ * Told about what happened to a live listing, for alerts and pushes. Each
+ * method is optional: a listener implements what it cares about.
+ */
+export interface ListingEventListener {
+  /** It went on the map: live, with a location (new, published, relisted, paid for, located). */
+  listingWentLive?(propertyId: string): Promise<void>;
+  /** The price a buyer pays fell, from [from] to [to] (USD, after any discount). */
+  listingPriceDropped?(
+    propertyId: string,
+    drop: { from: number; to: number },
+  ): Promise<void>;
+  /** The owner marked it sold. */
+  listingSold?(propertyId: string): Promise<void>;
 }
 
 /**
@@ -26,7 +37,7 @@ export interface ListingLiveListener {
 export class ListingChanges {
   private readonly logger = new Logger(ListingChanges.name);
   private readonly listeners: ListingChangeListener[] = [];
-  private readonly liveListeners: ListingLiveListener[] = [];
+  private readonly eventListeners: ListingEventListener[] = [];
 
   constructor(private readonly publicCache: PublicPropertyCache) {}
 
@@ -34,25 +45,50 @@ export class ListingChanges {
     this.listeners.push(listener);
   }
 
-  onWentLive(listener: ListingLiveListener): void {
-    this.liveListeners.push(listener);
+  listenToEvents(listener: ListingEventListener): void {
+    this.eventListeners.push(listener);
   }
 
   /**
-   * Listing `propertyId` just became visible to the public. The listeners
-   * (alerts, pushes) run behind the answer: the write that made it live
-   * never waits for them, and one that fails is logged.
+   * Listing `propertyId` just went on the map. Each event's listeners run
+   * behind the answer: the write never waits for them, and one that fails is
+   * logged.
    */
   wentLive(propertyId: string): Promise<void> {
-    return Promise.all(
-      this.liveListeners.map((listener) =>
-        listener.listingWentLive(propertyId).catch((error: Error) => {
+    return this.tell('going live', propertyId, (listener) =>
+      listener.listingWentLive?.(propertyId),
+    );
+  }
+
+  priceDropped(
+    propertyId: string,
+    drop: { from: number; to: number },
+  ): Promise<void> {
+    return this.tell('its price drop', propertyId, (listener) =>
+      listener.listingPriceDropped?.(propertyId, drop),
+    );
+  }
+
+  sold(propertyId: string): Promise<void> {
+    return this.tell('being sold', propertyId, (listener) =>
+      listener.listingSold?.(propertyId),
+    );
+  }
+
+  private async tell(
+    what: string,
+    propertyId: string,
+    call: (listener: ListingEventListener) => Promise<void> | undefined,
+  ): Promise<void> {
+    await Promise.all(
+      this.eventListeners.map((listener) =>
+        (call(listener) ?? Promise.resolve()).catch((error: Error) => {
           this.logger.error(
-            `A listener missed listing ${propertyId} going live: ${error.message}`,
+            `A listener missed listing ${propertyId} ${what}: ${error.message}`,
           );
         }),
       ),
-    ).then(() => undefined);
+    );
   }
 
   /**

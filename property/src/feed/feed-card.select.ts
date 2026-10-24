@@ -17,6 +17,9 @@ export const FEED_CARD_SELECT = {
   status: true,
   createdAt: true,
   publishedAt: true,
+  // A "price dropped" mark: when, and the price before.
+  priceDroppedAt: true,
+  previousPrice: true,
   lat: true,
   lng: true,
   bedrooms: true,

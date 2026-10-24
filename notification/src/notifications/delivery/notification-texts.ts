@@ -32,6 +32,22 @@ export const texts = {
     km: (caller: string) => `${caller} បានហៅអ្នក`,
   },
 
+  newListingFrom: {
+    en: (owner: string) => `${owner} posted a new listing`,
+    km: (owner: string) => `${owner} បានបង្ហោះអចលនទ្រព្យថ្មី`,
+  },
+  priceDropped: {
+    en: (title: string) => `Price dropped: ${title}`,
+    km: (title: string) => `តម្លៃបានធ្លាក់ចុះ៖ ${title}`,
+  },
+  sold: {
+    en: (title: string) => `Sold: ${title}`,
+    km: (title: string) => `បានលក់៖ ${title}`,
+  },
+  savedListingSold: {
+    en: 'A listing you saved is no longer available.',
+    km: 'អចលនទ្រព្យដែលអ្នកបានរក្សាទុក លែងមានទៀតហើយ។',
+  },
   newListingInSearch: {
     en: (search: string) => `New listing in "${search}"`,
     km: (search: string) => `អចលនទ្រព្យថ្មីក្នុង "${search}"`,

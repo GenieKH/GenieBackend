@@ -6,10 +6,11 @@ import {
   RedisModule,
 } from '@genie/shared';
 import { NotificationsModule } from './notifications/notifications.module';
+import { SentryErrorsModule } from '@genie/shared/sentry';
 
 /** The notification service: push devices, preferences, alerts from other services, promotions. */
 @Module({
-  imports: [RedisModule, PrismaModule, NotificationsModule],
+  imports: [SentryErrorsModule, RedisModule, PrismaModule, NotificationsModule],
   controllers: [HealthController],
   providers: [JwtStrategy],
 })

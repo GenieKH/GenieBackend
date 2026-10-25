@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { fakeCache } from '@genie/shared/testing';
 import { ChatService } from './chat.service';
+import { BlockedException } from './block-checker';
 
 describe('ChatService', () => {
   const messageTable = {
@@ -28,6 +29,7 @@ describe('ChatService', () => {
   };
   const states = { clearedAt: jest.fn() };
   const notifications = { chatMessage: jest.fn() };
+  const blocks = { requireNotBlocked: jest.fn() };
   let service: ChatService;
 
   const sender = {
@@ -70,7 +72,9 @@ describe('ChatService', () => {
       fakeCache(),
       states as never,
       notifications as never,
+      blocks as never,
     );
+    blocks.requireNotBlocked.mockResolvedValue(undefined);
   });
 
   describe('public keys', () => {
@@ -156,6 +160,17 @@ describe('ChatService', () => {
   });
 
   describe('sendMessage', () => {
+    it('refuses, stores nothing and pushes nothing when either has blocked the other', async () => {
+      blocks.requireNotBlocked.mockRejectedValue(new BlockedException());
+
+      await expect(service.sendMessage('alice', newMessage)).rejects.toThrow(
+        BlockedException,
+      );
+      expect(blocks.requireNotBlocked).toHaveBeenCalledWith('alice', 'bob');
+      expect(messageTable.create).not.toHaveBeenCalled();
+      expect(notifications.chatMessage).not.toHaveBeenCalled();
+    });
+
     it('stores the ciphertext under the id the device chose', async () => {
       const message = await service.sendMessage('alice', newMessage);
 

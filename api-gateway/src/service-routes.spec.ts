@@ -38,6 +38,8 @@ describe('where the gateway sends each path', () => {
     ['/payments/checkout', 'payment', true],
     ['/payments/webhook', 'payment', false],
     ['/users/me', 'user', true],
+    ['/reports', 'user', true],
+    ['/reports/admin/123', 'user', true],
     ['/chat/conversations', 'chat', true],
     ['/notifications/devices', 'notification', true],
     ['/notifications/promotions', 'notification', true],

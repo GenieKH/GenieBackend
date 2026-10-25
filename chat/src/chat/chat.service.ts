@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { JsonCache, PrismaService } from '@genie/shared';
+import { BlockChecker } from './block-checker';
 import { CHAT_PIN_TTL_SECONDS, chatPinCacheKey } from './chat-pin-cache';
 import { ConversationStateService } from './conversation-state.service';
 import { DISPLAY_FIELDS, displayName } from './display-name';
@@ -71,6 +72,7 @@ export class ChatService {
     private readonly cache: JsonCache,
     private readonly states: ConversationStateService,
     private readonly notifications: NotificationClient,
+    private readonly blocks: BlockChecker,
   ) {}
 
   /**
@@ -137,16 +139,18 @@ export class ChatService {
 
     // Independent of each other, so asked at once; a refusal is still the
     // one the first failing check gives.
-    const [pin, visible, replyToId] = await Promise.allSettled([
+    const [pin, visible, replyToId, notBlocked] = await Promise.allSettled([
       this.requireChatPin(senderId),
       this.isVisible(message.recipientId),
       this.quotable(senderId, message),
+      this.blocks.requireNotBlocked(senderId, message.recipientId),
     ]);
     if (pin.status === 'rejected') throw pin.reason;
     if (visible.status === 'rejected') throw visible.reason;
     if (!visible.value) {
       throw new NotFoundException('Recipient not found');
     }
+    if (notBlocked.status === 'rejected') throw notBlocked.reason;
     if (replyToId.status === 'rejected') throw replyToId.reason;
 
     const { saved, created } = await this.createOrFindMessage(

@@ -8,7 +8,13 @@ export interface PushTarget {
 }
 
 /** Android notification channels. Each must also be created by the app. */
-export type PushChannel = 'chat_messages' | 'security' | 'promotions' | 'calls';
+export type PushChannel =
+  | 'chat_messages'
+  | 'security'
+  | 'promotions'
+  | 'calls'
+  /** New listings someone asked to hear about: saved searches, people followed, price drops. */
+  | 'listing_alerts';
 
 /** One push, independent of the provider that delivers it. */
 export interface PushContent {

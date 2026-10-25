@@ -41,4 +41,33 @@ describe('ListingChanges', () => {
     await expect(changes.changed(LISTING)).resolves.toBeUndefined();
     expect(other.listingChanged).toHaveBeenCalled();
   });
+
+  describe('wentLive', () => {
+    it('tells every live listener, and a failing one does not stop the rest', async () => {
+      const seen: string[] = [];
+      changes.listenToEvents({
+        listingWentLive: () => Promise.reject(new Error('down')),
+      });
+      changes.listenToEvents({
+        listingWentLive: (id) => {
+          seen.push(id);
+          return Promise.resolve();
+        },
+      });
+
+      await expect(changes.wentLive('p1')).resolves.toBeUndefined();
+      expect(seen).toEqual(['p1']);
+    });
+
+    it('skips listeners that do not take an event', async () => {
+      changes.listenToEvents({});
+      const sold = jest.fn().mockResolvedValue(undefined);
+      changes.listenToEvents({ listingSold: sold });
+
+      await changes.priceDropped('p1', { from: 10, to: 9 });
+      await changes.sold('p1');
+
+      expect(sold).toHaveBeenCalledWith('p1');
+    });
+  });
 });

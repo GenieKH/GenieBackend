@@ -9,4 +9,16 @@ export class UpdateNotificationPreferencesDto {
   @IsOptional()
   @IsBoolean()
   promotions?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  savedSearchAlerts?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  followedListings?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  savedListingUpdates?: boolean;
 }

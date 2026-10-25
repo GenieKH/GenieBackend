@@ -230,7 +230,7 @@ flowchart LR
 - Optional filters (the pills under the search bar): `propertyType` and `listingType`, exact values from `property-options.ts` (400 otherwise). Served by the `(status, property_type, lat, lng)` and `(status, listing_type, lat, lng)` indexes.
 - The list is cached for 30 s per ~1 km grid box and filter, and cleared the moment a published listing in its area changes (versions per ~11 km cell; a map wider than 64 cells uses one version every change counts up); `isVisited` is looked up per user.
 - No pagination and no limit on the map query: a wide box returns everything with all images.
-- The owner's **email and phone are included** for anyone, signed in or not.
+- The owner's email and phone, and the listing's own `contactPhone`, go to signed-in callers only (`GuestContactInterceptor` on `/public/properties` and `/public/search`, after `OptionalJwtAuthGuard`). A guest, or a token that is expired or invalid, gets the same answer without them, so the public routes cannot be used to collect contact details. The cached answer is shared; the details are dropped from a copy. The app renews an access token it can see has expired before sending, so a signed-in user is not served the guest answer.
 
 ## 8a. Search: places, listings and people
 
@@ -258,7 +258,22 @@ flowchart LR
 - Places come from Google, called by the server so its key (`GOOGLE_PLACES_API_KEY`) is never in the app. The app makes one `session` token per search, so the suggestions and the place picked are billed as one session. Without a key, or when Google fails, search still answers listings and people.
 - A place's viewport is grown to at least ~500 m, so a single address still finds the listings around it.
 - Listing results have their own cache version: publishing or hiding any listing outdates them at once; one owner's listings are outdated by that owner's changes only. Trigram indexes (migration `11_search_indexes`) keep the `ILIKE '%word%'` queries off full table scans.
-- A person result carries `memberSince`. `GET /public/search/people/:userId` is the profile page, opened from search or by tapping the other person in a chat. It answers for any active account (404 if missing or deactivated), but only search finds people, and only publishers. It carries `email` and `phone` only for publishers, whose listings already show them; someone who has published nothing keeps them private. Result lists never include contact details, so search cannot be used to collect them in bulk. The page has Follow (does nothing yet), Chat and View on map.
+- A person result carries `memberSince`. `GET /public/search/people/:userId` is the profile page, opened from search or by tapping the other person in a chat. It answers for any active account (404 if missing or deactivated), but only search finds people, and only publishers. It carries `email` and `phone` only for publishers, whose listings already show them, and only to a signed-in caller; someone who has published nothing keeps them private. Result lists never include contact details, so search cannot be used to collect them in bulk. The page has Follow (does nothing yet), Chat and View on map.
+
+**Saved searches and alerts** (signed-in only; migration 32, `saved_searches` and `saved_search_matches`):
+
+| Endpoint | Body | Answer | Errors |
+|---|---|---|---|
+| `GET /search/saved` | | `[{id, name, minLat, maxLat, minLng, maxLng, propertyType, listingTypes, minPrice, maxPrice, minSize, maxSize, keywords, alerts, createdAt}]`, newest first | 401 |
+| `POST /search/saved` | `name` (1-60, trimmed), the map area, and any of the map filter's fields as in `GET /public/properties/map` (lists as JSON arrays: `listingTypes`, `keywords`), `alerts?` (default true) | the saved search | 400 (unknown type, keyword or listing type; a range upside down), 401, 409 (already 20) |
+| `PATCH /search/saved/:id` | `name?`, `alerts?` | the saved search | 400, 401, 404 (not yours) |
+| `DELETE /search/saved/:id` | | 204, also when already gone | 401 |
+
+- A listing **goes on the map** when it is live and has a location; `ListingChanges.wentLive` fires on that change, whichever step makes it: created live, published, relisted, paid for, or (the app's way) created live and then given its boundary or pin. Moving it later is not a new listing.
+- `SavedSearchMatcher` then finds the alerting searches of other people whose area holds it and whose filter it passes the way the map filter does (asking price before discount; the type's card size, `SIZE_FIELD_BY_TYPE`; every keyword of the search). Each search alerts about a listing once (`saved_search_matches`), so unpublishing and publishing again tells nobody twice. A person gets one push per listing however many of their searches match; the owner is never told.
+- The property service asks the notification service (`POST /internal/notifications/saved-search-match`, service token from `property`, at most 500 people a call). This runs after the write answers; a failure is logged.
+- The push: `New listing in "<search name>"` with the listing title, Android channel `listing_alerts`, data `{type: saved_search_match, propertyId}`; one per listing (tag `listing:<id>`). Off with the preference `savedSearchAlerts` (migration 32 adds the column).
+- Not covered: a listing posted by someone the searcher blocked still alerts them.
 
 **Search history** (signed-in only, token required; migration `12_search_history`):
 
@@ -285,7 +300,9 @@ flowchart LR
 
 - Like, favorite and view are `INSERT ... ON CONFLICT DO NOTHING`: repeating is harmless.
 - Every listing read carries `_count: { favorites, views, contacts }`, counted for the listings read only (`PropertyEngagementCounts`; Prisma's own `_count` grouped the whole tables on every read). A view is one row per person (`property_views`), so `views` is how many people opened it; the owner opening their own listing is not recorded (migration 19 removed earlier ones). The app records a view when a listing is selected on the map or its detail sheet opens. Counts may lag by the public cache (map 30 s, detail 60 s).
-- Contact stores a message for the owner in the database. **The owner is not notified** (no push, no email).
+- Contact stores a message for the owner in the database. **The owner is not notified** (no push, no email). The app has no contact form: buyers reach owners by Chat or Call Now.
+- **Leads** (migration 31, `property_leads`): `POST /properties/:id/lead { channel: call|chat }` (204) when a signed-in buyer taps Call or Chat on a published listing. One row per person, listing and channel, so tapping again counts nothing; the owner's own taps are not counted; limited with contact messages (10 every 10 minutes); 404 for a listing that is not published. `_count.contacts` is the number of people who called or chatted, plus contact-form messages.
+- **Insights** `GET /properties/:id/insights` (owner only, 404 for anyone else's): `{ totals: { views, saves, calls, chats }, days: [{ date, views, saves, leads }] }`, the last 14 days in Cambodia time, oldest first, a quiet day as zeros. Each person counts once per kind: a view is someone's first opening, a save one still saved, a lead their first tap per channel. Read through `(property_id, created_at)` indexes on views, favorites and leads.
 - Lists can be read a page at a time. Without `limit` each answers the whole list as an array, as before, so older app builds keep working:
 
 | Endpoint | Page |
@@ -329,8 +346,52 @@ them, so a page costs at most 500 x 21 index rows however many listings those ow
 A cursor, not an offset: a listing published while someone scrolls neither repeats nor pushes
 one out of the next pages. The app keeps the first page per account on the device, shows it at
 once on the next start, and reads the feed again when the tab is shown after 5 minutes.
-Deleting an account deletes its follows (foreign keys). Not built yet: blocking (a block should
-remove follows both ways), feed events (price drop, sold) and pushes to followers.
+Deleting an account deletes its follows (foreign keys). Blocking removes follows both ways (9b).
+
+**Pushes about listings** (migration 33; `property/src/alerts`, driven by the listing events of `ListingChanges`):
+
+| Event | Who is told | How often | Preference |
+|---|---|---|---|
+| A listing goes on the map (see 8a) | Everyone following its owner (`GET /internal/follows/:userId/followers` on the user service) | Once per listing ever (`properties.followers_notified_at`, claimed atomically): publishing again or relisting tells nobody twice, as the feed does not move it up | `followedListings` |
+| The price a buyer pays (after discount) on a live listing falls by at least 1% | People who saved it, never the owner | At most one push per listing a day (`price_drop_notified_at`) | `savedListingUpdates` |
+| A live listing is marked sold | People who saved it | Each time | `savedListingUpdates` |
+
+- Every drop is marked on the listing (`price_dropped_at`, `previous_price` = what a buyer paid before); a later price at or above `previous_price` takes the mark away. Feed cards (`FEED_CARD_SELECT`) and full listings carry both, and the app shows "Price dropped" with the old price for 14 days.
+- Notification routes (service token from `property`, at most 500 people a call): `POST /internal/notifications/followed-listing { propertyId, title, ownerName, recipients }`, `POST /internal/notifications/saved-listing-update { propertyId, title, kind: price_drop|sold, from?, to?, recipients }`. Pushes: "Dara posted a new listing" / "Price dropped: <title>" ("$120,000 → $110,000") / "Sold: <title>", Android channel `listing_alerts`, data `type` `followed_listing`, `price_drop` or `listing_sold` with `propertyId`, one per listing on the phone.
+- If the user service cannot answer when a listing goes live, its followers are not told (the claim is already made); the failure is logged.
+- The feed still shows live listings only: a sale is a push, not a feed card.
+
+---
+
+## 9b. Block and report
+
+Migration 30: `user_blocks` (one row per pair, like `follows`) and `reports`. Both are owned by the user
+service. The chat service asks it whether two people may reach each other
+(`GET /internal/blocks/:userId/with/:otherId`, service token from `chat`), so it never reads `user_blocks`.
+
+| Endpoint | Answer | Errors |
+|---|---|---|
+| `GET /users/:id/block` | `{ isBlocked, canMessage }`: `isBlocked` is whether *you* blocked them; `canMessage` is false when either blocked the other, so the person blocked is not told who did what | 400, 401 |
+| `PUT /users/:id/block` | the same, after blocking; twice changes nothing | 400 (yourself), 401, 404 |
+| `DELETE /users/:id/block` | the same, after unblocking; twice changes nothing | 400, 401 |
+| `GET /users/me/blocks` | `[{ id, name, username, avatarUrl, blockedAt }]`, newest first, at most 500 | 401 |
+| `POST /reports` `{ targetType: listing\|user, targetId, reason, details? }` | `201 { id, status: open, createdAt }`; one open report per person and target (partial unique indexes), so reporting again answers the same one | 400 (yourself, bad reason or target type), 401, 404 (the database's foreign key: this service does not read listings), 429 (20 an hour) |
+| `GET /reports/admin?status=&limit=&cursor=` | admins only (`AdminGuard`, now in `shared`): `{ items, nextCursor }`, oldest first, `open` by default; a listing is named by `propertyId` only | 401, 403 |
+| `PATCH /reports/admin/:id` `{ status: resolved\|dismissed, note? }` | the report, naming its reviewer | 401, 403, 404, 409 (already closed) |
+
+- Blocking deletes the follows between the two in the same transaction, and drops both accounts' cached block
+  and following ids. Unblocking does not bring the follows back.
+- While either has blocked the other: following is refused (`403`); sending a message is refused on the socket
+  as `{ status: error, code: blocked }` and nothing is stored or pushed; a call invite answers `unavailable`,
+  as if nobody answered. Earlier messages stay in both conversation lists.
+- If the user service cannot answer within 2 s, messages and calls go through and the failure is logged:
+  chat keeps working through a user-service outage.
+- Reasons: `spam`, `scam`, `misleading`, `inappropriate`, `duplicate`, `unavailable`, `harassment`,
+  `impersonation`, `other` (a CHECK in the database and `REPORT_REASONS`). A message is reported as its sender:
+  the server cannot read it. `details` is at most 1000 characters.
+- A report is deleted with its target (a deleted listing or account needs no review). Closing a report changes
+  nothing else; taking a listing down is a separate step. There is no admin screen yet.
+- Not covered: presence and last seen are still visible to a blocked person.
 
 ---
 
@@ -509,8 +570,8 @@ API (all need a signed-in user):
 |---|---|
 | `POST /notifications/devices` `{ token, platform: android\|ios\|web, locale?: en\|km }` | `204`. A token belongs to one account and session; signing in as someone else moves it. At most 20 devices per account, oldest dropped |
 | `POST /notifications/devices/remove` `{ token }` | `204`. The app calls it before signing out; only the owner's own device is removed |
-| `GET /notifications/preferences` | `{ chatMessages, promotions }`, both `true` until changed |
-| `PATCH /notifications/preferences` `{ chatMessages?, promotions? }` | Returns the saved preferences |
+| `GET /notifications/preferences` | `{ chatMessages, promotions, savedSearchAlerts, followedListings, savedListingUpdates }`, all `true` until changed |
+| `PATCH /notifications/preferences` `{ chatMessages?, promotions?, savedSearchAlerts?, followedListings?, savedListingUpdates? }` | Returns the saved preferences |
 | `POST /notifications/promotions` `{ id?, title (≤65), body (≤240), titleKm?, bodyKm?, propertyId?, url? (https), imageUrl? (https) }` | Admins only (`users.role = 'admin'`, read from the database). `202` with its status; sent in the background to every device whose owner allows promotions. Repeating a request with the same `id` sends it once |
 | `GET /notifications/promotions/:id` | Admins only: `status` (queued, sending, sent, failed) and counts |
 
@@ -557,7 +618,7 @@ These come from reading the code, not from load testing.
 |---|---|---|---|
 | 1 | **Listing fee can be skipped.** `POST /properties` accepts `status: "Active"`, and `PATCH /properties/:id/publish` sets Active from Draft with no payment | Paid feature is free; anyone can publish | Ignore `status` on create; make `publish` only reachable through a settled payment (or remove it) |
 | 2 | **Payment is a mock** | No revenue; flow around it is untested against a real provider | Integrate ABA PayWay (or other) behind the existing `PaymentProvider` |
-| 3 | **Owner email and phone returned to anyone** on map and detail, even signed out | Scraping of every seller's contact details | Return contact details only to signed-in users, or only a "contact" action |
+| 3 | ~~**Owner email and phone returned to anyone** on map and detail, even signed out~~ **Done (2026-10-24):** signed-in callers only (section 8) | Scraping of every seller's contact details | |
 | 4 | **Database password in public git history**, and shared by dev and production | Full database access | Rotate; create a separate staging database |
 | 5 | **Single container runs everything** | One crash or deploy is a full outage; cannot scale one service | Split services, or at least run 2 replicas once state is moved out (see below) |
 | 6 | **No push notifications** | A user does not know a message or contact arrived unless the app is open | Add FCM; notify on new chat message and new contact |
@@ -575,7 +636,7 @@ These come from reading the code, not from load testing.
 | 13 | Access token stays valid up to 15 minutes after logout | Acceptable; shorten if it worries you |
 | 14 | `/health` on the hosted gateway answered 500 / timeout while other routes worked | Investigate before relying on it for uptime checks |
 | 15 | Old messages and attachments are never deleted; expired OTP and revoked token rows stay | Retention policy and a cleanup job |
-| 16 | No monitoring, error tracking or alerting | Add Sentry (app and backend) and an uptime check |
+| 16 | ~~No monitoring, error tracking or alerting~~ **Sentry added (2026-10-24)**, off until `SENTRY_DSN` is set: every service reports the errors a request ends in that the code did not expect (5xx, `SentryErrorsModule` from `@genie/shared/sentry`, started first in each `main.ts`), never refusals (4xx). No bodies, cookies, query strings or session headers are sent (`dataCollection` plus `withoutSecrets`). The app reports its own (`SENTRY_DSN` in its env file). | Remaining: an uptime check on `/health` |
 | 17 | Hosted dependency advisories: 9 left, all need major upgrades and none look reachable | Review with each framework upgrade |
 
 ### Product decisions (not bugs)

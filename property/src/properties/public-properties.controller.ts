@@ -8,18 +8,24 @@ import {
   Query,
   Req,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { OptionalJwtAuthGuard } from '@genie/shared';
 import { GuestSessionDto } from './dto/guest-session.dto';
 import { MapPriceHistogramQuery } from './dto/map-price-histogram.query';
 import { MapSearchQuery } from './dto/map-search.query';
+import { GuestContactInterceptor } from './guest-contact';
 import { GuestSessionService } from './services/guest-session.service';
 import { PropertyQueryService } from './services/property-query.service';
 
-/** Endpoints anyone can call; a logged-in user just gets extra info (`isVisited`). */
+/**
+ * Endpoints anyone can call; a logged-in user just gets extra info
+ * (`isVisited`, how to reach the owner).
+ */
 @ApiTags('public-properties')
 @Controller('public/properties')
+@UseInterceptors(GuestContactInterceptor)
 export class PublicPropertiesController {
   constructor(
     private readonly query: PropertyQueryService,
@@ -55,6 +61,7 @@ export class PublicPropertiesController {
   }
 
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.query.findPublic(id);
   }

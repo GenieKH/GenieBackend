@@ -4,6 +4,7 @@ import { boundaryCentroid } from '../boundary-centroid';
 import { BoundaryDto } from '../dto/boundary.dto';
 import { PropertyNearbyService } from '../nearby/property-nearby.service';
 import { assertValidDiscount } from '../property-discount';
+import { priceDrop, priceDropColumns, pricedOf } from '../price-drop';
 import { CreatePropertyDto } from '../dto/create-property.dto';
 import { PinDto } from '../dto/pin.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
@@ -27,6 +28,12 @@ const keywordCodes = (property: { keywords?: { keyword: string }[] }) =>
 /** The only status the public can see. */
 const PUBLIC_STATUS = 'Active';
 
+/** What decides whether a listing shows on the public map. */
+type OnMapState = { status: string; lat: number | null };
+
+const isOnMap = (listing: OnMapState) =>
+  listing.status === PUBLIC_STATUS && listing.lat !== null;
+
 /** Creating, editing and moving a property through its statuses. */
 @Injectable()
 export class PropertyLifecycleService {
@@ -46,34 +53,45 @@ export class PropertyLifecycleService {
       include: PROPERTY_WITH_RELATIONS,
     });
     await this.refreshPublicView(property, [property.status]);
+    this.announceIfNowOnMap(null, property);
     // Nobody can have saved, opened or messaged about it yet.
     return { ...property, _count: NO_ENGAGEMENT };
   }
 
   async update(userId: string, id: string, dto: UpdatePropertyDto) {
     const before = await this.query.findOwned(userId, id);
-    // The discount must still fit the price after the edit, whichever changed.
-    assertValidDiscount({
-      price: dto.price ?? Number(before.price),
+    const pricedBefore = pricedOf(before);
+    const pricedAfter = {
+      price: dto.price ?? pricedBefore.price,
       discountType:
-        dto.discountType !== undefined ? dto.discountType : before.discountType,
+        dto.discountType !== undefined
+          ? dto.discountType
+          : pricedBefore.discountType,
       discountValue:
         dto.discountValue !== undefined
           ? dto.discountValue
-          : before.discountValue == null
-            ? null
-            : Number(before.discountValue),
-    });
+          : pricedBefore.discountValue,
+    };
+    // The discount must still fit the price after the edit, whichever changed.
+    assertValidDiscount(pricedAfter);
+    const drop =
+      before.status === PUBLIC_STATUS
+        ? priceDrop(pricedBefore, pricedAfter)
+        : null;
     // An edit does not change the counts: read alongside it.
     const [property, counts] = await Promise.all([
       this.prisma.property.update({
         where: { id },
-        data: toUpdateData(dto, before.propertyType),
+        data: {
+          ...toUpdateData(dto, before.propertyType),
+          ...priceDropColumns(before, pricedAfter, drop),
+        },
         include: PROPERTY_WITH_RELATIONS,
       }),
       this.counts.of([id]),
     ]);
     await this.refreshPublicView(property, [before.status]);
+    if (drop) void this.listingChanges.priceDropped(id, drop);
     if (dto.keywords) {
       this.nearby.keywordsChanged(id, keywordCodes(before), dto.keywords);
     }
@@ -87,6 +105,7 @@ export class PropertyLifecycleService {
       data: { lat: pin.lat, lng: pin.lng },
     });
     await this.refreshPublicView(property, [before.status], before);
+    this.announceIfNowOnMap(before, property);
     this.nearby.locationChanged(id);
     return property;
   }
@@ -108,6 +127,7 @@ export class PropertyLifecycleService {
       },
     });
     await this.refreshPublicView(property, [before.status], before);
+    this.announceIfNowOnMap(before, property);
     if (center) this.nearby.locationChanged(id);
     return property;
   }
@@ -141,7 +161,7 @@ export class PropertyLifecycleService {
   }
 
   private async setStatus(
-    before: { id: string; status: string; publishedAt: Date | null },
+    before: OnMapState & { id: string; publishedAt: Date | null },
     to: string,
   ) {
     const property = await this.prisma.property.update({
@@ -156,7 +176,26 @@ export class PropertyLifecycleService {
       },
     });
     await this.refreshPublicView(property, [before.status, to]);
+    this.announceIfNowOnMap(before, property);
+    if (to === 'Sold' && before.status === PUBLIC_STATUS) {
+      void this.listingChanges.sold(property.id);
+    }
     return property;
+  }
+
+  /**
+   * The public can now find the listing on the map, and could not before: it
+   * is live and has a location. The app creates a listing live and gives it
+   * its boundary right after, so either step can be the one. Alerts and
+   * pushes follow (`ListingChanges.wentLive`), behind the answer.
+   */
+  private announceIfNowOnMap(
+    before: OnMapState | null,
+    after: OnMapState & { id: string },
+  ): void {
+    if (isOnMap(after) && !(before && isOnMap(before))) {
+      void this.listingChanges.wentLive(after.id);
+    }
   }
 
   /**

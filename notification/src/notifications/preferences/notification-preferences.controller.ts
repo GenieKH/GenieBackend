@@ -3,8 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { CurrentUserId, JwtAuthGuard } from '@genie/shared';
 import { UpdateNotificationPreferencesDto } from './dto/notification-preferences.dto';
 import {
+  DEFAULT_PREFERENCES,
   NotificationPreferences,
   NotificationPreferencesService,
+  SwitchablePreference,
 } from './notification-preferences.service';
 
 @ApiTags('notifications')
@@ -23,9 +25,13 @@ export class NotificationPreferencesController {
     @CurrentUserId() userId: string,
     @Body() dto: UpdateNotificationPreferencesDto,
   ): Promise<NotificationPreferences> {
-    return this.preferences.update(userId, {
-      ...(dto.chatMessages !== undefined && { chatMessages: dto.chatMessages }),
-      ...(dto.promotions !== undefined && { promotions: dto.promotions }),
-    });
+    // Only what was sent changes; every switch is a preference the service knows.
+    const changes: Partial<NotificationPreferences> = {};
+    for (const key of Object.keys(
+      DEFAULT_PREFERENCES,
+    ) as SwitchablePreference[]) {
+      if (dto[key] !== undefined) changes[key] = dto[key];
+    }
+    return this.preferences.update(userId, changes);
   }
 }

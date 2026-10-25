@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@genie/shared';
 import { PushTarget } from '../delivery/push-sender';
+import { SwitchablePreference } from '../preferences/notification-preferences.service';
 
 /** One account rarely has this many devices; past it the oldest are dropped. */
 export const MAX_DEVICES_PER_USER = 20;
@@ -123,6 +124,35 @@ export class PushDevicesService {
       if (page.length < pageSize) return;
       after = page[page.length - 1].id;
     }
+  }
+
+  /**
+   * The devices of each of [userIds] whose account allows [preference]
+   * (on until turned off), in one read. Accounts with none are left out.
+   */
+  async targetsByUser(
+    userIds: string[],
+    preference: SwitchablePreference,
+  ): Promise<Map<string, PushTarget[]>> {
+    const byUser = new Map<string, PushTarget[]>();
+    if (userIds.length === 0) return byUser;
+    const devices = await this.prisma.pushDevice.findMany({
+      where: {
+        userId: { in: [...new Set(userIds)] },
+        user: {
+          deactivatedAt: null,
+          OR: [
+            { notificationPreferences: { is: null } },
+            { notificationPreferences: { is: { [preference]: true } } },
+          ],
+        },
+      },
+      select: { ...TARGET_FIELDS, userId: true },
+    });
+    for (const { userId, ...device } of devices) {
+      byUser.set(userId, [...(byUser.get(userId) ?? []), ...asTarget(device)]);
+    }
+    return byUser;
   }
 
   private async dropOldestBeyondLimit(userId: string): Promise<void> {

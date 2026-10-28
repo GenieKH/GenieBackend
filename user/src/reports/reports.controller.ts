@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { AdminGuard, CurrentUserId } from '@genie/shared';
+import { AdminGuard, CurrentUserId } from '@tilomnov/shared';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ReportQueueQuery } from './dto/report-queue.query';
 import { ReviewReportDto } from './dto/review-report.dto';

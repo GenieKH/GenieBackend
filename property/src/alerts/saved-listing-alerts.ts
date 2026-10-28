@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { ListingNotificationsClient } from '../notifications/listing-notifications.client';
 import {
   ListingChanges,

@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { FakeRedis, fakeCache } from '@genie/shared/testing';
+import { FakeRedis, fakeCache } from '@tilomnov/shared/testing';
 import { ListingChanges } from './listing-changes.service';
 import { PropertyEngagementCounts } from './property-engagement-counts.service';
 import { PropertyLifecycleService } from './property-lifecycle.service';

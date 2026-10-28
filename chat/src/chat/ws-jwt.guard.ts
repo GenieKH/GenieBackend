@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Socket } from 'socket.io';
-import { RevokedSessions } from '@genie/shared';
+import { RevokedSessions } from '@tilomnov/shared';
 import { authenticateSocket } from './ws-auth';
 
 /** Re-checks the socket's token on every message, so expired and signed-out sessions are cut off. */

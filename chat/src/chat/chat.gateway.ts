@@ -10,7 +10,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Namespace, Socket } from 'socket.io';
-import { RateLimit, RateLimits, RevokedSessions } from '@genie/shared';
+import { RateLimit, RateLimits, RevokedSessions } from '@tilomnov/shared';
 import { BlockedException } from './block-checker';
 import { ChatService } from './chat.service';
 import { PresenceTargetDto, SendMessageDto } from './dto/chat.dto';

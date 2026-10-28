@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { PropertyPhotoStorage } from '../storage/property-photo-storage';
 
 /** Photos worked on at once: each holds an original (up to 4 MB) in memory. */

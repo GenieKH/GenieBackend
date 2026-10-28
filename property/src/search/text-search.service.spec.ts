@@ -1,4 +1,4 @@
-import { FakeRedis, fakeCache } from '@genie/shared/testing';
+import { FakeRedis, fakeCache } from '@tilomnov/shared/testing';
 import { PublicPropertyCache } from '../properties/services/public-property-cache.service';
 import { TextSearchService } from './text-search.service';
 

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { RevokedSessions, SupabaseModule } from '@genie/shared';
+import { RevokedSessions, SupabaseModule } from '@tilomnov/shared';
 import { BlockChecker } from './block-checker';
 import { ChatAttachmentService } from './chat-attachment.service';
 import { ChatBackupService } from './chat-backup.service';

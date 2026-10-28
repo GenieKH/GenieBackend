@@ -53,7 +53,7 @@ export class EmailDeliveryService {
         accept: 'application/json',
       },
       {
-        sender: { name: 'Genie Support', email: this.sender },
+        sender: { name: 'Tilomnov Support', email: this.sender },
         to: [{ email: message.to }],
         subject: message.subject,
         htmlContent: message.html,
@@ -72,7 +72,7 @@ export class EmailDeliveryService {
         Authorization: `Bearer ${apiKey}`,
       },
       {
-        from: `Genie Support <${this.sender}>`,
+        from: `Tilomnov Support <${this.sender}>`,
         to: [message.to],
         subject: message.subject,
         html: message.html,
@@ -88,7 +88,7 @@ export class EmailDeliveryService {
     const host = process.env.SMTP_HOST || 'smtp.gmail.com';
     const configuredPort = parseInt(process.env.SMTP_PORT || '587', 10);
     const primaryPort = configuredPort === 587 ? 465 : configuredPort;
-    const mail = { from: `"Genie Support" <${this.sender}>`, ...message };
+    const mail = { from: `"Tilomnov Support" <${this.sender}>`, ...message };
 
     try {
       await this.smtpTransport(

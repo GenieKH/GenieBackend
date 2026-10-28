@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { ConversationStateService } from '../chat/conversation-state.service';
 
 /** The most calls one request returns. */

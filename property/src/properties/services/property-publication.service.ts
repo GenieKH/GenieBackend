@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { PropertyStatusService } from '../property-status.service';
 import { datesAnew } from '../published-at';
 import { PropertyQueryService } from './property-query.service';

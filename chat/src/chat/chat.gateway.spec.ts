@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { memoryRateLimits } from '@genie/shared/testing';
+import { memoryRateLimits } from '@tilomnov/shared/testing';
 import { ChatGateway } from './chat.gateway';
 import * as wsAuth from './ws-auth';
 

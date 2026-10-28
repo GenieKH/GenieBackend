@@ -12,7 +12,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { OptionalJwtAuthGuard, RateLimit, RateLimits } from '@genie/shared';
+import { OptionalJwtAuthGuard, RateLimit, RateLimits } from '@tilomnov/shared';
 import {
   PlaceIdParam,
   PlaceSessionQuery,

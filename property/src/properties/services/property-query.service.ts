@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService, ReadPrisma } from '@genie/shared';
+import { PrismaService, ReadPrisma } from '@tilomnov/shared';
 import {
   MAP_SELECT,
   PROPERTY_WITH_RELATIONS,

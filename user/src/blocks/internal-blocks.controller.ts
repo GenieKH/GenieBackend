@@ -6,7 +6,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { serviceCallGuard } from '@genie/shared';
+import { serviceCallGuard } from '@tilomnov/shared';
 import { BlocksService } from './blocks.service';
 
 /**

@@ -9,7 +9,7 @@ import {
   PrismaService,
   PUBLIC_IMAGE_TYPES,
   SupabaseService,
-} from '@genie/shared';
+} from '@tilomnov/shared';
 import { isGooglePhotoUrl } from './avatar-url';
 import { UsersService } from './users.service';
 

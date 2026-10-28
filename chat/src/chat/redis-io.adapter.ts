@@ -3,7 +3,7 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { Redis } from 'ioredis';
 import { Server, ServerOptions } from 'socket.io';
-import { pubSubRedisOptions, redisUrl } from '@genie/shared';
+import { pubSubRedisOptions, redisUrl } from '@tilomnov/shared';
 
 /**
  * Lets several instances of this service act as one chat server: a message

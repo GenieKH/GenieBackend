@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RedisConnection } from '@genie/shared';
+import { RedisConnection } from '@tilomnov/shared';
 import { LiveCall } from './call.types';
 
 /**

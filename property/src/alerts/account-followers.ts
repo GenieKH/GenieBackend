@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ServiceClient } from '@genie/shared';
+import { ServiceClient } from '@tilomnov/shared';
 
 const TIMEOUT_MS = 5_000;
 

@@ -3,7 +3,7 @@
 #
 #   authentication | user | property | chat | payment | notification | api-gateway
 #
-#   docker build --build-arg SERVICE=property -t genie-property .
+#   docker build --build-arg SERVICE=property -t tilomnov-property .
 
 # --- Build stage: full install + compile everything ---
 # SERVICE is not used here, so this stage is built once and cached for all services.

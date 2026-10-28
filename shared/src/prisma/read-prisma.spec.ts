@@ -11,7 +11,7 @@ describe('readPrismaFor', () => {
 
   it('is a separate client of the replica when DATABASE_READ_URL is set', async () => {
     const replica = readPrismaFor(primary, {
-      DATABASE_READ_URL: 'postgresql://reader@replica.invalid:5432/genie',
+      DATABASE_READ_URL: 'postgresql://reader@replica.invalid:5432/tilomnov',
     });
 
     expect(replica).not.toBe(primary);

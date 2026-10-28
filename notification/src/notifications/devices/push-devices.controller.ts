@@ -7,7 +7,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '@genie/shared';
+import { JwtAuthGuard } from '@tilomnov/shared';
 import { CurrentDeviceOwner } from './current-device-owner.decorator';
 import {
   RegisterPushDeviceDto,

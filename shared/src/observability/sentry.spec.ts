@@ -29,7 +29,7 @@ describe('withoutSecrets', () => {
         headers: {
           Authorization: 'Bearer abc',
           'x-guest-session-id': 'g',
-          'user-agent': 'Genie/1.0',
+          'user-agent': 'Tilomnov/1.0',
         },
       },
       user: { id: 'u1', email: 'a@b.c', ip_address: '1.2.3.4' },
@@ -37,7 +37,7 @@ describe('withoutSecrets', () => {
 
     expect(event.request).toEqual({
       url: 'https://gateway/auth/login',
-      headers: { 'user-agent': 'Genie/1.0' },
+      headers: { 'user-agent': 'Tilomnov/1.0' },
     });
     expect(event.user).toEqual({ id: 'u1' });
   });

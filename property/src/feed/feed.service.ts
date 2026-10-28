@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Prisma } from '@genie/prisma-client';
-import { PrismaService } from '@genie/shared';
+import { Prisma } from '@tilomnov/prisma-client';
+import { PrismaService } from '@tilomnov/shared';
 import { FEED_CARD_SELECT } from './feed-card.select';
 import { FeedCursor, encodeFeedCursor } from './feed-cursor';
 import { nextFeedPositions } from './feed-listing-ids';

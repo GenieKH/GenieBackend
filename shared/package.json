@@ -1,9 +1,9 @@
 {
-  "name": "@genie/shared",
+  "name": "@tilomnov/shared",
   "version": "0.0.1",
   "private": true,
   "license": "UNLICENSED",
-  "description": "Infrastructure every Genie service needs: database client, Redis, storage, token checks, service-to-service calls.",
+  "description": "Infrastructure every Tilomnov service needs: database client, Redis, storage, token checks, service-to-service calls.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

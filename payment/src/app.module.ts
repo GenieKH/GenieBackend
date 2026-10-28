@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { HealthController, JwtStrategy, PrismaModule } from '@genie/shared';
+import { HealthController, JwtStrategy, PrismaModule } from '@tilomnov/shared';
 import { PaymentsModule } from './payments/payments.module';
-import { SentryErrorsModule } from '@genie/shared/sentry';
+import { SentryErrorsModule } from '@tilomnov/shared/sentry';
 
 /** The payment service: starts a payment and settles it from the provider's webhook. */
 @Module({

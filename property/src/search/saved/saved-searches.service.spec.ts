@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@genie/prisma-client';
+import { Prisma } from '@tilomnov/prisma-client';
 import {
   MAX_SAVED_SEARCHES,
   SavedSearchesService,

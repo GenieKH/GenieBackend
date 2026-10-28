@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 
 /** What a user can switch off. Security alerts and calls always arrive. */
 export interface NotificationPreferences {

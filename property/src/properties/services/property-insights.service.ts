@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 
 /** Days in the owner's chart, today included. */
 export const INSIGHT_DAYS = 14;

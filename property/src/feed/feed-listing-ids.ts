@@ -1,5 +1,5 @@
-import { Prisma } from '@genie/prisma-client';
-import { PrismaService } from '@genie/shared';
+import { Prisma } from '@tilomnov/prisma-client';
+import { PrismaService } from '@tilomnov/shared';
 import { FeedCursor } from './feed-cursor';
 
 /** A listing's place in the feed: when it is ranked, not when it was published. */

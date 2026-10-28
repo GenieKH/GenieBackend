@@ -64,13 +64,13 @@ jobs:
         env:
           # The dump crosses the internet: never without encryption.
           PGSSLMODE: require
-        run: bash scripts/backup-database.sh "$RUNNER_TEMP/genie.dump"
+        run: bash scripts/backup-database.sh "$RUNNER_TEMP/tilomnov.dump"
 
       - name: Prove it restores
         env:
           TARGET_DATABASE_URL: ${{ env.CHECK_URL }}
         run: |
-          bash scripts/restore-database.sh "$RUNNER_TEMP/genie.dump"
+          bash scripts/restore-database.sh "$RUNNER_TEMP/tilomnov.dump"
           url=$(sed -E 's/([?&])pgbouncer=[^&]*(&|$)/\1/; s/[?&]$//' <<<"$DATABASE_URL")
           tables="SELECT count(*) FROM pg_tables WHERE schemaname = 'public'"
           live=$(PGSSLMODE=require psql "$url" -tAc "$tables")
@@ -82,9 +82,9 @@ jobs:
 
       - name: Encrypt
         run: |
-          name="genie-db-$(date -u +%Y-%m-%dT%H%MZ).dump.age"
-          age --recipient "$AGE_RECIPIENT" --output "$RUNNER_TEMP/$name" "$RUNNER_TEMP/genie.dump"
-          shred --remove "$RUNNER_TEMP/genie.dump"
+          name="tilomnov-db-$(date -u +%Y-%m-%dT%H%MZ).dump.age"
+          age --recipient "$AGE_RECIPIENT" --output "$RUNNER_TEMP/$name" "$RUNNER_TEMP/tilomnov.dump"
+          shred --remove "$RUNNER_TEMP/tilomnov.dump"
           echo "BACKUP_NAME=$name" >> "$GITHUB_ENV"
 
       - name: Keep the encrypted backup

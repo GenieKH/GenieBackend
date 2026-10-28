@@ -8,7 +8,7 @@ import {
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
-import { CurrentUserId, RateLimit, RateLimits } from '@genie/shared';
+import { CurrentUserId, RateLimit, RateLimits } from '@tilomnov/shared';
 import { ChatGateway } from './chat.gateway';
 import { DeleteMessageDto, EditMessageDto } from './dto/chat.dto';
 import { MessageActionsService } from './message-actions.service';

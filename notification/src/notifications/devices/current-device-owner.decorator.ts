@@ -3,7 +3,7 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
-import { AuthenticatedUser } from '@genie/shared';
+import { AuthenticatedUser } from '@tilomnov/shared';
 import { DeviceOwner } from './push-devices.service';
 
 /** The verified caller and session of a request behind `JwtAuthGuard`. */

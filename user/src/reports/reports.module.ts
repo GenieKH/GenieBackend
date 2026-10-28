@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { AdminGuard } from '@genie/shared';
+import { AdminGuard } from '@tilomnov/shared';
 import {
   ReportsAdminController,
   ReportsController,

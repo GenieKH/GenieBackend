@@ -3,7 +3,7 @@ import {
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { ServiceCallError, ServiceClient } from '@genie/shared';
+import { ServiceCallError, ServiceClient } from '@tilomnov/shared';
 
 const TIMEOUT_MS = 8_000;
 

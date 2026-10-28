@@ -1,6 +1,6 @@
-# Genie Backend services
+# Tilomnov Backend services
 
-Backend for the Genie property marketplace (NestJS monorepo, PostgreSQL via Supabase, Prisma, Redis).
+Backend for the Tilomnov property marketplace (NestJS monorepo, PostgreSQL via Supabase, Prisma, Redis).
 
 ## Services
 

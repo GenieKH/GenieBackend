@@ -7,7 +7,7 @@ import {
   Put,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CurrentUserId } from '@genie/shared';
+import { CurrentUserId } from '@tilomnov/shared';
 import { BlocksService } from './blocks.service';
 
 /**

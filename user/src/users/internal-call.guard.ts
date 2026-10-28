@@ -4,7 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { INTERNAL_TOKEN, verifySignedToken } from '@genie/shared';
+import { INTERNAL_TOKEN, verifySignedToken } from '@tilomnov/shared';
 
 /**
  * Lets in only the authentication service, and only for the account named in

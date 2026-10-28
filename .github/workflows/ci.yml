@@ -45,4 +45,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build image
-        run: docker build -t genie-backend:ci .
+        run: docker build -t tilomnov-backend:ci .

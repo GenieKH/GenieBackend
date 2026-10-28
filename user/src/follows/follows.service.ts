@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { JsonCache, PrismaService } from '@genie/shared';
+import { JsonCache, PrismaService } from '@tilomnov/shared';
 import { BlocksService } from '../blocks/blocks.service';
 import { followingIdsKey } from './following-ids-key';
 

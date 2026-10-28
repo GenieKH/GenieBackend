@@ -9,7 +9,7 @@ So a GitHub Action makes one every night (`.github/workflows/database-backup.yml
    table came back. A backup that cannot be restored is not a backup.
 3. It is **encrypted with [age](https://age-encryption.org) to your public key**. GitHub only ever
    stores the encrypted file; the private key that opens it never leaves your hands.
-4. It is kept as a workflow artifact named `genie-db-<date>.dump.age` for **90 days**.
+4. It is kept as a workflow artifact named `tilomnov-db-<date>.dump.age` for **90 days**.
 
 At most a day of data can be lost (the time since the last backup), and the last 90 days of
 nightly states can be restored.
@@ -27,7 +27,7 @@ nightly states can be restored.
 1. **Make a key pair** on your own computer ([download age](https://github.com/FiloSottile/age/releases)):
 
    ```
-   age-keygen -o genie-backup-key.txt
+   age-keygen -o tilomnov-backup-key.txt
    ```
 
    It prints the public key (`age1...`). The file holds the private key.
@@ -58,7 +58,7 @@ overwrite live data.
 
    ```
    TARGET_DATABASE_URL='postgresql://...empty database...' \
-     scripts/restore-database.sh genie-db-2026-10-20T1900Z.dump.age genie-backup-key.txt
+     scripts/restore-database.sh tilomnov-db-2026-10-20T1900Z.dump.age tilomnov-backup-key.txt
    ```
 
    It decrypts to a temporary file (deleted afterwards), creates `pg_trgm`, restores every table and

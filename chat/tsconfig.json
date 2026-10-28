@@ -16,7 +16,7 @@
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
-      "@genie/prisma-client": ["../node_modules/@genie/prisma-client"]
+      "@tilomnov/prisma-client": ["../node_modules/@tilomnov/prisma-client"]
     }
   }
 }

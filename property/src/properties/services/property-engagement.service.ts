@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService, RateLimit, RateLimits } from '@genie/shared';
+import { PrismaService, RateLimit, RateLimits } from '@tilomnov/shared';
 import { CreateContactDto } from '../dto/create-contact.dto';
 import { LeadChannel } from '../dto/lead.dto';
 import { PUBLISHED } from '../property-includes';

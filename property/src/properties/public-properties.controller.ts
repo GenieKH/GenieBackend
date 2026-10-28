@@ -11,7 +11,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { OptionalJwtAuthGuard } from '@genie/shared';
+import { OptionalJwtAuthGuard } from '@tilomnov/shared';
 import { GuestSessionDto } from './dto/guest-session.dto';
 import { MapPriceHistogramQuery } from './dto/map-price-histogram.query';
 import { MapSearchQuery } from './dto/map-search.query';

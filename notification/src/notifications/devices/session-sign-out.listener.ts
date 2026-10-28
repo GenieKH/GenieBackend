@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { RevokedSessions } from '@genie/shared';
+import { RevokedSessions } from '@tilomnov/shared';
 import { PushDevicesService } from './push-devices.service';
 
 /**

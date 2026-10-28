@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { PrismaService, serviceCallGuard } from '@genie/shared';
+import { PrismaService, serviceCallGuard } from '@tilomnov/shared';
 import { PropertyImageService } from '../services/property-image.service';
 import { ListingChanges } from '../services/listing-changes.service';
 import { CACHED_LISTING_SELECT } from '../services/public-property-cache.service';

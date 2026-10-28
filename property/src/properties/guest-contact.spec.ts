@@ -1,5 +1,5 @@
 import { ExecutionContext } from '@nestjs/common';
-import { Prisma } from '@genie/prisma-client';
+import { Prisma } from '@tilomnov/prisma-client';
 import { lastValueFrom, of } from 'rxjs';
 import {
   GuestContactInterceptor,

@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { HealthController } from '@genie/shared';
+import { HealthController } from '@tilomnov/shared';
 import { AppModule } from './app.module';
 import { FeedController } from './feed/feed.controller';
 import { InternalAccountsController } from './properties/internal/internal-accounts.controller';

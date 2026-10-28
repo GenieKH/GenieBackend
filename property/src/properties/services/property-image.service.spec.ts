@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { SupabaseService } from '@genie/shared';
+import { SupabaseService } from '@tilomnov/shared';
 import { PropertyPhotoStorage } from '../storage/property-photo-storage';
 import {
   MAX_PROPERTY_IMAGES,

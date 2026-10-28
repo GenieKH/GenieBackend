@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ReadPrisma } from '@genie/shared';
+import { ReadPrisma } from '@tilomnov/shared';
 import { inOrderOf } from '../properties/services/property-search.service';
 
 /** What a list of search results shows of a person: no contact details. */

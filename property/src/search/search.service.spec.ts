@@ -1,5 +1,5 @@
 import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { FakeRedis, fakeCache } from '@genie/shared/testing';
+import { FakeRedis, fakeCache } from '@tilomnov/shared/testing';
 import { PlaceArea } from './places/place-provider';
 import { SearchService } from './search.service';
 import { TextSearchService } from './text-search.service';

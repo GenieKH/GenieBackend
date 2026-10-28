@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@genie/prisma-client';
-import { PrismaService } from '@genie/shared';
+import { Prisma } from '@tilomnov/prisma-client';
+import { PrismaService } from '@tilomnov/shared';
 import { FavoriteSort } from '../dto/favorites-page.query';
 import { toPage } from '../dto/page.query';
 import { PROPERTY_WITH_RELATIONS } from '../property-includes';

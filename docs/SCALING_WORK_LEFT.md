@@ -1,6 +1,6 @@
 # Scaling work: status
 
-Updated 2026-10-20. Covers both repositories: `genie-backend` (this one) and the Flutter app `genie`.
+Updated 2026-10-20. Covers both repositories: `tilomnov-backend` (this one) and the Flutter app `tilomnov`.
 
 ## Status
 

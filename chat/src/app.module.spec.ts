@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { HealthController } from '@genie/shared';
+import { HealthController } from '@tilomnov/shared';
 import { AppModule } from './app.module';
 import { ChatController } from './chat/chat.controller';
 import { ChatGateway } from './chat/chat.gateway';

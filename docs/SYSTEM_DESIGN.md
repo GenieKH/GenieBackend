@@ -56,7 +56,7 @@ flowchart LR
 
 | Piece | What it does | Notes |
 |---|---|---|
-| API Gateway | Only public entry. Verifies access JWT (RS256, `typ=access`), writes `x-user-id`, proxies | 300 req/min per IP, counted in Redis |
+| API Gateway | Only public entry. Verifies access JWT (RS256, `typ=access`), writes `x-user-id`, proxies. Routes the API under its version (`/v1/...`), answers retired versions `410` | 300 req/min per IP, counted in Redis. Versioning: [API_VERSIONING.md](API_VERSIONING.md) |
 | Authentication | Register, login, Google login, refresh, logout, password reset | Talks to Postgres through the Supabase client |
 | User service | Everything else | Talks to Postgres through Prisma |
 | Notification service | Push devices, notification preferences, promotions; sends chat, sign-in, call and promotion pushes through Firebase Cloud Messaging | Section 14b. Called by chat and authentication over `/internal` |

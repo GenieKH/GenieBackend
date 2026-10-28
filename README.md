@@ -158,6 +158,11 @@ If a database was built by hand and `_prisma_migrations` does not list `0_init`,
 
 All routes go through the gateway. JWT = `Authorization: Bearer <accessToken>`.
 
+Every path below is called under the API version: `/v1/auth/login`, `/v1/users/me`. The chat
+socket sends `apiVersion: '1'` with its token. App builds from before versioning call the paths
+without `/v1` and are answered as v1. How versions are added and retired:
+[docs/API_VERSIONING.md](docs/API_VERSIONING.md).
+
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | POST | `/auth/register` | – | `{email|phone, password}` |

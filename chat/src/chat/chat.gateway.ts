@@ -17,6 +17,7 @@ import { PresenceTargetDto, SendMessageDto } from './dto/chat.dto';
 import { PresenceService } from './presence.service';
 import { parsePayload } from './socket-payload';
 import { userRoom } from './socket-rooms';
+import { refuseApiVersion } from './ws-api-version';
 import { authenticateSocket, SocketUser, socketUser } from './ws-auth';
 import { WsJwtGuard } from './ws-jwt.guard';
 
@@ -59,9 +60,18 @@ export class ChatGateway
     this.sendRateLimiter = rateLimits.create('chat-send', 30, 10);
   }
 
-  /** Rejects the handshake itself, so an unauthenticated socket never connects. */
+  /**
+   * Rejects the handshake itself, so an unauthenticated socket, or one of an
+   * API version this server does not speak, never connects.
+   */
   afterInit(server: Namespace) {
     server.use((client, next) => {
+      const versionRefusal = refuseApiVersion(client);
+      if (versionRefusal) {
+        this.logger.warn(`Connection rejected: ${versionRefusal}`);
+        next(new Error(versionRefusal));
+        return;
+      }
       authenticateSocket(client, this.revokedSessions).then(
         () => next(),
         (error: Error) => {

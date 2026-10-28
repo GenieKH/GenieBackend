@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Post,
   UseGuards,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { PrismaService, serviceCallGuard } from '@tilomnov/shared';
@@ -21,7 +22,7 @@ import { CACHED_LISTING_SELECT } from '../services/public-property-cache.service
  */
 @ApiExcludeController()
 @UseGuards(serviceCallGuard('user'))
-@Controller('internal/accounts/:userId')
+@Controller({ path: 'internal/accounts/:userId', version: VERSION_NEUTRAL })
 export class InternalAccountsController {
   constructor(
     private readonly prisma: PrismaService,

@@ -4,6 +4,7 @@ import {
   Param,
   ParseUUIDPipe,
   UseGuards,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { serviceCallGuard } from '@tilomnov/shared';
@@ -17,7 +18,7 @@ import { FollowsService } from './follows.service';
  */
 @ApiExcludeController()
 @UseGuards(serviceCallGuard('property'))
-@Controller('internal/follows/:userId')
+@Controller({ path: 'internal/follows/:userId', version: VERSION_NEUTRAL })
 export class InternalFollowsController {
   constructor(private readonly follows: FollowsService) {}
 

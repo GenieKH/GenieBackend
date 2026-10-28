@@ -4,6 +4,7 @@ import {
   Param,
   ParseUUIDPipe,
   UseGuards,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { serviceCallGuard } from '@tilomnov/shared';
@@ -16,7 +17,10 @@ import { BlocksService } from './blocks.service';
  */
 @ApiExcludeController()
 @UseGuards(serviceCallGuard('chat'))
-@Controller('internal/blocks/:userId/with/:otherId')
+@Controller({
+  path: 'internal/blocks/:userId/with/:otherId',
+  version: VERSION_NEUTRAL,
+})
 export class InternalBlocksController {
   constructor(private readonly blocks: BlocksService) {}
 

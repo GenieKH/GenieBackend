@@ -8,11 +8,15 @@ initSentry('payment');
 
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { enableApiVersioning } from '@tilomnov/shared/api-versions';
 import { describeJwtPublicKey } from '@tilomnov/shared';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Routes answer as /v1/...: see docs/API_VERSIONING.md.
+  enableApiVersioning(app);
 
   // Reject malformed bodies and drop any field a DTO does not declare.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

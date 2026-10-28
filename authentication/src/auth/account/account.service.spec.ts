@@ -444,6 +444,7 @@ describe('AccountController', () => {
     jest.resetAllMocks();
     controller = new AccountController(
       service as never,
+      {} as never,
       passwordProofs as never,
       new AuthAttemptLimits(),
     );

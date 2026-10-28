@@ -41,3 +41,9 @@ export {
 } from './internal/service-token';
 
 export { RejectNullBytesPipe } from './validation/reject-null-bytes.pipe';
+
+export {
+  E164_PHONE_NUMBER,
+  normalizePhoneNumber,
+  phoneNumberVariants,
+} from './phone/phone-number';

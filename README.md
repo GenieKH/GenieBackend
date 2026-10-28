@@ -165,7 +165,7 @@ without `/v1` and are answered as v1. How versions are added and retired:
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/auth/register` | – | `{email|phone, password}` |
+| POST | `/auth/register` | – | `{phone, email?, name?, password}`: phone required, stored as E.164 (`012 345 678` → `+85512345678`) |
 | POST | `/auth/login` | – | `{email|phone, password}` → `{accessToken, refreshToken}`; reactivates a deactivated account |
 | POST | `/auth/firebase-login` | – | `{idToken}` → tokens |
 | POST | `/auth/refresh` | – | `{refreshToken}` → new pair (old one is revoked) |
@@ -175,6 +175,7 @@ without `/v1` and are answered as v1. How versions are added and retired:
 | POST | `/auth/logout-all` | JWT | sign every device out, the caller's included; `403` as above |
 | POST | `/auth/change-password` | JWT | `{currentPassword, newPassword}`; other devices are signed out. `403 DEVICE_TOO_NEW` from a device signed in for less than a day |
 | POST | `/auth/account/password` | JWT | `{idToken, newPassword}`: the first password of a Google account |
+| POST | `/auth/account/email` | JWT | `{email, password}`: adds an email to an account that has none. `409` if it has one or the email is taken; `403 DEVICE_TOO_NEW` as above |
 | POST | `/auth/account/password-proof` | JWT | `{password}` → `{proofToken, expiresInSeconds}`, for a forgotten chat PIN |
 | POST | `/auth/account/deactivate` | JWT | `{password}` or `{idToken}`; hides the account until the next sign-in. `403 DEVICE_TOO_NEW` as above |
 | POST | `/auth/account/delete` | JWT | `{password}` or `{idToken}`; deletes the account and its files for good. `403 DEVICE_TOO_NEW` as above |

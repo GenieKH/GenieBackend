@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { RedisConnection } from '../redis/redis-connection';
 import { AccountController } from './account/account.controller';
+import { AccountEmailService } from './account/account-email.service';
 import { AccountService } from './account/account.service';
 import { IdentityProofService } from './account/identity-proof.service';
 import { PasswordProofService } from './account/password-proof.service';
@@ -57,6 +58,7 @@ import { UserRepository } from './users/user.repository';
     PasswordProofService,
     UserContentClient,
     AccountService,
+    AccountEmailService,
     SignInService,
     CredentialsAuthService,
     FirebaseLoginService,

@@ -8,6 +8,7 @@ initSentry('authentication');
 
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { RejectNullBytesPipe } from '@tilomnov/shared';
 import { enableApiVersioning } from '@tilomnov/shared/api-versions';
 import { AppModule } from './app.module';
 
@@ -17,8 +18,12 @@ async function bootstrap() {
   // Routes answer as /v1/...: see docs/API_VERSIONING.md.
   enableApiVersioning(app);
 
-  // Reject malformed bodies and drop any field a DTO does not declare.
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  // Reject malformed bodies and drop any field a DTO does not declare. A NUL
+  // is refused first: bcrypt stops reading a password at one.
+  app.useGlobalPipes(
+    new RejectNullBytesPipe(),
+    new ValidationPipe({ whitelist: true, transform: true }),
+  );
 
   // On SIGTERM (every deploy): finish what is running and close connections.
   app.enableShutdownHooks();

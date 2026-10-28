@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { PushDeliveryService } from '../delivery/push-delivery.service';
 import { PushSender } from '../delivery/push-sender';
 import { PushDevicesService } from '../devices/push-devices.service';

@@ -1,6 +1,7 @@
 import { ServerResponse } from 'http';
 import { respondUnavailable } from './upstream-unavailable';
 import {
+  exactRoutesFor,
   routesFor,
   SERVICE_ROUTES,
   serviceUrlsFromEnv,
@@ -8,15 +9,17 @@ import {
 
 /** The service a path is forwarded to, and whether the gateway demands a JWT for it. */
 function resolve(path: string) {
-  const matches = (prefix: string) =>
-    path === prefix || path.startsWith(`${prefix}/`);
+  const matches = ({ path: pattern }: { path: string }) =>
+    pattern.endsWith('/{*path}')
+      ? path.startsWith(pattern.slice(0, -'{*path}'.length))
+      : path === pattern;
   const route = SERVICE_ROUTES.find(
     (candidate) =>
-      candidate.prefixes.some(matches) &&
-      !candidate.exclude?.some((excluded) => excluded.path === path),
+      routesFor(candidate.prefixes).some(matches) &&
+      !exactRoutesFor(candidate.exclude ?? []).some(matches),
   );
   const webhook = SERVICE_ROUTES.find((candidate) =>
-    candidate.alsoPublic?.some((r) => r.path === path),
+    exactRoutesFor(candidate.alsoPublic ?? []).some(matches),
   );
   const chosen = webhook ?? route;
   return (
@@ -24,31 +27,48 @@ function resolve(path: string) {
   );
 }
 
+const ROUTED: [string, string, boolean][] = [
+  ['/auth/login', 'auth', false],
+  ['/auth/sessions', 'auth', false],
+  ['/public/properties/map', 'property', false],
+  ['/public/search', 'property', false],
+  ['/properties', 'property', true],
+  ['/properties/123/images', 'property', true],
+  ['/search/history', 'property', true],
+  ['/feed', 'property', true],
+  ['/users/123/follow', 'user', true],
+  ['/payments/checkout', 'payment', true],
+  ['/payments/webhook', 'payment', false],
+  ['/users/me', 'user', true],
+  ['/reports', 'user', true],
+  ['/reports/admin/123', 'user', true],
+  ['/chat/conversations', 'chat', true],
+  ['/notifications/devices', 'notification', true],
+  ['/notifications/promotions', 'notification', true],
+];
+
 describe('where the gateway sends each path', () => {
-  it.each([
-    ['/auth/login', 'auth', false],
-    ['/auth/sessions', 'auth', false],
-    ['/public/properties/map', 'property', false],
-    ['/public/search', 'property', false],
-    ['/properties', 'property', true],
-    ['/properties/123/images', 'property', true],
-    ['/search/history', 'property', true],
-    ['/feed', 'property', true],
-    ['/users/123/follow', 'user', true],
-    ['/payments/checkout', 'payment', true],
-    ['/payments/webhook', 'payment', false],
-    ['/users/me', 'user', true],
-    ['/reports', 'user', true],
-    ['/reports/admin/123', 'user', true],
-    ['/chat/conversations', 'chat', true],
-    ['/notifications/devices', 'notification', true],
-    ['/notifications/promotions', 'notification', true],
-  ])('%s goes to %s (JWT required: %s)', (path, service, authenticated) => {
-    expect(resolve(path)).toEqual({ service, authenticated });
+  it.each(ROUTED)(
+    '%s goes to %s (JWT required: %s)',
+    (path, service, authenticated) => {
+      expect(resolve(path)).toEqual({ service, authenticated });
+    },
+  );
+
+  it.each(ROUTED)(
+    '/v1%s goes to the same service, with the same JWT rule',
+    (path, service, authenticated) => {
+      expect(resolve(`/v1${path}`)).toEqual({ service, authenticated });
+    },
+  );
+
+  it('does not route a version nobody serves', () => {
+    expect(resolve('/v9/properties')).toBeUndefined();
   });
 
   it('never forwards /internal, which only the services may call', () => {
     expect(resolve('/internal/accounts/1/files')).toBeUndefined();
+    expect(resolve('/v1/internal/accounts/1/files')).toBeUndefined();
   });
 
   it('lets only the chat service take WebSocket upgrades', () => {
@@ -59,10 +79,12 @@ describe('where the gateway sends each path', () => {
     ).toEqual(['chat']);
   });
 
-  it('forwards each prefix both as itself and as a parent of deeper paths', () => {
+  it('forwards each prefix as itself and as a parent of deeper paths, unversioned and under /v1', () => {
     expect(routesFor(['/chat']).map((route) => route.path)).toEqual([
       '/chat',
       '/chat/{*path}',
+      '/v1/chat',
+      '/v1/chat/{*path}',
     ]);
   });
 

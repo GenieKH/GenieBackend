@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { PublicPropertyCache } from '../services/public-property-cache.service';
 import {
   categoriesFor,

@@ -7,9 +7,10 @@ import {
   ParseUUIDPipe,
   Post,
   UseGuards,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { serviceCallGuard } from '@genie/shared';
+import { serviceCallGuard } from '@tilomnov/shared';
 import { ChatAttachmentService } from './chat-attachment.service';
 import { ChatService } from './chat.service';
 
@@ -20,7 +21,7 @@ import { ChatService } from './chat.service';
  */
 @ApiExcludeController()
 @UseGuards(serviceCallGuard('user'))
-@Controller('internal/accounts/:userId')
+@Controller({ path: 'internal/accounts/:userId', version: VERSION_NEUTRAL })
 export class InternalAccountsController {
   constructor(
     private readonly chat: ChatService,

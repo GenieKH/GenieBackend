@@ -3,7 +3,7 @@
 #
 #   authentication | user | property | chat | payment | notification | api-gateway
 #
-#   docker build --build-arg SERVICE=property -t genie-property .
+#   docker build --build-arg SERVICE=property -t tilomnov-property .
 
 # --- Build stage: full install + compile everything ---
 # SERVICE is not used here, so this stage is built once and cached for all services.
@@ -56,8 +56,9 @@ COPY prisma.config.ts ./
 RUN npx prisma generate
 
 COPY --from=builder /app/shared/dist ./shared/dist
-# Imported by each main.ts before anything else, to start error reporting.
-COPY shared/sentry.js shared/sentry.d.ts ./shared/
+# Subpath entry points: error reporting (imported by each main.ts before anything
+# else) and API versions (also used by the gateway, which has no database client).
+COPY shared/sentry.js shared/sentry.d.ts shared/api-versions.js shared/api-versions.d.ts ./shared/
 COPY --from=builder /app/$SERVICE/dist ./$SERVICE/dist
 # Never run as root. Nothing under /app is written to at runtime, so root-owned files are fine.
 USER node

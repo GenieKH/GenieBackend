@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { PASSWORD_PROOF_TOKEN, verifySignedToken } from '@genie/shared';
+import { PASSWORD_PROOF_TOKEN, verifySignedToken } from '@tilomnov/shared';
 
 /**
  * Passes when `token` shows that `userId` typed their account password within

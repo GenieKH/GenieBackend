@@ -1,4 +1,4 @@
-# Genie: System Design
+# Tilomnov: System Design
 
 Reads the code as of 2026-10-12 (branch `feature/e2e`, uncommitted work included).
 
@@ -56,7 +56,7 @@ flowchart LR
 
 | Piece | What it does | Notes |
 |---|---|---|
-| API Gateway | Only public entry. Verifies access JWT (RS256, `typ=access`), writes `x-user-id`, proxies | 300 req/min per IP, counted in Redis |
+| API Gateway | Only public entry. Verifies access JWT (RS256, `typ=access`), writes `x-user-id`, proxies. Routes the API under its version (`/v1/...`), answers retired versions `410` | 300 req/min per IP, counted in Redis. Versioning: [API_VERSIONING.md](API_VERSIONING.md) |
 | Authentication | Register, login, Google login, refresh, logout, password reset | Talks to Postgres through the Supabase client |
 | User service | Everything else | Talks to Postgres through Prisma |
 | Notification service | Push devices, notification preferences, promotions; sends chat, sign-in, call and promotion pushes through Firebase Cloud Messaging | Section 14b. Called by chat and authentication over `/internal` |
@@ -89,7 +89,11 @@ flowchart LR
 6. Two RS256 JWTs come back: access (15 min, `typ=access`) and refresh (30 days, `typ=refresh`).
 7. App keeps them in `flutter_secure_storage`.
 
-**Register** is the same path with `POST /auth/register`: password at least 8 characters, role always `user`, email and phone are **not verified**.
+**Register** is the same path with `POST /auth/register { phone, email?, name?, password }`: a **phone number is required** (many users have no email), email and name are optional (blank means none), password 8+ characters (at most 72 bytes), role always `user`, email and phone are **not verified**. 409 if another account has the phone or email.
+
+- **Phone numbers are stored as E.164** (`+85512345678`) by `normalizePhoneNumber` (`@tilomnov/shared`), on register, login and profile edits. Without a country code a number is read as Cambodian: `012 345 678`, `12345678`, `855 12 345 678`, `+855 012 345 678` are all the same account. Accounts made before this may hold the number as typed (`012345678`, `85512345678`); lookups also try those spellings. The phone cannot be cleared from the profile (`PATCH /users/me` refuses `phone: null`): it is how phone-only accounts sign in.
+- **Input checks** (DTOs, `whitelist` drops unknown fields): emails trimmed, lower-cased, at most 254 characters; names trimmed, at most 60, no control characters or `<`/`>`; a NUL anywhere in a body is refused (`RejectNullBytesPipe`; bcrypt stops reading at one). Non-string values are refused. The database is only reached through the Supabase client and Prisma, which send values as parameters; the one `ilike` lookup escapes `%` and `_`.
+- **Adding an email later:** `POST /auth/account/email { email, password }` (JWT). Only for an account with no email (409 if it has one or another account uses it). Same protection as changing the password: the password (403 if wrong, counted with the other identity checks, 429 after too many) and a device signed in for a day (403 `DEVICE_TOO_NEW`), because the email becomes a "forgot password" channel. There is no password reset for a phone-only account yet (no SMS).
 
 ## 2. Session: every API call, refresh, logout
 
@@ -636,7 +640,7 @@ These come from reading the code, not from load testing.
 | 13 | Access token stays valid up to 15 minutes after logout | Acceptable; shorten if it worries you |
 | 14 | `/health` on the hosted gateway answered 500 / timeout while other routes worked | Investigate before relying on it for uptime checks |
 | 15 | Old messages and attachments are never deleted; expired OTP and revoked token rows stay | Retention policy and a cleanup job |
-| 16 | ~~No monitoring, error tracking or alerting~~ **Sentry added (2026-10-24)**, off until `SENTRY_DSN` is set: every service reports the errors a request ends in that the code did not expect (5xx, `SentryErrorsModule` from `@genie/shared/sentry`, started first in each `main.ts`), never refusals (4xx). No bodies, cookies, query strings or session headers are sent (`dataCollection` plus `withoutSecrets`). The app reports its own (`SENTRY_DSN` in its env file). | Remaining: an uptime check on `/health` |
+| 16 | ~~No monitoring, error tracking or alerting~~ **Sentry added (2026-10-24)**, off until `SENTRY_DSN` is set: every service reports the errors a request ends in that the code did not expect (5xx, `SentryErrorsModule` from `@tilomnov/shared/sentry`, started first in each `main.ts`), never refusals (4xx). No bodies, cookies, query strings or session headers are sent (`dataCollection` plus `withoutSecrets`). The app reports its own (`SENTRY_DSN` in its env file). | Remaining: an uptime check on `/health` |
 | 17 | Hosted dependency advisories: 9 left, all need major upgrades and none look reachable | Review with each framework upgrade |
 
 ### Product decisions (not bugs)

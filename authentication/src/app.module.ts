@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { FirebaseModule } from './firebase/firebase.module';
 import { SupabaseModule } from './supabase/supabase.module';
-import { SentryErrorsModule } from '@genie/shared/sentry';
+import { SentryErrorsModule } from '@tilomnov/shared/sentry';
 
 @Module({
   imports: [SentryErrorsModule, SupabaseModule, FirebaseModule, AuthModule],

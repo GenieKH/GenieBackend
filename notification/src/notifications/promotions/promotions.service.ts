@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { PromotionSender } from './promotion-sender';
 

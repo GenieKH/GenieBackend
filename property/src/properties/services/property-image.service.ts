@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { PropertyPhotoStorage } from '../storage/property-photo-storage';
 import { PropertyQueryService } from './property-query.service';
 import { ListingChanges } from './listing-changes.service';

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { SupabaseModule } from '@genie/shared';
+import { SupabaseModule } from '@tilomnov/shared';
 import { AccountContentService } from './account-content.service';
 import { AvatarService } from './avatar.service';
 import { InternalAccountsController } from './internal-accounts.controller';

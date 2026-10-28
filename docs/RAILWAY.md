@@ -1,4 +1,4 @@
-# Deploying Genie on Railway
+# Deploying Tilomnov on Railway
 
 One Railway service per backend service, all built from this repository with the same `Dockerfile`.
 Each service restarts, scales and deploys on its own, so one crashing does not take the others with it.

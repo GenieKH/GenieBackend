@@ -11,7 +11,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CurrentUserId } from '@genie/shared';
+import { CurrentUserId } from '@tilomnov/shared';
 import { CreateSavedSearchDto, UpdateSavedSearchDto } from './saved-search.dto';
 import {
   MAX_SAVED_SEARCHES,

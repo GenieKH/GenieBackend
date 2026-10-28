@@ -9,7 +9,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Namespace, Socket } from 'socket.io';
-import { RateLimit, RateLimits } from '@genie/shared';
+import { RateLimit, RateLimits } from '@tilomnov/shared';
 import { parsePayload } from '../chat/socket-payload';
 import { userRoom } from '../chat/socket-rooms';
 import { socketUser } from '../chat/ws-auth';

@@ -7,9 +7,10 @@ import {
   ParseUUIDPipe,
   Post,
   UseGuards,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { serviceCallGuard } from '@genie/shared';
+import { serviceCallGuard } from '@tilomnov/shared';
 import { PropertyPublicationService } from '../services/property-publication.service';
 import {
   BeginPublishDto,
@@ -23,7 +24,10 @@ import {
  */
 @ApiExcludeController()
 @UseGuards(serviceCallGuard('payment'))
-@Controller('internal/properties/:propertyId')
+@Controller({
+  path: 'internal/properties/:propertyId',
+  version: VERSION_NEUTRAL,
+})
 export class InternalPublicationController {
   constructor(private readonly publication: PropertyPublicationService) {}
 

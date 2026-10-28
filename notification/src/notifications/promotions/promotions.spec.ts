@@ -117,7 +117,7 @@ describe('PromotionSender', () => {
       titleKm: null,
       bodyKm: null,
       propertyId: null,
-      url: 'https://genie.example/sale',
+      url: 'https://tilomnov.example/sale',
       imageUrl: null,
     });
     sender = new PromotionSender(
@@ -137,7 +137,7 @@ describe('PromotionSender', () => {
     expect(delivered[0].data).toEqual({
       type: 'promotion',
       promotionId: 'p1',
-      url: 'https://genie.example/sale',
+      url: 'https://tilomnov.example/sale',
     });
     expect(promotionTable.update).toHaveBeenCalledWith({
       where: { id: 'p1' },

@@ -1,6 +1,6 @@
-# Genie Backend services
+# Tilomnov Backend services
 
-Backend for the Genie property marketplace (NestJS monorepo, PostgreSQL via Supabase, Prisma, Redis).
+Backend for the Tilomnov property marketplace (NestJS monorepo, PostgreSQL via Supabase, Prisma, Redis).
 
 ## Services
 
@@ -158,9 +158,14 @@ If a database was built by hand and `_prisma_migrations` does not list `0_init`,
 
 All routes go through the gateway. JWT = `Authorization: Bearer <accessToken>`.
 
+Every path below is called under the API version: `/v1/auth/login`, `/v1/users/me`. The chat
+socket sends `apiVersion: '1'` with its token. App builds from before versioning call the paths
+without `/v1` and are answered as v1. How versions are added and retired:
+[docs/API_VERSIONING.md](docs/API_VERSIONING.md).
+
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/auth/register` | – | `{email|phone, password}` |
+| POST | `/auth/register` | – | `{phone, email?, name?, password}`: phone required, stored as E.164 (`012 345 678` → `+85512345678`) |
 | POST | `/auth/login` | – | `{email|phone, password}` → `{accessToken, refreshToken}`; reactivates a deactivated account |
 | POST | `/auth/firebase-login` | – | `{idToken}` → tokens |
 | POST | `/auth/refresh` | – | `{refreshToken}` → new pair (old one is revoked) |
@@ -170,6 +175,7 @@ All routes go through the gateway. JWT = `Authorization: Bearer <accessToken>`.
 | POST | `/auth/logout-all` | JWT | sign every device out, the caller's included; `403` as above |
 | POST | `/auth/change-password` | JWT | `{currentPassword, newPassword}`; other devices are signed out. `403 DEVICE_TOO_NEW` from a device signed in for less than a day |
 | POST | `/auth/account/password` | JWT | `{idToken, newPassword}`: the first password of a Google account |
+| POST | `/auth/account/email` | JWT | `{email, password}`: adds an email to an account that has none. `409` if it has one or the email is taken; `403 DEVICE_TOO_NEW` as above |
 | POST | `/auth/account/password-proof` | JWT | `{password}` → `{proofToken, expiresInSeconds}`, for a forgotten chat PIN |
 | POST | `/auth/account/deactivate` | JWT | `{password}` or `{idToken}`; hides the account until the next sign-in. `403 DEVICE_TOO_NEW` as above |
 | POST | `/auth/account/delete` | JWT | `{password}` or `{idToken}`; deletes the account and its files for good. `403 DEVICE_TOO_NEW` as above |

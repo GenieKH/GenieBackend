@@ -3,7 +3,7 @@ import {
   ACCESS_TOKEN,
   RevokedSessions,
   verifySignedToken,
-} from '@genie/shared';
+} from '@tilomnov/shared';
 
 /** Who a socket belongs to. `sessionId` is null for a token from before sessions existed. */
 export interface SocketUser {

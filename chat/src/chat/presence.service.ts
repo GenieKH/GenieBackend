@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 
 /** Remembers when each user was last connected to chat. */
 @Injectable()

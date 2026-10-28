@@ -1,4 +1,4 @@
-import { Prisma } from '@genie/prisma-client';
+import { Prisma } from '@tilomnov/prisma-client';
 
 import { PropertyType } from './property-options';
 import { SIZE_FIELD_BY_TYPE, SizeField } from './property-type-fields';

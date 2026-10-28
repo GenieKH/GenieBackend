@@ -7,8 +7,8 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { Prisma } from '@genie/prisma-client';
-import { JsonCache, PrismaService } from '@genie/shared';
+import { Prisma } from '@tilomnov/prisma-client';
+import { JsonCache, PrismaService } from '@tilomnov/shared';
 import { BackupSeal, MIN_BACKUP_SECRET_LENGTH } from './backup-seal';
 import { publicKeyCacheKey } from './public-key-cache';
 

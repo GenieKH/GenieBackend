@@ -4,7 +4,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { fakeCache } from '@genie/shared/testing';
+import { fakeCache } from '@tilomnov/shared/testing';
 import { ChatService } from './chat.service';
 import { BlockedException } from './block-checker';
 

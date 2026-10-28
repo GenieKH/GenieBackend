@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { SentryErrorsModule } from '@genie/shared/sentry';
+import { SentryErrorsModule } from '@tilomnov/shared/sentry';
+import { createApiVersionMiddleware } from './api-versions';
 import { AppController } from './app.controller';
 import { AuthMiddleware } from './auth.middleware';
 import {
@@ -10,6 +11,7 @@ import { RedisConnection } from './redis-connection';
 import { RevokedSessions } from './revoked-sessions';
 import { createServiceProxy, WebSocketProxy } from './service-proxy';
 import {
+  exactRoutesFor,
   routesFor,
   SERVICE_ROUTES,
   serviceUrlsFromEnv,
@@ -37,6 +39,8 @@ export class AppModule implements NestModule {
     const rateLimit = createRateLimitMiddleware(
       createRequestLimiter(this.redis.client, 300, 60),
     );
+    // Retired versions are refused before a token is even checked.
+    const apiVersion = createApiVersionMiddleware();
 
     for (const route of SERVICE_ROUTES) {
       const proxy = createServiceProxy(route.service, urls[route.service], {
@@ -45,16 +49,16 @@ export class AppModule implements NestModule {
       });
       if (route.websocket) this.websocketProxies.push(proxy);
       const middleware = route.authenticated
-        ? [rateLimit, AuthMiddleware, proxy]
-        : [rateLimit, proxy];
+        ? [rateLimit, apiVersion, AuthMiddleware, proxy]
+        : [rateLimit, apiVersion, proxy];
       const forRoutes = [
         ...routesFor(route.prefixes),
-        ...(route.alsoPublic ?? []),
+        ...exactRoutesFor(route.alsoPublic ?? []),
       ];
 
       const configured = consumer.apply(...middleware);
       (route.exclude
-        ? configured.exclude(...route.exclude)
+        ? configured.exclude(...exactRoutesFor(route.exclude))
         : configured
       ).forRoutes(...forRoutes);
     }

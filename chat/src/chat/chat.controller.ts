@@ -10,7 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { CurrentUserId, RateLimit, RateLimits } from '@genie/shared';
+import { CurrentUserId, RateLimit, RateLimits } from '@tilomnov/shared';
 import { requirePasswordProof } from './password-proof';
 import { ChatAttachmentService } from './chat-attachment.service';
 import {

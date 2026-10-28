@@ -28,9 +28,17 @@ describe('CredentialsAuthService', () => {
 
   describe('register', () => {
     it('hashes the password and always creates a plain "user"', async () => {
-      await service.register({ email: 'a@b.com', password: 'password123' });
+      await service.register({
+        phone: '+85512345678',
+        password: 'password123',
+      });
 
       const saved = users.create.mock.calls[0][0];
+      expect(saved).toMatchObject({
+        phone: '+85512345678',
+        email: null,
+        name: null,
+      });
       expect(saved.role).toBe('user');
       expect(saved.password_hash).not.toBe('password123');
       expect(await bcrypt.compare('password123', saved.password_hash)).toBe(
@@ -44,14 +52,43 @@ describe('CredentialsAuthService', () => {
       users.findByEmail.mockResolvedValue({ id: 'u1', email: 'Foo@Gmail.com' });
 
       await expect(
-        service.register({ email: 'foo@gmail.com', password: 'password123' }),
+        service.register({
+          phone: '+85512345678',
+          email: 'foo@gmail.com',
+          password: 'password123',
+        }),
       ).rejects.toThrow('Email or phone already exists');
       expect(users.create).not.toHaveBeenCalled();
     });
 
+    it('refuses a phone number an existing account has, in any stored spelling', async () => {
+      users.findByPhone.mockResolvedValue({ id: 'u1', phone: '012345678' });
+
+      await expect(
+        service.register({ phone: '+85512345678', password: 'password123' }),
+      ).rejects.toThrow('Email or phone already exists');
+      expect(users.findByPhone).toHaveBeenCalledWith('+85512345678');
+      expect(users.create).not.toHaveBeenCalled();
+    });
+
+    it('saves the optional email and name when given', async () => {
+      await service.register({
+        phone: '+85512345678',
+        email: 'a@b.com',
+        name: 'Dara',
+        password: 'password123',
+      });
+
+      expect(users.create.mock.calls[0][0]).toMatchObject({
+        phone: '+85512345678',
+        email: 'a@b.com',
+        name: 'Dara',
+      });
+    });
+
     it('ignores a role sent by the client', async () => {
       await service.register({
-        email: 'a@b.com',
+        phone: '+85512345678',
         password: 'password123',
         role: 'admin',
       } as never);

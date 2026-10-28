@@ -1,4 +1,5 @@
 import { RequestMethod } from '@nestjs/common';
+import { versionedPaths } from './api-versions';
 
 /** The services behind the gateway, each reachable at an internal URL. */
 export interface ServiceUrls {
@@ -31,7 +32,7 @@ export const PAYMENT_WEBHOOK = {
 
 export interface ServiceRoute {
   service: keyof ServiceUrls;
-  /** Path prefixes, each forwarded as `/x` and `/x/...`. */
+  /** Path prefixes, unversioned: `routesFor` adds the `/v1` forms. */
   prefixes: string[];
   /** True when a valid JWT is required (the gateway sets `x-user-id` from it). */
   authenticated: boolean;
@@ -45,7 +46,8 @@ export interface ServiceRoute {
 
 /**
  * Where each path goes. A service going down only takes its own paths with
- * it. The mobile app keeps using one address; these paths did not change.
+ * it. The app calls them under a version (`/v1/auth/login`); app builds from
+ * before versioning still call them without one.
  */
 export const SERVICE_ROUTES: ServiceRoute[] = [
   // Login, register, refresh, password reset: no JWT yet.
@@ -85,10 +87,21 @@ export const SERVICE_ROUTES: ServiceRoute[] = [
   },
 ];
 
-/** Each prefix as `/x` and `/x/...`, for every HTTP method. */
+/**
+ * Each prefix as `/x` and `/x/...`, unversioned and under each known
+ * version (`/v1/x`), for every HTTP method.
+ */
 export function routesFor(prefixes: string[]) {
-  return prefixes.flatMap((prefix) => [
+  const paths = prefixes.flatMap((prefix) => versionedPaths(prefix));
+  return paths.flatMap((prefix) => [
     { path: prefix, method: RequestMethod.ALL },
     { path: `${prefix}/{*path}`, method: RequestMethod.ALL },
   ]);
+}
+
+/** Exact routes, such as the payment webhook, in every versioned form. */
+export function exactRoutesFor(routes: (typeof PAYMENT_WEBHOOK)[]) {
+  return routes.flatMap(({ path, method }) =>
+    versionedPaths(path).map((versioned) => ({ path: versioned, method })),
+  );
 }

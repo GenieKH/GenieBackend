@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PropertyQueryService } from '../properties/services/property-query.service';
 import { PropertySearchService } from '../properties/services/property-search.service';
-import { JsonCache } from '@genie/shared';
+import { JsonCache } from '@tilomnov/shared';
 import { PeopleSearchService } from './people-search.service';
 import { nearestFirst, withMinimumSpan } from './area-geometry';
 import { PlaceSessionQuery, SearchQuery } from './dto/search.query';

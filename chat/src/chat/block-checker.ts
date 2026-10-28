@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import { ServiceClient } from '@genie/shared';
+import { ServiceClient } from '@tilomnov/shared';
 
 /** A message waits on this answer: never long. */
 const TIMEOUT_MS = 2_000;

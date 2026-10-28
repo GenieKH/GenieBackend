@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { Prisma } from '@genie/prisma-client';
-import { PrismaService } from '@genie/shared';
+import { Prisma } from '@tilomnov/prisma-client';
+import { PrismaService } from '@tilomnov/shared';
 import { ListingNotificationsClient } from '../../notifications/listing-notifications.client';
 import { PUBLISHED } from '../../properties/property-includes';
 import { SIZE_FIELD_BY_TYPE } from '../../properties/property-type-fields';

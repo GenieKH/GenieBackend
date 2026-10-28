@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { AbaPaywayProvider } from './aba-payway.provider';
 import { PaymentStatus, PUBLISH_FEE } from './payment-status';
 import { PropertyPublishingClient } from './property/property-publishing.client';

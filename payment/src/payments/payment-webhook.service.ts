@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { AbaPaywayProvider } from './aba-payway.provider';
 import { PaymentWebhookDto } from './dto/payment.dto';
 import { PaymentStatus } from './payment-status';

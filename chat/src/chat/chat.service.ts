@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { JsonCache, PrismaService } from '@genie/shared';
+import { JsonCache, PrismaService } from '@tilomnov/shared';
 import { BlockChecker } from './block-checker';
 import { CHAT_PIN_TTL_SECONDS, chatPinCacheKey } from './chat-pin-cache';
 import { ConversationStateService } from './conversation-state.service';

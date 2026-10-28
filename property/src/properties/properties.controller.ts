@@ -12,7 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
-import { CurrentUserId } from '@genie/shared';
+import { CurrentUserId } from '@tilomnov/shared';
 import { BoundaryDto } from './dto/boundary.dto';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { CreatePropertyDto } from './dto/create-property.dto';

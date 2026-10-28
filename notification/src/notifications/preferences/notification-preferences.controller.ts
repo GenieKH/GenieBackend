@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { CurrentUserId, JwtAuthGuard } from '@genie/shared';
+import { CurrentUserId, JwtAuthGuard } from '@tilomnov/shared';
 import { UpdateNotificationPreferencesDto } from './dto/notification-preferences.dto';
 import {
   DEFAULT_PREFERENCES,

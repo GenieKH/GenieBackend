@@ -1,6 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CurrentUserId } from '@genie/shared';
+import { CurrentUserId } from '@tilomnov/shared';
 import { FeedQuery } from './dto/feed.query';
 import { decodeFeedCursor } from './feed-cursor';
 import { FeedService } from './feed.service';

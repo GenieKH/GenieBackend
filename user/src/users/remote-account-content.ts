@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { ServiceClient } from '@genie/shared';
+import { ServiceClient } from '@tilomnov/shared';
 
 const ERASE_TIMEOUT_MS = 30_000;
 const NOTICE_TIMEOUT_MS = 5_000;

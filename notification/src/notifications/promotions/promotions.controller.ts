@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { AdminGuard, CurrentUserId, JwtAuthGuard } from '@genie/shared';
+import { AdminGuard, CurrentUserId, JwtAuthGuard } from '@tilomnov/shared';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { PromotionStatus, PromotionsService } from './promotions.service';
 

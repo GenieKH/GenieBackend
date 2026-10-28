@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ReadPrisma } from '@genie/shared';
+import { ReadPrisma } from '@tilomnov/shared';
 import { MAP_SELECT, PUBLISHED } from '../property-includes';
 import { PropertyEngagementCounts } from './property-engagement-counts.service';
 import { PublicPropertyCache } from './public-property-cache.service';

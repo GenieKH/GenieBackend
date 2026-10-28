@@ -23,8 +23,12 @@ export class CredentialsAuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<void> {
-    // The database refuses an exact repeat; this also catches an older account that still has capitals in its email.
-    if (dto.email && (await this.users.findByEmail(dto.email))) {
+    // The database refuses an exact repeat; these also catch an older account
+    // that holds capitals in its email or another spelling of the number.
+    if (
+      (await this.users.findByPhone(dto.phone)) ||
+      (dto.email && (await this.users.findByEmail(dto.email)))
+    ) {
       throw new ConflictException('Email or phone already exists');
     }
 
@@ -32,8 +36,9 @@ export class CredentialsAuthService {
 
     // Self-registration never grants elevated roles.
     await this.users.create({
-      email: dto.email || null,
-      phone: dto.phone || null,
+      phone: dto.phone,
+      email: dto.email ?? null,
+      name: dto.name ?? null,
       password_hash: passwordHash,
       has_password: true,
       role: DEFAULT_USER_ROLE,

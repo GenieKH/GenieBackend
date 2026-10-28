@@ -3,16 +3,20 @@ import * as path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 // Error reporting starts before the rest is loaded, so it can wrap it.
-import { initSentry } from '@genie/shared/sentry';
+import { initSentry } from '@tilomnov/shared/sentry';
 initSentry('property');
 
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { describeJwtPublicKey, RejectNullBytesPipe } from '@genie/shared';
+import { enableApiVersioning } from '@tilomnov/shared/api-versions';
+import { describeJwtPublicKey, RejectNullBytesPipe } from '@tilomnov/shared';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Routes answer as /v1/...: see docs/API_VERSIONING.md.
+  enableApiVersioning(app);
 
   // Reject malformed bodies and drop any field a DTO does not declare.
   app.useGlobalPipes(

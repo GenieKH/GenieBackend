@@ -8,7 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { CurrentUserId, JwtAuthGuard } from '@genie/shared';
+import { CurrentUserId, JwtAuthGuard } from '@tilomnov/shared';
 import { CheckoutDto, PaymentWebhookDto } from './dto/payment.dto';
 import { PaymentCheckoutService } from './payment-checkout.service';
 import { PaymentWebhookService } from './payment-webhook.service';

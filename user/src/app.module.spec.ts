@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { HealthController } from '@genie/shared';
+import { HealthController } from '@tilomnov/shared';
 import { AppModule } from './app.module';
 import { FollowsController } from './follows/follows.controller';
 import { InternalFollowsController } from './follows/internal-follows.controller';

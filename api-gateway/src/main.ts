@@ -3,7 +3,7 @@ import * as path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 // Error reporting starts before the rest is loaded, so it can wrap it.
-import { initSentry } from '@genie/shared/sentry';
+import { initSentry } from '@tilomnov/shared/sentry';
 initSentry('api-gateway');
 
 import { NestFactory } from '@nestjs/core';

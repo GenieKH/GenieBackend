@@ -7,9 +7,10 @@ import {
   ParseUUIDPipe,
   Post,
   UseGuards,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { PrismaService, serviceCallGuard } from '@genie/shared';
+import { PrismaService, serviceCallGuard } from '@tilomnov/shared';
 import { PropertyImageService } from '../services/property-image.service';
 import { ListingChanges } from '../services/listing-changes.service';
 import { CACHED_LISTING_SELECT } from '../services/public-property-cache.service';
@@ -21,7 +22,7 @@ import { CACHED_LISTING_SELECT } from '../services/public-property-cache.service
  */
 @ApiExcludeController()
 @UseGuards(serviceCallGuard('user'))
-@Controller('internal/accounts/:userId')
+@Controller({ path: 'internal/accounts/:userId', version: VERSION_NEUTRAL })
 export class InternalAccountsController {
   constructor(
     private readonly prisma: PrismaService,

@@ -4,8 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@genie/prisma-client';
-import { PrismaService } from '@genie/shared';
+import { Prisma } from '@tilomnov/prisma-client';
+import { PrismaService } from '@tilomnov/shared';
 import { CreateSavedSearchDto, UpdateSavedSearchDto } from './saved-search.dto';
 
 /** The most searches one account keeps: each is checked against every new listing. */

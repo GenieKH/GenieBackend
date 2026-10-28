@@ -31,6 +31,8 @@ export class BackupSeal {
         `The backup secret needs at least ${MIN_BACKUP_SECRET_LENGTH} characters`,
       );
     }
+    // The app's old name stays in these labels: the keys derived from them
+    // seal the backups already stored, which a new label could not open.
     this.verifierKey = deriveKey(secret, 'genie-chat-backup-verifier-v1');
     this.blobKey = deriveKey(secret, 'genie-chat-backup-blob-v1');
   }

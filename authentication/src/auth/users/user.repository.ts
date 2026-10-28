@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { phoneNumberVariants } from '@tilomnov/shared';
 import { SUPABASE_CLIENT } from '../../supabase/supabase.module';
 
 /** A row of the `users` table (column names are the database's snake_case). */
@@ -81,8 +82,23 @@ export class UserRepository {
     );
   }
 
-  findByPhone(phone: string): Promise<UserRecord | null> {
-    return this.findOneBy('phone', phone);
+  /**
+   * `phone` is E.164 (see `normalizePhoneNumber`). An account made before
+   * numbers were normalized may hold another spelling of it, so those match too.
+   */
+  async findByPhone(phone: string): Promise<UserRecord | null> {
+    const { data, error } = await this.supabase
+      .from('users')
+      .select('*')
+      .in('phone', phoneNumberVariants(phone))
+      .limit(1)
+      .maybeSingle<UserRecord>();
+
+    if (error) {
+      this.logger.error(`Failed to look up user by phone: ${error.message}`);
+      throw new InternalServerErrorException('Failed to look up user');
+    }
+    return data ?? null;
   }
 
   findByFirebaseUid(uid: string): Promise<UserRecord | null> {
@@ -126,6 +142,9 @@ export class UserRepository {
       .from('users')
       .update(patch)
       .eq('id', id);
+    if (error?.code === UNIQUE_VIOLATION) {
+      throw new ConflictException('Email or phone already exists');
+    }
     if (error) {
       this.logger.error(`Failed to update user ${id}: ${error.message}`);
       throw new InternalServerErrorException('Failed to update user');

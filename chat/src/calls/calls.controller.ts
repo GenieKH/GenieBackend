@@ -1,6 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { CurrentUserId } from '@genie/shared';
+import { CurrentUserId } from '@tilomnov/shared';
 import { CallHistoryEntry, CallHistoryService } from './call-history.service';
 import { CallHistoryQuery } from './dto/call.dto';
 import { IceServer, IceServersService } from './ice-servers.service';

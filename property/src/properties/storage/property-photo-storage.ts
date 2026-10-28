@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { PUBLIC_IMAGE_TYPES, SupabaseService } from '@genie/shared';
+import { PUBLIC_IMAGE_TYPES, SupabaseService } from '@tilomnov/shared';
 import { randomUUID } from 'crypto';
 import { makePhotoThumbnail } from './photo-thumbnail';
 

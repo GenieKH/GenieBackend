@@ -4,9 +4,9 @@ import {
   JwtStrategy,
   PrismaModule,
   RedisModule,
-} from '@genie/shared';
+} from '@tilomnov/shared';
 import { NotificationsModule } from './notifications/notifications.module';
-import { SentryErrorsModule } from '@genie/shared/sentry';
+import { SentryErrorsModule } from '@tilomnov/shared/sentry';
 
 /** The notification service: push devices, preferences, alerts from other services, promotions. */
 @Module({

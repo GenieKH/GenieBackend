@@ -18,14 +18,16 @@ import {
   AuthenticatedUser,
   CurrentUser,
 } from '../decorators/current-user.decorator';
+import { AddEmailDto } from '../dto/add-email.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { IdentityProofDto } from '../dto/identity-proof.dto';
 import { CreatePasswordDto, PasswordProofDto } from '../dto/password.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { AccountEmailService } from './account-email.service';
 import { AccountService } from './account.service';
 import { PasswordProofService } from './password-proof.service';
 
-/** Account security for the signed-in user: password, deactivate, delete. */
+/** Account security for the signed-in user: password, email, deactivate, delete. */
 @ApiTags('auth')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -39,6 +41,8 @@ import { PasswordProofService } from './password-proof.service';
 export class AccountController {
   constructor(
     @Inject(AccountService) private readonly account: AccountService,
+    @Inject(AccountEmailService)
+    private readonly accountEmail: AccountEmailService,
     @Inject(PasswordProofService)
     private readonly passwordProofs: PasswordProofService,
     @Inject(AuthAttemptLimits) private readonly limits: AuthAttemptLimits,
@@ -73,6 +77,26 @@ export class AccountController {
       this.account.createPassword(user.userId, dto.idToken, dto.newPassword),
     );
     return { message: 'Password created' };
+  }
+
+  @Post('account/email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Add an email to an account that has none, confirmed with the password',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'The account already has an email, or another account uses it',
+  })
+  async addEmail(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: AddEmailDto,
+  ) {
+    await this.withLimitedTries(user.userId, () =>
+      this.accountEmail.addEmail(user, dto.email, dto.password),
+    );
+    return { message: 'Email added' };
   }
 
   @Post('account/password-proof')

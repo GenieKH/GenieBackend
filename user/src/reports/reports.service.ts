@@ -6,7 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService, RateLimit, RateLimits } from '@genie/shared';
+import { PrismaService, RateLimit, RateLimits } from '@tilomnov/shared';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ReportQueueQuery } from './dto/report-queue.query';
 import { ReviewReportDto } from './dto/review-report.dto';

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { SupabaseModule } from '@genie/shared';
+import { SupabaseModule } from '@tilomnov/shared';
 import { InternalAccountsController } from './internal/internal-accounts.controller';
 import { InternalPublicationController } from './internal/internal-publication.controller';
 import {

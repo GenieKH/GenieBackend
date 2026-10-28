@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { boundaryCentroid } from '../boundary-centroid';
 import { BoundaryDto } from '../dto/boundary.dto';
 import { PropertyNearbyService } from '../nearby/property-nearby.service';

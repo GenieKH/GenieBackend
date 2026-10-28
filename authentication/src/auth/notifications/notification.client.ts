@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ServiceClient } from '@genie/shared';
+import { ServiceClient } from '@tilomnov/shared';
 
 /** Signing in never waits long for a push. */
 const NOTIFY_TIMEOUT_MS = 5_000;

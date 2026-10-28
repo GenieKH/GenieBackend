@@ -4,7 +4,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { JsonCache, PrismaService } from '@genie/shared';
+import { JsonCache, PrismaService } from '@tilomnov/shared';
 import { NearbyCategory } from './nearby-categories';
 import { RoutePath, RoutePathProvider } from './nearby-providers';
 

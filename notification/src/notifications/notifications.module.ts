@@ -1,5 +1,5 @@
 import { Logger, Module } from '@nestjs/common';
-import { AdminGuard, RevokedSessions } from '@genie/shared';
+import { AdminGuard, RevokedSessions } from '@tilomnov/shared';
 import { CallNotifier } from './calls/call-notifier';
 import { ChatMessageNotifier } from './chat/chat-message-notifier';
 import { DisabledPushSender } from './delivery/disabled-push-sender';

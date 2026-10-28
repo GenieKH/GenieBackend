@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { JsonCache, PrismaService } from '@genie/shared';
+import { JsonCache, PrismaService } from '@tilomnov/shared';
 import { followingIdsKey } from '../follows/following-ids-key';
 
 /** Block and unblock drop the entry; this is only the safety net if Redis missed that. */

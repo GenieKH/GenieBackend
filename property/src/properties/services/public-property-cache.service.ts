@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { JsonCache } from '@genie/shared';
+import { JsonCache } from '@tilomnov/shared';
 import { MapFilter, mapFilterKey } from '../map-filter';
 
 export interface MapBounds {

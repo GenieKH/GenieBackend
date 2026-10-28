@@ -3,17 +3,21 @@ import * as path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 // Error reporting starts before the rest is loaded, so it can wrap it.
-import { initSentry } from '@genie/shared/sentry';
+import { initSentry } from '@tilomnov/shared/sentry';
 initSentry('chat');
 
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { describeJwtPublicKey } from '@genie/shared';
+import { enableApiVersioning } from '@tilomnov/shared/api-versions';
+import { describeJwtPublicKey } from '@tilomnov/shared';
 import { AppModule } from './app.module';
 import { RedisIoAdapter } from './chat/redis-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Routes answer as /v1/...: see docs/API_VERSIONING.md.
+  enableApiVersioning(app);
 
   // Reject malformed bodies and drop any field a DTO does not declare.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

@@ -5,9 +5,10 @@ import {
   HttpStatus,
   Post,
   UseGuards,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { serviceCallGuard } from '@genie/shared';
+import { serviceCallGuard } from '@tilomnov/shared';
 import { CallNotifier } from '../calls/call-notifier';
 import { ChatMessageNotifier } from '../chat/chat-message-notifier';
 import { DeliveryReport } from '../delivery/push-delivery.service';
@@ -38,7 +39,7 @@ import {
  * service that owns the event.
  */
 @ApiExcludeController()
-@Controller('internal/notifications')
+@Controller({ path: 'internal/notifications', version: VERSION_NEUTRAL })
 export class InternalNotificationsController {
   constructor(
     private readonly chatMessages: ChatMessageNotifier,

@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { PrismaService } from '@genie/shared';
+import { PrismaService } from '@tilomnov/shared';
 import { BlockChecker } from '../chat/block-checker';
 import { DISPLAY_FIELDS, displayName } from '../chat/display-name';
 import { NotificationClient } from '../chat/notification.client';

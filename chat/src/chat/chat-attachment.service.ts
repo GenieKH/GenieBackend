@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { PrismaService, SupabaseService } from '@genie/shared';
+import { PrismaService, SupabaseService } from '@tilomnov/shared';
 
 /** Private bucket: nothing in it is readable without a signed URL from this service. */
 const BUCKET = 'chat-attachments';

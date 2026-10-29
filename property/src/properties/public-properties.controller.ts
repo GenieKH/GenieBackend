@@ -12,12 +12,17 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { OptionalJwtAuthGuard } from '@tilomnov/shared';
+import { ClosestListingsQuery } from './dto/closest-listings.query';
 import { GuestSessionDto } from './dto/guest-session.dto';
 import { MapPriceHistogramQuery } from './dto/map-price-histogram.query';
 import { MapSearchQuery } from './dto/map-search.query';
 import { GuestContactInterceptor } from './guest-contact';
+import { ClosestListingsService } from './services/closest-listings.service';
 import { GuestSessionService } from './services/guest-session.service';
 import { PropertyQueryService } from './services/property-query.service';
+
+/** Listings per page of `closest` when no `limit` is asked for. */
+const CLOSEST_PAGE_SIZE = 20;
 
 /**
  * Endpoints anyone can call; a logged-in user just gets extra info
@@ -30,6 +35,7 @@ export class PublicPropertiesController {
   constructor(
     private readonly query: PropertyQueryService,
     private readonly guestSessions: GuestSessionService,
+    private readonly closest: ClosestListingsService,
   ) {}
 
   @Get('map')
@@ -52,6 +58,24 @@ export class PublicPropertiesController {
       search.bounds(),
       search.filter(),
       search.upTo,
+    );
+  }
+
+  /**
+   * `{ items, nextOffset }`: every published listing passing the map filter,
+   * nearest to `lat`,`lng` first, each with its `distanceMeters`. Send
+   * `nextOffset` back as `offset` for the next page.
+   */
+  @Get('closest')
+  @UseGuards(OptionalJwtAuthGuard)
+  closestListings(@Query() query: ClosestListingsQuery) {
+    return this.closest.page(
+      { lat: query.lat, lng: query.lng },
+      query.filter(),
+      {
+        limit: query.limit ?? CLOSEST_PAGE_SIZE,
+        offset: query.offset ?? 0,
+      },
     );
   }
 

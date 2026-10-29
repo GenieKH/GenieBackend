@@ -94,6 +94,7 @@ sockets on the same instance.
 | Cached | Expires | Cleared at once when |
 |---|---|---|
 | Map search (`/public/properties/map`) and its price bars (`/map/prices`), per ~1 km grid box and filter | 30 s | a published listing inside it (in the same ~11 km cell) is created, edited, moved, published, hidden, sold, paid for, or gets photos, or its owner's name or picture changes. A map wider than 64 cells is cleared by any such change |
+| Positions ranked by `/public/properties/closest`, per filter | 30 s | any published listing changes |
 | Text search listings / one owner's listings | 30 s | any published listing changes / one of that owner's does |
 | Listing page (`/public/properties/:id`) | 60 s | that listing changes, or its owner's name or picture does |
 | Chat public key (`/chat/keys/:userId`) | 10 min | that user publishes a new key, or their account is hidden, shown again or deleted |
@@ -182,6 +183,7 @@ without `/v1` and are answered as v1. How versions are added and retired:
 | POST | `/auth/forgot-password`, `/auth/verify-otp`, `/auth/reset-password` | – | password reset |
 | GET | `/public/properties/map` | optional | `minLat,maxLat,minLng,maxLng`; optional filter: `propertyType`, `listingType` (repeatable: any of), `minPrice,maxPrice` (USD, asking price), `minSize,maxSize` (m², land else unit else building size), `keyword` (repeatable: all of) |
 | GET | `/public/properties/map/prices` | no | the same as the map search plus `upTo` (USD): `{ counts }`, 60 bars of asking prices from 0 to `upTo` (last bar includes above), ignoring the price range |
+| GET | `/public/properties/closest` | optional | `lat,lng` (the user, or the map centre), `limit` (1-50, default 20), `offset`, and the map search's optional filter: `{ items, nextOffset }`, every published listing with a position, nearest first, each with `distanceMeters`. Ranks at most the newest 20,000; past that it needs a spatial index |
 | GET | `/public/properties/:id` | – | published property |
 | POST | `/public/properties/guest-session` | – | `{deviceId}` |
 | `*` | `/properties/...` | JWT | own listings, images, like, favorite, contact |

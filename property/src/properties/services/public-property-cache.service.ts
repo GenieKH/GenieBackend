@@ -117,6 +117,19 @@ export class PublicPropertyCache {
     );
   }
 
+  /**
+   * Where every published listing passing `filter` is, for ranking them by
+   * distance. Any change anywhere can change it, like a zoomed-out map.
+   */
+  async positions<T>(filter: MapFilter, load: () => Promise<T>): Promise<T> {
+    const version = await this.version(WIDE_VERSION_KEY);
+    return this.cache.remember(
+      `properties:list:positions:${mapFilterKey(filter)}:w${version}`,
+      LIST_TTL_SECONDS,
+      load,
+    );
+  }
+
   /** Published listings found by a text, named by what selects them (limit, terms). */
   async textSearch<T>(name: string, load: () => Promise<T>): Promise<T> {
     const version = await this.version(TEXT_VERSION_KEY);
